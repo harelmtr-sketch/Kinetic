@@ -649,7 +649,9 @@ function TreeScreen(){
       const fn=nodeMap.get(e.from);
       const tn=nodeMap.get(e.to);
       if(!fn||!tn) continue;
-      const segment=`M ${fn.x} ${fn.y} L ${tn.x} ${tn.y} `;
+      const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
+      const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
+      const segment=`M ${fromPos.x} ${fromPos.y} L ${toPos.x} ${toPos.y} `;
       if(bld){
         segments.locked+=segment;
       }else if(fn.unlocked&&tn.unlocked){
@@ -661,7 +663,7 @@ function TreeScreen(){
       }
     }
     return segments;
-  },[bld,nodeMap,visibleEdges]);
+  },[bld,nodeMap,visibleEdges,dragVisual]);
 
 
   useEffect(()=>{
