@@ -7,8 +7,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal,
   StatusBar, PanResponder, TextInput, Alert,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, Switch,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -322,7 +323,7 @@ const np = StyleSheet.create({
 });
 
 // ── Main App ──────────────────────────────────────────────────────────────────
-export default function App(){
+function TreeScreen(){
   const [tree,_setTree]=useState(INIT);
   const tR=useRef(INIT);
   const setTree=t=>{tR.current=t;_setTree(t);};
@@ -542,11 +543,9 @@ export default function App(){
 
   return(
     <View style={S.root}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
-
       {/* Top bar */}
       <View style={S.bar}>
-        <Text style={S.title}>CALISTHENICS</Text>
+        <Text style={S.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>CALISTHENICS</Text>
         <View style={S.barRight}>
           {!bld&&(
             <TouchableOpacity style={S.resetBtn} onPress={()=>{
@@ -696,32 +695,143 @@ export default function App(){
   );
 }
 
+
+
+function ProfileScreen(){
+  return (
+    <ScrollView contentContainerStyle={tabs.content} style={tabs.page}>
+      <Text style={tabs.pageTitle}>Profile</Text>
+      <View style={tabs.card}>
+        <Text style={tabs.cardTitle}>Athlete</Text>
+        <Text style={tabs.cardBody}>Level 3 Explorer</Text>
+      </View>
+      <View style={tabs.card}>
+        <Text style={tabs.cardTitle}>Stats</Text>
+        <Text style={tabs.cardBody}>Completed Skills: 12</Text>
+        <Text style={tabs.cardBody}>Current Streak: 5 days</Text>
+      </View>
+    </ScrollView>
+  );
+}
+
+function SettingsScreen(){
+  const [notifications, setNotifications] = useState(true);
+  const [darkMode, setDarkMode] = useState(true);
+
+  return (
+    <ScrollView contentContainerStyle={tabs.content} style={tabs.page}>
+      <Text style={tabs.pageTitle}>Settings</Text>
+      <View style={tabs.card}>
+        <View style={tabs.settingRow}>
+          <Text style={tabs.settingLabel}>Push Notifications</Text>
+          <Switch value={notifications} onValueChange={setNotifications} trackColor={{false:'#3a3028', true:'#8a6a20'}} thumbColor={notifications ? '#FFC107' : '#8b7a63'} />
+        </View>
+        <View style={tabs.settingRow}>
+          <Text style={tabs.settingLabel}>Dark Theme</Text>
+          <Switch value={darkMode} onValueChange={setDarkMode} trackColor={{false:'#3a3028', true:'#2d6b47'}} thumbColor={darkMode ? '#4CAF50' : '#8b7a63'} />
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
+export default function App(){
+  const [tab, setTab] = useState('Tree');
+
+  const tabsConfig = [
+    { key: 'Tree', icon: 'git-network-outline' },
+    { key: 'Profile', icon: 'person-outline' },
+    { key: 'Settings', icon: 'settings-outline' },
+  ];
+
+  return (
+    <SafeAreaView style={tabs.safeRoot}>
+      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+      <View style={tabs.root}>
+        <View style={tabs.contentWrap}>
+          {tab === 'Tree' && <TreeScreen />}
+          {tab === 'Profile' && <ProfileScreen />}
+          {tab === 'Settings' && <SettingsScreen />}
+        </View>
+
+        <View style={tabs.navBar}>
+          {tabsConfig.map((item) => {
+            const active = tab === item.key;
+            return (
+              <TouchableOpacity key={item.key} style={tabs.navItem} onPress={() => setTab(item.key)}>
+                <Ionicons name={item.icon} size={20} color={active ? '#FFC107' : C.textDim} />
+                <Text style={[tabs.navLabel, active && tabs.navLabelActive]}>{item.key}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const tabs = StyleSheet.create({
+  safeRoot: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: C.bg },
+  contentWrap: { flex: 1 },
+  navBar: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderColor: C.stone,
+    backgroundColor: C.bg,
+    paddingVertical: 10,
+    paddingBottom: Platform.OS === 'ios' ? 16 : 10,
+  },
+  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  navLabel: { color: C.textDim, fontSize: 12, fontWeight: '600' },
+  navLabelActive: { color: '#FFC107' },
+  page: { flex: 1, backgroundColor: C.bg },
+  content: { padding: 16, gap: 14 },
+  pageTitle: { color: C.gold, fontSize: 26, fontWeight: '800', marginBottom: 4, letterSpacing: 1 },
+  card: {
+    backgroundColor: C.bgDeep,
+    borderWidth: 1,
+    borderColor: C.stone,
+    borderRadius: 12,
+    padding: 14,
+    gap: 8,
+  },
+  cardTitle: { color: C.textMain, fontSize: 18, fontWeight: '700' },
+  cardBody: { color: C.textDim, fontSize: 15 },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  settingLabel: { color: C.textMain, fontSize: 15 },
+});
 const S=StyleSheet.create({
   root:    {flex:1,backgroundColor:C.bg},
   bar:     {flexDirection:'row',justifyContent:'space-between',alignItems:'center',
-            paddingHorizontal:20,paddingTop:54,paddingBottom:14,
+            paddingHorizontal:14,paddingTop:10,paddingBottom:10,gap:10,
             backgroundColor:C.bg,borderBottomWidth:1,borderColor:C.stone},
-  barRight:{flexDirection:'row',alignItems:'center',gap:10},
-  title:   {color:C.gold,fontSize:18,fontWeight:'800',letterSpacing:5,
-            textShadowColor:C.gold,textShadowRadius:8},
-  resetBtn:{paddingHorizontal:14,paddingVertical:9,borderRadius:6,
+  barRight:{flexDirection:'row',alignItems:'center',gap:8,flexShrink:1},
+  title:   {color:C.gold,fontSize:13,fontWeight:'800',letterSpacing:3,
+            textShadowColor:C.gold,textShadowRadius:8,flexShrink:1,paddingRight:8},
+  resetBtn:{paddingHorizontal:12,paddingVertical:8,borderRadius:6,
             backgroundColor:C.bgDeep,borderWidth:1,borderColor:'#6a2020'},
-  resetT:  {color:'#a04040',fontSize:12,fontWeight:'800',letterSpacing:2},
-  modeBtn: {paddingHorizontal:18,paddingVertical:9,borderRadius:6,
+  resetT:  {color:'#a04040',fontSize:11,fontWeight:'800',letterSpacing:1.5},
+  modeBtn: {paddingHorizontal:12,paddingVertical:8,borderRadius:6,
             backgroundColor:C.bgDeep,borderWidth:1,borderColor:C.stone},
   modeOn:  {backgroundColor:'#0a1a0e',borderColor:C.green},
-  modeT:   {color:C.textDim,fontSize:12,fontWeight:'800',letterSpacing:2},
+  modeT:   {color:C.textDim,fontSize:11,fontWeight:'800',letterSpacing:1.5},
   modeTOn: {color:C.green},
   toolbar: {flexDirection:'row',justifyContent:'space-between',alignItems:'center',
-            paddingHorizontal:14,paddingVertical:10,
-            backgroundColor:C.bgDeep,borderBottomWidth:1,borderColor:C.stone},
-  tg:      {flexDirection:'row',gap:7},
-  tBtn:    {paddingHorizontal:13,paddingVertical:8,borderRadius:6,
+            paddingHorizontal:10,paddingVertical:10,rowGap:8,
+            backgroundColor:C.bgDeep,borderBottomWidth:1,borderColor:C.stone,flexWrap:'wrap'},
+  tg:      {flexDirection:'row',gap:7,flexWrap:'wrap'},
+  tBtn:    {paddingHorizontal:11,paddingVertical:8,borderRadius:6,
             backgroundColor:C.bg,borderWidth:1,borderColor:C.stone},
   tOn:     {backgroundColor:'#1a1208',borderColor:C.goldDim},
   tT:      {color:C.textDim,fontSize:12,fontWeight:'600'},
   tTOn:    {color:C.gold},
-  uBtn:    {paddingHorizontal:13,paddingVertical:8,borderRadius:6,
+  uBtn:    {paddingHorizontal:11,paddingVertical:8,borderRadius:6,
             backgroundColor:C.bg,borderWidth:1,borderColor:C.stone},
   dim:     {opacity:0.2},
   uT:      {color:C.textDim,fontSize:12,fontWeight:'600'},

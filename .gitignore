@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+.expo-shared/
+build/
+*.log
+.env
+.env.local
