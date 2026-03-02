@@ -15,7 +15,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Line, Circle, Text as SvgText, G, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
+import Svg, { Path, Circle, Text as SvgText, G, Defs, RadialGradient, Stop } from 'react-native-svg';
 
 const STORAGE_KEY = 'calisthenics_tree_v1';
 const NODE_R = 46;
@@ -551,14 +551,6 @@ function TreeScreen(){
     return{fill:'#141210',stroke:'#3a3028',sw:1.5};
   };
 
-  const eStyle=e=>{
-    if(bld) return{s:'#3a3028',w:2,d:'none'};
-    const fn=nodeMap.get(e.from),tn=nodeMap.get(e.to);
-    if(fn?.unlocked&&tn?.unlocked) return{s:'#4CAF50',w:3,d:'none'};
-    if(fn?.unlocked) return{s:'#FFC107',w:2,d:'16,16'};
-    return{s:'#4a3e2e',w:1.5,d:'6,5'};
-  };
-
   const wrap=name=>{
     const words=name.split(' ');const lines=[];let cur='';
     for(const w of words){const next=cur?cur+' '+w:w;if(next.length>10&&cur){lines.push(cur);cur=w;}else cur=next;}
@@ -585,12 +577,12 @@ function TreeScreen(){
 
   const visibleNodes=useMemo(()=>{
     if(!visibleBounds) return tree.nodes;
-    const margin=NODE_R*3;
+    const margin=Math.min(Math.max((NODE_R*2)/xform.sc,NODE_R*2),NODE_R*12);
     return tree.nodes.filter(n=>
       n.x>=visibleBounds.left-margin&&n.x<=visibleBounds.right+margin&&
       n.y>=visibleBounds.top-margin&&n.y<=visibleBounds.bottom+margin
     );
-  },[tree.nodes,visibleBounds]);
+  },[tree.nodes,visibleBounds,xform.sc]);
 
   const visibleNodeIds=useMemo(()=>new Set(visibleNodes.map(n=>n.id)),[visibleNodes]);
 
@@ -598,8 +590,34 @@ function TreeScreen(){
     visibleNodeIds.has(e.from)||visibleNodeIds.has(e.to)
   ),[tree.edges,visibleNodeIds]);
 
-  const showHalos=xform.sc>=0.35;
-  const showLabels=xform.sc>=0.55;
+  // LOD tiers keep close-up detail intact while reducing expensive SVG work in map mode.
+  const LOD=useMemo(()=>({
+    showLabels:xform.sc>=0.60,
+    showHalos:xform.sc>=0.45,
+    useDashedEdges:xform.sc>=0.80,
+    simplifiedNodes:xform.sc<0.35,
+  }),[xform.sc]);
+
+  // Batch edges into a few <Path> elements to avoid per-edge React/SVG overhead.
+  const edgePaths=useMemo(()=>{
+    const segments={mastered:'',unlockedLeading:'',locked:''};
+    for(const e of visibleEdges){
+      const fn=nodeMap.get(e.from);
+      const tn=nodeMap.get(e.to);
+      if(!fn||!tn) continue;
+      const segment=`M ${fn.x} ${fn.y} L ${tn.x} ${tn.y} `;
+      if(bld){
+        segments.locked+=segment;
+      }else if(fn.unlocked&&tn.unlocked){
+        segments.mastered+=segment;
+      }else if(fn.unlocked&&!tn.unlocked){
+        segments.unlockedLeading+=segment;
+      }else{
+        segments.locked+=segment;
+      }
+    }
+    return segments;
+  },[bld,nodeMap,visibleEdges]);
 
   const hints={
     move:   'Drag nodes to reposition · Tap empty space to add',
@@ -687,21 +705,25 @@ function TreeScreen(){
           <G transform={matrix}>
 
             {/* Green halos behind lit nodes */}
-            {showHalos&&visibleNodes.map(n=>{
-              const r=NODE_R*5;
-              if(n.isStart||n.unlocked) return <Rect key={'h'+n.id} x={n.x-r} y={n.y-r} width={r*2} height={r*2} fill="url(#haloGreen)"/>;
-              return null;
+            {LOD.showHalos&&visibleNodes.map(n=>{
+              if(!(n.isStart||n.unlocked)) return null;
+              const r=NODE_R*(xform.sc>=0.9?5:3);
+              return <Circle key={'h'+n.id} cx={n.x} cy={n.y} r={r} fill="url(#haloGreen)"/>;
             })}
 
-            {/* Edges */}
-            {visibleEdges.map((e,i)=>{
-              const fn=nodeMap.get(e.from);
-              const tn=nodeMap.get(e.to);
-              if(!fn||!tn) return null;
-              const{s,w,d}=eStyle(e);
-              return <Line key={i} x1={fn.x} y1={fn.y} x2={tn.x} y2={tn.y}
-                stroke={s} strokeWidth={w} strokeDasharray={d} strokeLinecap="round"/>;
-            })}
+            {/* Batched edges */}
+            {!!edgePaths.mastered&&(
+              <Path d={edgePaths.mastered} stroke="#4CAF50" strokeWidth={3}
+                strokeDasharray="none" strokeLinecap="round" fill="none"/>
+            )}
+            {!!edgePaths.unlockedLeading&&(
+              <Path d={edgePaths.unlockedLeading} stroke="#FFC107" strokeWidth={2}
+                strokeDasharray={LOD.useDashedEdges&&!bld?'16,16':'none'} strokeLinecap="round" fill="none"/>
+            )}
+            {!!edgePaths.locked&&(
+              <Path d={edgePaths.locked} stroke={bld?'#3a3028':'#4a3e2e'} strokeWidth={bld?2:1.5}
+                strokeDasharray="none" strokeLinecap="round" fill="none"/>
+            )}
 
             {/* Nodes */}
             {visibleNodes.map(n=>{
@@ -710,24 +732,28 @@ function TreeScreen(){
               const sy=n.y-(lines.length*lh)/2+lh*0.8;
               const unlockable=!bld&&canUnlock(n.id,tree.nodes,tree.edges)&&!n.unlocked&&!n.isStart;
               const mastered=n.unlocked&&!bld;
+              const renderR=LOD.simplifiedNodes?NODE_R*0.55:NODE_R;
+              const nodeStrokeWidth=LOD.simplifiedNodes?1:sw;
               return(
                 <G key={n.id}>
-                  {(mastered||n.isStart)&&(
+                  {!LOD.simplifiedNodes&&(mastered||n.isStart)&&(
                     <Circle cx={n.x} cy={n.y} r={NODE_R+14} fill="none"
                       stroke='#4CAF50' strokeWidth={1} opacity={0.3}/>
                   )}
-                  {unlockable&&(
+                  {!LOD.simplifiedNodes&&unlockable&&(
                     <Circle cx={n.x} cy={n.y} r={NODE_R+14} fill="none"
                       stroke="#FFC107" strokeWidth={1.5} opacity={0.6}/>
                   )}
-                  {bld&&connA===n.id&&(
+                  {!LOD.simplifiedNodes&&bld&&connA===n.id&&(
                     <Circle cx={n.x} cy={n.y} r={NODE_R+14} fill="none"
                       stroke={C.amber} strokeWidth={2} opacity={0.7}/>
                   )}
-                  <Circle cx={n.x} cy={n.y} r={NODE_R} fill={fill} stroke={stroke} strokeWidth={sw}/>
-                  <Circle cx={n.x} cy={n.y} r={NODE_R-8} fill="none"
-                    stroke={stroke} strokeWidth={0.5} opacity={0.4}/>
-                  {showLabels&&lines.map((ln,li)=>(
+                  <Circle cx={n.x} cy={n.y} r={renderR} fill={fill} stroke={stroke} strokeWidth={nodeStrokeWidth}/>
+                  {!LOD.simplifiedNodes&&(
+                    <Circle cx={n.x} cy={n.y} r={NODE_R-8} fill="none"
+                      stroke={stroke} strokeWidth={0.5} opacity={0.4}/>
+                  )}
+                  {LOD.showLabels&&lines.map((ln,li)=>(
                     <SvgText key={li} x={n.x} y={sy+li*lh}
                       fill={n.unlocked||n.isStart?C.textMain:C.textDim}
                       fontSize={10} fontWeight="bold" textAnchor="middle"
