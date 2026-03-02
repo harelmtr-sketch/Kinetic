@@ -6,7 +6,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal,
-  StatusBar, PanResponder, TextInput, Alert,
+  StatusBar, PanResponder, TextInput, Alert, Animated,
   KeyboardAvoidingView, Platform, ScrollView, Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +21,9 @@ const STORAGE_KEY = 'calisthenics_tree_v1';
 const NODE_R = 46;
 const MIN_SC = 0.15;
 const MAX_SC = 6;
+const DEV_PERF_LOG = false;
+
+const AnimatedG = Animated.createAnimatedComponent(G);
 
 // Colours — dark stone palette
 const C = {
@@ -363,20 +366,23 @@ function TreeScreen(){
 
   const txN=useRef(0),tyN=useRef(0),scN=useRef(1);
   const [xform,setXform]=useState({tx:0,ty:0,sc:1});
-  const xformRaf=useRef(null),xformPending=useRef({tx:0,ty:0,sc:1});
-  const applyXform=(tx,ty,sc)=>{
+  const gRef=useRef(null);
+  const gestureActive=useRef(false);
+  const setLiveXform=(tx,ty,sc)=>{
     txN.current=tx;tyN.current=ty;scN.current=sc;
-    xformPending.current={tx,ty,sc};
-    if(xformRaf.current) return;
-    xformRaf.current=requestAnimationFrame(()=>{
-      xformRaf.current=null;
-      setXform(xformPending.current);
-    });
+    gRef.current?.setNativeProps({ transform: `matrix(${sc},0,0,${sc},${tx},${ty})` });
+  };
+  const commitLiveXform=()=>{
+    const next={tx:txN.current,ty:tyN.current,sc:scN.current};
+    setXform(prev=>(prev.tx===next.tx&&prev.ty===next.ty&&prev.sc===next.sc?prev:next));
   };
 
-  useEffect(()=>()=>{if(xformRaf.current) cancelAnimationFrame(xformRaf.current);},[]);
-
   const [canvasSize,setCanvasSize]=useState({width:0,height:0});
+
+  useEffect(()=>{
+    // Keep native transform in sync after non-gesture renders.
+    setLiveXform(txN.current,tyN.current,scN.current);
+  },[tree,bld,tool,connA,sel,prompt]);
 
   const cL=useRef(0),cT=useRef(0),cRef=useRef(null);
   const measureC=()=>cRef.current?.measure((_,__,_w,_h,px,py)=>{cL.current=px;cT.current=py;});
@@ -394,6 +400,8 @@ function TreeScreen(){
   const pOn=useRef(false),pD0=useRef(0),pSc0=useRef(1),pTx0=useRef(0),pTy0=useRef(0);
   const pMx0=useRef(0),pMy0=useRef(0);
   const dId=useRef(null),dNx=useRef(0),dNy=useRef(0),dPx=useRef(0),dPy=useRef(0);
+  const dragLive=useRef({id:null,x:0,y:0});
+  const [dragVisual,setDragVisual]=useState(null);
 
   const panR=useRef(PanResponder.create({
     onStartShouldSetPanResponder:()=>true,
@@ -403,7 +411,10 @@ function TreeScreen(){
     onPanResponderGrant:evt=>{
       const ts=evt.nativeEvent.touches;
       moved.current=false;dId.current=null;pOn.current=false;
+      dragLive.current={id:null,x:0,y:0};
+      setDragVisual(null);
       if(ts.length>=2){
+        gestureActive.current=true;
         pOn.current=true;
         pD0.current=Math.hypot(ts[0].pageX-ts[1].pageX,ts[0].pageY-ts[1].pageY);
         pSc0.current=scN.current;pTx0.current=txN.current;pTy0.current=tyN.current;
@@ -415,12 +426,18 @@ function TreeScreen(){
       gSx.current=t.pageX;gSy.current=t.pageY;gLx.current=t.pageX;gLy.current=t.pageY;
       if(bR.current&&tR2.current==='move'){
         const hit=hitNode(t.pageX,t.pageY);
-        if(hit){dId.current=hit.id;dNx.current=hit.x;dNy.current=hit.y;const p=toSVG(t.pageX,t.pageY);dPx.current=p.x;dPy.current=p.y;}
+        if(hit){
+          dId.current=hit.id;dNx.current=hit.x;dNy.current=hit.y;
+          const p=toSVG(t.pageX,t.pageY);dPx.current=p.x;dPy.current=p.y;
+          dragLive.current={id:hit.id,x:hit.x,y:hit.y};
+          setDragVisual({id:hit.id,x:hit.x,y:hit.y});
+        }
       }
     },
     onPanResponderMove:evt=>{
       const ts=evt.nativeEvent.touches;
       if(!pOn.current&&ts.length>=2){
+        gestureActive.current=true;
         pOn.current=true;
         pD0.current=Math.hypot(ts[0].pageX-ts[1].pageX,ts[0].pageY-ts[1].pageY);
         pSc0.current=scN.current;pTx0.current=txN.current;pTy0.current=tyN.current;
@@ -436,7 +453,7 @@ function TreeScreen(){
         const curMy=(ts[0].pageY+ts[1].pageY)/2-cT.current;
         const svgMx=(pMx0.current-pTx0.current)/pSc0.current;
         const svgMy=(pMy0.current-pTy0.current)/pSc0.current;
-        applyXform(curMx-svgMx*newSc,curMy-svgMy*newSc,newSc);
+        setLiveXform(curMx-svgMx*newSc,curMy-svgMy*newSc,newSc);
         moved.current=true;return;
       }
       if(ts.length!==1) return;
@@ -445,16 +462,33 @@ function TreeScreen(){
       if(bR.current&&tR2.current==='move'&&dId.current){
         const p=toSVG(t.pageX,t.pageY);
         const nx=dNx.current+(p.x-dPx.current),ny=dNy.current+(p.y-dPy.current);
-        tR.current={...tR.current,nodes:tR.current.nodes.map(n=>n.id===dId.current?{...n,x:nx,y:ny}:n)};
-        _setTree({...tR.current});gLx.current=t.pageX;gLy.current=t.pageY;return;
+        dragLive.current={id:dId.current,x:nx,y:ny};
+        setDragVisual({id:dId.current,x:nx,y:ny});
+        gLx.current=t.pageX;gLy.current=t.pageY;return;
       }
-      applyXform(txN.current+(t.pageX-gLx.current),tyN.current+(t.pageY-gLy.current),scN.current);
+      gestureActive.current=true;
+      setLiveXform(txN.current+(t.pageX-gLx.current),tyN.current+(t.pageY-gLy.current),scN.current);
       gLx.current=t.pageX;gLy.current=t.pageY;
     },
     onPanResponderRelease:evt=>{
       pOn.current=false;
-      if(bR.current&&tR2.current==='move'&&dId.current&&moved.current){commit(tR.current);dId.current=null;return;}
+      if(gestureActive.current){
+        gestureActive.current=false;
+        commitLiveXform();
+      }
+      if(bR.current&&tR2.current==='move'&&dId.current&&moved.current){
+        const live=dragLive.current;
+        if(live.id){
+          commit({...tR.current,nodes:tR.current.nodes.map(n=>n.id===live.id?{...n,x:live.x,y:live.y}:n)});
+        }
+        dId.current=null;
+        dragLive.current={id:null,x:0,y:0};
+        setDragVisual(null);
+        return;
+      }
       dId.current=null;
+      dragLive.current={id:null,x:0,y:0};
+      setDragVisual(null);
       if(moved.current) return;
       const{pageX,pageY}=evt.nativeEvent;
       const hit=hitNode(pageX,pageY);
@@ -497,7 +531,13 @@ function TreeScreen(){
         }
       }
     },
-    onPanResponderTerminate:()=>{pOn.current=false;dId.current=null;},
+    onPanResponderTerminate:()=>{
+      pOn.current=false;
+      if(gestureActive.current){gestureActive.current=false;commitLiveXform();}
+      dId.current=null;
+      dragLive.current={id:null,x:0,y:0};
+      setDragVisual(null);
+    },
   })).current;
 
   const addNode=name=>{
@@ -559,6 +599,11 @@ function TreeScreen(){
 
   const matrix=`matrix(${xform.sc},0,0,${xform.sc},${xform.tx},${xform.ty})`;
 
+  const getNodeRenderPos=n=>{
+    if(dragVisual?.id===n.id) return {x:dragVisual.x,y:dragVisual.y};
+    return {x:n.x,y:n.y};
+  };
+
   const wrappedLabels=useMemo(()=>{
     const labels={};
     for(const n of tree.nodes) labels[n.id]=wrap(n.name);
@@ -618,6 +663,20 @@ function TreeScreen(){
     }
     return segments;
   },[bld,nodeMap,visibleEdges]);
+
+
+  useEffect(()=>{
+    if(!DEV_PERF_LOG) return;
+    const id=setInterval(()=>{
+      console.log('[perf]',{
+        visibleNodes:visibleNodes.length,
+        visibleEdges:visibleEdges.length,
+        scale:xform.sc.toFixed(3),
+        simplifiedNodes:LOD.simplifiedNodes,
+      });
+    },1000);
+    return ()=>clearInterval(id);
+  },[visibleNodes.length,visibleEdges.length,xform.sc,LOD.simplifiedNodes]);
 
   const hints={
     move:   'Drag nodes to reposition · Tap empty space to add',
@@ -702,13 +761,14 @@ function TreeScreen(){
           </Defs>
 
           {/* ── Tree (transformed) ── */}
-          <G transform={matrix}>
+          <AnimatedG ref={gRef} transform={matrix}>
 
             {/* Green halos behind lit nodes */}
             {LOD.showHalos&&visibleNodes.map(n=>{
               if(!(n.isStart||n.unlocked)) return null;
+              const {x:rx,y:ry}=getNodeRenderPos(n);
               const r=NODE_R*(xform.sc>=0.9?5:3);
-              return <Circle key={'h'+n.id} cx={n.x} cy={n.y} r={r} fill="url(#haloGreen)"/>;
+              return <Circle key={'h'+n.id} cx={rx} cy={ry} r={r} fill="url(#haloGreen)"/>;
             })}
 
             {/* Batched edges */}
@@ -728,8 +788,9 @@ function TreeScreen(){
             {/* Nodes */}
             {visibleNodes.map(n=>{
               const{fill,stroke,sw}=nStyle(n);
+              const {x:rx,y:ry}=getNodeRenderPos(n);
               const lines=wrappedLabels[n.id]||[n.name];const lh=13;
-              const sy=n.y-(lines.length*lh)/2+lh*0.8;
+              const sy=ry-(lines.length*lh)/2+lh*0.8;
               const unlockable=!bld&&canUnlock(n.id,tree.nodes,tree.edges)&&!n.unlocked&&!n.isStart;
               const mastered=n.unlocked&&!bld;
               const renderR=LOD.simplifiedNodes?NODE_R*0.55:NODE_R;
@@ -737,24 +798,24 @@ function TreeScreen(){
               return(
                 <G key={n.id}>
                   {!LOD.simplifiedNodes&&(mastered||n.isStart)&&(
-                    <Circle cx={n.x} cy={n.y} r={NODE_R+14} fill="none"
+                    <Circle cx={rx} cy={ry} r={NODE_R+14} fill="none"
                       stroke='#4CAF50' strokeWidth={1} opacity={0.3}/>
                   )}
                   {!LOD.simplifiedNodes&&unlockable&&(
-                    <Circle cx={n.x} cy={n.y} r={NODE_R+14} fill="none"
+                    <Circle cx={rx} cy={ry} r={NODE_R+14} fill="none"
                       stroke="#FFC107" strokeWidth={1.5} opacity={0.6}/>
                   )}
                   {!LOD.simplifiedNodes&&bld&&connA===n.id&&(
-                    <Circle cx={n.x} cy={n.y} r={NODE_R+14} fill="none"
+                    <Circle cx={rx} cy={ry} r={NODE_R+14} fill="none"
                       stroke={C.amber} strokeWidth={2} opacity={0.7}/>
                   )}
-                  <Circle cx={n.x} cy={n.y} r={renderR} fill={fill} stroke={stroke} strokeWidth={nodeStrokeWidth}/>
+                  <Circle cx={rx} cy={ry} r={renderR} fill={fill} stroke={stroke} strokeWidth={nodeStrokeWidth}/>
                   {!LOD.simplifiedNodes&&(
-                    <Circle cx={n.x} cy={n.y} r={NODE_R-8} fill="none"
+                    <Circle cx={rx} cy={ry} r={NODE_R-8} fill="none"
                       stroke={stroke} strokeWidth={0.5} opacity={0.4}/>
                   )}
                   {LOD.showLabels&&lines.map((ln,li)=>(
-                    <SvgText key={li} x={n.x} y={sy+li*lh}
+                    <SvgText key={li} x={rx} y={sy+li*lh}
                       fill={n.unlocked||n.isStart?C.textMain:C.textDim}
                       fontSize={10} fontWeight="bold" textAnchor="middle"
                       letterSpacing={0.5}>{ln}</SvgText>
@@ -762,7 +823,7 @@ function TreeScreen(){
                 </G>
               );
             })}
-          </G>
+          </AnimatedG>
         </Svg>
       </View>
 
