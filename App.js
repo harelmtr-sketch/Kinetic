@@ -397,9 +397,9 @@ function TreeScreen(){
 
   const panR=useRef(PanResponder.create({
     onStartShouldSetPanResponder:()=>true,
-    onStartShouldSetPanResponderCapture:()=>false,
+    onStartShouldSetPanResponderCapture:()=>true,
     onMoveShouldSetPanResponder:(_,g)=>Math.hypot(g.dx,g.dy)>3,
-    onMoveShouldSetPanResponderCapture:()=>false,
+    onMoveShouldSetPanResponderCapture:()=>true,
     onPanResponderGrant:evt=>{
       const ts=evt.nativeEvent.touches;
       moved.current=false;dId.current=null;pOn.current=false;
@@ -420,6 +420,15 @@ function TreeScreen(){
     },
     onPanResponderMove:evt=>{
       const ts=evt.nativeEvent.touches;
+      if(!pOn.current&&ts.length>=2){
+        pOn.current=true;
+        pD0.current=Math.hypot(ts[0].pageX-ts[1].pageX,ts[0].pageY-ts[1].pageY);
+        pSc0.current=scN.current;pTx0.current=txN.current;pTy0.current=tyN.current;
+        pMx0.current=(ts[0].pageX+ts[1].pageX)/2-cL.current;
+        pMy0.current=(ts[0].pageY+ts[1].pageY)/2-cT.current;
+        return;
+      }
+      if(pOn.current&&ts.length<2){pOn.current=false;return;}
       if(pOn.current&&ts.length>=2){
         const d=Math.hypot(ts[0].pageX-ts[1].pageX,ts[0].pageY-ts[1].pageY);
         const newSc=Math.min(Math.max(pSc0.current*(d/pD0.current),MIN_SC),MAX_SC);
