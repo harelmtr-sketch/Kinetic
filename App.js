@@ -3,17 +3,18 @@
  * Dark stone / RPG aesthetic — inspired by the reference card design.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal,
   StatusBar, PanResponder, TextInput, Alert,
-  KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, Switch,
+  KeyboardAvoidingView, Platform, ScrollView, Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Line, Circle, Text as SvgText, G, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
 const STORAGE_KEY = 'calisthenics_tree_v1';
@@ -324,6 +325,7 @@ const np = StyleSheet.create({
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 function TreeScreen(){
+  const insets = useSafeAreaInsets();
   const [tree,_setTree]=useState(INIT);
   const tR=useRef(INIT);
   const setTree=t=>{tR.current=t;_setTree(t);};
@@ -361,7 +363,20 @@ function TreeScreen(){
 
   const txN=useRef(0),tyN=useRef(0),scN=useRef(1);
   const [xform,setXform]=useState({tx:0,ty:0,sc:1});
-  const applyXform=(tx,ty,sc)=>{txN.current=tx;tyN.current=ty;scN.current=sc;setXform({tx,ty,sc});};
+  const xformRaf=useRef(null),xformPending=useRef({tx:0,ty:0,sc:1});
+  const applyXform=(tx,ty,sc)=>{
+    txN.current=tx;tyN.current=ty;scN.current=sc;
+    xformPending.current={tx,ty,sc};
+    if(xformRaf.current) return;
+    xformRaf.current=requestAnimationFrame(()=>{
+      xformRaf.current=null;
+      setXform(xformPending.current);
+    });
+  };
+
+  useEffect(()=>()=>{if(xformRaf.current) cancelAnimationFrame(xformRaf.current);},[]);
+
+  const [canvasSize,setCanvasSize]=useState({width:0,height:0});
 
   const cL=useRef(0),cT=useRef(0),cRef=useRef(null);
   const measureC=()=>cRef.current?.measure((_,__,_w,_h,px,py)=>{cL.current=px;cT.current=py;});
@@ -450,10 +465,16 @@ function TreeScreen(){
         if(hit&&!hit.isStart){
           Alert.alert('Delete',`Delete "${hit.name}"?`,[
             {text:'Cancel',style:'cancel'},
-            {text:'Delete',style:'destructive',onPress:()=>commit({
-              nodes:tR.current.nodes.filter(n=>n.id!==hit.id),
-              edges:tR.current.edges.filter(e=>e.from!==hit.id&&e.to!==hit.id),
-            })},
+            {text:'Delete',style:'destructive',onPress:()=>{
+              const nextInfo={...(tR.current.info||{})};
+              delete nextInfo[hit.id];
+              commit({
+                ...tR.current,
+                nodes:tR.current.nodes.filter(n=>n.id!==hit.id),
+                edges:tR.current.edges.filter(e=>e.from!==hit.id&&e.to!==hit.id),
+                info:nextInfo,
+              });
+            }},
           ]);return;
         }
         if(!hit){
@@ -510,6 +531,8 @@ function TreeScreen(){
     }catch(e){Alert.alert('Import failed',String(e));}
   };
 
+  const nodeMap=useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+
   // ── SVG node/edge styling ──────────────────────────────────────────────────
   const nStyle=n=>{
     if(bld&&connA===n.id) return{fill:'#2a1a00',stroke:C.amber,sw:2.5};
@@ -521,7 +544,7 @@ function TreeScreen(){
 
   const eStyle=e=>{
     if(bld) return{s:'#3a3028',w:2,d:'none'};
-    const fn=tree.nodes.find(n=>n.id===e.from),tn=tree.nodes.find(n=>n.id===e.to);
+    const fn=nodeMap.get(e.from),tn=nodeMap.get(e.to);
     if(fn?.unlocked&&tn?.unlocked) return{s:'#4CAF50',w:3,d:'none'};
     if(fn?.unlocked) return{s:'#FFC107',w:2,d:'16,16'};
     return{s:'#4a3e2e',w:1.5,d:'6,5'};
@@ -535,6 +558,40 @@ function TreeScreen(){
 
   const matrix=`matrix(${xform.sc},0,0,${xform.sc},${xform.tx},${xform.ty})`;
 
+  const wrappedLabels=useMemo(()=>{
+    const labels={};
+    for(const n of tree.nodes) labels[n.id]=wrap(n.name);
+    return labels;
+  },[tree.nodes]);
+
+  const visibleBounds=useMemo(()=>{
+    if(!canvasSize.width||!canvasSize.height) return null;
+    return {
+      left:(-xform.tx)/xform.sc,
+      top:(-xform.ty)/xform.sc,
+      right:(canvasSize.width-xform.tx)/xform.sc,
+      bottom:(canvasSize.height-xform.ty)/xform.sc,
+    };
+  },[canvasSize.height,canvasSize.width,xform.sc,xform.tx,xform.ty]);
+
+  const visibleNodes=useMemo(()=>{
+    if(!visibleBounds) return tree.nodes;
+    const margin=NODE_R*3;
+    return tree.nodes.filter(n=>
+      n.x>=visibleBounds.left-margin&&n.x<=visibleBounds.right+margin&&
+      n.y>=visibleBounds.top-margin&&n.y<=visibleBounds.bottom+margin
+    );
+  },[tree.nodes,visibleBounds]);
+
+  const visibleNodeIds=useMemo(()=>new Set(visibleNodes.map(n=>n.id)),[visibleNodes]);
+
+  const visibleEdges=useMemo(()=>tree.edges.filter(e=>
+    visibleNodeIds.has(e.from)||visibleNodeIds.has(e.to)
+  ),[tree.edges,visibleNodeIds]);
+
+  const showHalos=xform.sc>=0.35;
+  const showLabels=xform.sc>=0.55;
+
   const hints={
     move:   'Drag nodes to reposition · Tap empty space to add',
     connect:connA?'Now tap second node to connect':'Tap first node to begin branch',
@@ -544,7 +601,7 @@ function TreeScreen(){
   return(
     <View style={S.root}>
       {/* Top bar */}
-      <View style={S.bar}>
+      <View style={[S.bar,{paddingTop:insets.top+10}]}>
         <Text style={S.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>CALISTHENICS</Text>
         <View style={S.barRight}>
           {!bld&&(
@@ -602,7 +659,11 @@ function TreeScreen(){
 
       {/* Canvas */}
       <View ref={cRef} style={S.canvas}
-        onLayout={()=>setTimeout(measureC,50)}
+        onLayout={(evt)=>{
+          const { width, height } = evt.nativeEvent.layout;
+          setCanvasSize({width,height});
+          setTimeout(measureC,50);
+        }}
         {...panR.panHandlers}>
         <Svg width="100%" height="100%">
           <Defs>
@@ -617,16 +678,16 @@ function TreeScreen(){
           <G transform={matrix}>
 
             {/* Green halos behind lit nodes */}
-            {tree.nodes.map(n=>{
+            {showHalos&&visibleNodes.map(n=>{
               const r=NODE_R*5;
               if(n.isStart||n.unlocked) return <Rect key={'h'+n.id} x={n.x-r} y={n.y-r} width={r*2} height={r*2} fill="url(#haloGreen)"/>;
               return null;
             })}
 
             {/* Edges */}
-            {tree.edges.map((e,i)=>{
-              const fn=tree.nodes.find(n=>n.id===e.from);
-              const tn=tree.nodes.find(n=>n.id===e.to);
+            {visibleEdges.map((e,i)=>{
+              const fn=nodeMap.get(e.from);
+              const tn=nodeMap.get(e.to);
               if(!fn||!tn) return null;
               const{s,w,d}=eStyle(e);
               return <Line key={i} x1={fn.x} y1={fn.y} x2={tn.x} y2={tn.y}
@@ -634,9 +695,9 @@ function TreeScreen(){
             })}
 
             {/* Nodes */}
-            {tree.nodes.map(n=>{
+            {visibleNodes.map(n=>{
               const{fill,stroke,sw}=nStyle(n);
-              const lines=wrap(n.name);const lh=13;
+              const lines=wrappedLabels[n.id]||[n.name];const lh=13;
               const sy=n.y-(lines.length*lh)/2+lh*0.8;
               const unlockable=!bld&&canUnlock(n.id,tree.nodes,tree.edges)&&!n.unlocked&&!n.isStart;
               const mastered=n.unlocked&&!bld;
@@ -657,7 +718,7 @@ function TreeScreen(){
                   <Circle cx={n.x} cy={n.y} r={NODE_R} fill={fill} stroke={stroke} strokeWidth={sw}/>
                   <Circle cx={n.x} cy={n.y} r={NODE_R-8} fill="none"
                     stroke={stroke} strokeWidth={0.5} opacity={0.4}/>
-                  {lines.map((ln,li)=>(
+                  {showLabels&&lines.map((ln,li)=>(
                     <SvgText key={li} x={n.x} y={sy+li*lh}
                       fill={n.unlocked||n.isStart?C.textMain:C.textDim}
                       fontSize={10} fontWeight="bold" textAnchor="middle"
@@ -735,8 +796,9 @@ function SettingsScreen(){
   );
 }
 
-export default function App(){
+function AppShell(){
   const [tab, setTab] = useState('Tree');
+  const insets = useSafeAreaInsets();
 
   const tabsConfig = [
     { key: 'Tree', icon: 'git-network-outline' },
@@ -745,7 +807,7 @@ export default function App(){
   ];
 
   return (
-    <SafeAreaView style={tabs.safeRoot}>
+    <View style={tabs.safeRoot}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
       <View style={tabs.root}>
         <View style={tabs.contentWrap}>
@@ -754,7 +816,7 @@ export default function App(){
           {tab === 'Settings' && <SettingsScreen />}
         </View>
 
-        <View style={tabs.navBar}>
+        <View style={[tabs.navBar, { paddingBottom: insets.bottom }]}>
           {tabsConfig.map((item) => {
             const active = tab === item.key;
             return (
@@ -766,7 +828,15 @@ export default function App(){
           })}
         </View>
       </View>
-    </SafeAreaView>
+    </View>
+  );
+}
+
+export default function App(){
+  return (
+    <SafeAreaProvider>
+      <AppShell />
+    </SafeAreaProvider>
   );
 }
 
@@ -779,8 +849,7 @@ const tabs = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: C.stone,
     backgroundColor: C.bg,
-    paddingVertical: 10,
-    paddingBottom: Platform.OS === 'ios' ? 16 : 10,
+    paddingTop: 10,
   },
   navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
   navLabel: { color: C.textDim, fontSize: 12, fontWeight: '600' },
