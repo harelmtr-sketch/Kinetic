@@ -368,9 +368,10 @@ function TreeScreen(){
   const [xform,setXform]=useState({tx:0,ty:0,sc:1});
   const gRef=useRef(null);
   const gestureActive=useRef(false);
+  const mk=(tx,ty,sc)=>[sc,0,0,sc,tx,ty];
   const setLiveXform=(tx,ty,sc)=>{
     txN.current=tx;tyN.current=ty;scN.current=sc;
-    gRef.current?.setNativeProps({ transform: `matrix(${sc},0,0,${sc},${tx},${ty})` });
+    gRef.current?.setNativeProps({ matrix: mk(tx,ty,sc) });
   };
   const commitLiveXform=()=>{
     const next={tx:txN.current,ty:tyN.current,sc:scN.current};
@@ -597,8 +598,6 @@ function TreeScreen(){
     if(cur)lines.push(cur);return lines;
   };
 
-  const matrix=`matrix(${xform.sc},0,0,${xform.sc},${xform.tx},${xform.ty})`;
-
   const getNodeRenderPos=n=>{
     if(dragVisual?.id===n.id) return {x:dragVisual.x,y:dragVisual.y};
     return {x:n.x,y:n.y};
@@ -761,7 +760,7 @@ function TreeScreen(){
           </Defs>
 
           {/* ── Tree (transformed) ── */}
-          <AnimatedG ref={gRef} transform={matrix}>
+          <AnimatedG ref={gRef} matrix={mk(xform.tx,xform.ty,xform.sc)}>
 
             {/* Green halos behind lit nodes */}
             {LOD.showHalos&&visibleNodes.map(n=>{
