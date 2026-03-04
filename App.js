@@ -28,7 +28,7 @@ import {
   TileMode,
   matchFont,
 } from '@shopify/react-native-skia';
-import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
+import { cancelAnimation, Easing, useDerivedValue, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
 const STORAGE_KEY = 'calisthenics_tree_v1';
 const NODE_R = 46;
@@ -344,14 +344,18 @@ function SkiaTreeCanvas({
   txV, tyV, scV,
   dragVisual, LOD, edgeVisual,
   bld, connA, isInteracting,
+  selectedNodeId, selPulseV,
   canvasSize, nStyle,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
+  const gradientCacheRef = useRef(new Map());
   const sceneTransform = useDerivedValue(()=>([
     { translateX: txV.value },
     { translateY: tyV.value },
     { scale: scV.value },
   ]),[]);
+  const selectedRingOpacity = useDerivedValue(()=>0.15 + (selPulseV.value * 0.2),[selPulseV]);
+  const selectedRingRadius = useDerivedValue(()=>NODE_R + 8 + (selPulseV.value * 3),[selPulseV]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
 
@@ -393,6 +397,22 @@ function SkiaTreeCanvas({
   },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
 
   const farNodeR = NODE_R*0.34;
+  const getCachedNodeShader = (nodeId, renderR, fill)=>{
+    // PERF: cache by node id + style only (not x/y), so panning/zooming reuses shader instances.
+    const key = `${nodeId}|${renderR}|${fill}`;
+    const cached = gradientCacheRef.current.get(key);
+    if(cached) return cached;
+    const shader = Skia.Shader.MakeRadialGradient(
+      {x:-6,y:-8},
+      renderR*1.15,
+      [Skia.Color(fill), Skia.Color('#0f0d0b')],
+      [0,1],
+      TileMode.Clamp,
+    );
+    gradientCacheRef.current.set(key, shader);
+    return shader;
+  };
+
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
       <Group transform={sceneTransform}>
@@ -415,7 +435,7 @@ function SkiaTreeCanvas({
           const {fill,stroke,sw,opacity}=nStyle(n);
           const rx=dragVisual?.id===n.id?dragVisual.x:n.x;
           const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
-          const lines=wrappedLabels[n.id]||[n.name];
+          const lines=wrappedLabels[n.id]||[{text:n.name,dx:n.name.length*2.8}];
           const lh=13;
           const sy=ry-(lines.length*lh)/2+lh*0.8;
           const status=nodeStatusMap[n.id]||'locked';
@@ -424,32 +444,44 @@ function SkiaTreeCanvas({
           const isMastered=status==='start'||status==='mastered';
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
+          const useCheapBody = isInteracting || LOD.isFar;
           const showCheapHalo=USE_GLOW&&isLit;
-          const haloColor=isReady?'rgba(255,152,0,0.18)':'rgba(76,175,80,0.17)';
-          const bodyGrad=Skia.Shader.MakeRadialGradient(
-            {x:rx-6,y:ry-8},
-            renderR*1.15,
-            [Skia.Color(fill), Skia.Color('#0f0d0b')],
-            [0,1],
-            TileMode.Clamp,
-          );
+          const haloColor=isInteracting
+            ?(isReady?'rgba(255,152,0,0.22)':'rgba(76,175,80,0.2)')
+            :(isReady?'rgba(255,152,0,0.18)':'rgba(76,175,80,0.17)');
+          const bodyGrad = useCheapBody ? null : getCachedNodeShader(n.id, renderR, fill);
           return(
             <Group key={n.id}>
               {LOD.showOuterRing&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.2} color="rgba(76,175,80,0.34)" />}
               {LOD.showOuterRing&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.1} color="rgba(255,193,7,0.44)" />}
               {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.8} color="rgba(212,128,10,0.68)" />}
 
-              {showCheapHalo&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.62:NODE_R*0.9} color={haloColor} />}
+              {showCheapHalo&&<Circle cx={rx} cy={ry} r={isInteracting?NODE_R*1.02:(LOD.isFar?NODE_R*0.62:NODE_R*0.9)} color={haloColor} />}
 
               {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
-                <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={isReady?'rgba(255,152,0,0.16)':'rgba(76,175,80,0.14)'}>
-                  <Blur blur={GLOW_QUALITY==='high'?16:10} />
-                </Circle>
+                <>
+                  <Circle cx={rx} cy={ry} r={NODE_R*1.28} color={isReady?'rgba(255,152,0,0.08)':'rgba(76,175,80,0.07)'}>
+                    <Blur blur={GLOW_QUALITY==='high'?18:12} />
+                  </Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={isReady?'rgba(255,152,0,0.16)':'rgba(76,175,80,0.14)'}>
+                    <Blur blur={GLOW_QUALITY==='high'?13:9} />
+                  </Circle>
+                </>
               )}
 
-              <Circle cx={rx} cy={ry} r={renderR} opacity={opacity}>
-                <Paint shader={bodyGrad} />
-              </Circle>
+              {selectedNodeId===n.id&&(
+                <Circle cx={rx} cy={ry} r={selectedRingRadius} style="stroke" strokeWidth={1.6} color="rgba(255,215,120,1)" opacity={selectedRingOpacity} />
+              )}
+
+              {useCheapBody?(
+                <Circle cx={rx} cy={ry} r={renderR} color={fill} opacity={opacity} />
+              ):(
+                <Group transform={[{translateX:rx},{translateY:ry}]}> 
+                  <Circle cx={0} cy={0} r={renderR} opacity={opacity}>
+                    <Paint shader={bodyGrad} />
+                  </Circle>
+                </Group>
+              )}
               <Circle cx={rx} cy={ry} r={renderR} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
 
               {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-8} style="stroke" strokeWidth={0.5} color={stroke} opacity={0.34} />}
@@ -458,9 +490,9 @@ function SkiaTreeCanvas({
               {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>(
                 <SkiaText
                   key={`${n.id}_${li}`}
-                  x={rx-(ln.length*2.8)}
+                  x={rx-ln.dx}
                   y={sy+li*lh}
-                  text={ln}
+                  text={ln.text}
                   font={labelFont}
                   color={isLit?C.textMain:C.textDim}
                 />
@@ -562,6 +594,8 @@ function TreeScreen(){
   const dragVisualRaf=useRef(null);
   const glowDebounceRef=useRef(null);
   const [isInteracting,setIsInteracting]=useState(false);
+  const isInteractingRef=useRef(false);
+  const selPulseV=useSharedValue(0);
 
   const setDragVisualThrottled=next=>{
     dragVisualRef.current=next;
@@ -584,15 +618,30 @@ function TreeScreen(){
       clearTimeout(glowDebounceRef.current);
       glowDebounceRef.current=null;
     }
-    setIsInteracting(true);
+    if(!isInteractingRef.current){
+      isInteractingRef.current=true;
+      setIsInteracting(true);
+    }
   };
   const endInteraction=()=>{
     if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
     glowDebounceRef.current=setTimeout(()=>{
-      setIsInteracting(false);
+      if(isInteractingRef.current){
+        isInteractingRef.current=false;
+        setIsInteracting(false);
+      }
       glowDebounceRef.current=null;
-    },90);
+    },180);
   };
+
+  useEffect(()=>{
+    selPulseV.value = withRepeat(
+      withTiming(1,{duration:1200,easing:Easing.inOut(Easing.quad)}),
+      -1,
+      true,
+    );
+    return ()=>cancelAnimation(selPulseV);
+  },[selPulseV]);
 
   const panR=useRef(PanResponder.create({
     onStartShouldSetPanResponder:()=>true,
@@ -823,7 +872,13 @@ function TreeScreen(){
 
   const wrappedLabels=useMemo(()=>{
     const labels={};
-    for(const n of tree.nodes) labels[n.id]=wrap(n.name);
+    for(const n of tree.nodes){
+      labels[n.id]=wrap(n.name).map(text=>({
+        text,
+        // PERF: precompute rough centered x-offset once, avoid per-frame string math.
+        dx:text.length*2.8,
+      }));
+    }
     return labels;
   },[tree.nodes]);
 
@@ -976,6 +1031,8 @@ function TreeScreen(){
             bld={bld}
             connA={connA}
             isInteracting={isInteracting}
+            selectedNodeId={sel?.id ?? null}
+            selPulseV={selPulseV}
             canvasSize={canvasSize}
             nStyle={nStyle}
           />
