@@ -16,16 +16,13 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Blur,
   Canvas,
   Circle,
   DashPathEffect,
   Group,
-  Paint,
   Path,
   Skia,
   Text as SkiaText,
-  TileMode,
   matchFont,
 } from '@shopify/react-native-skia';
 import { Easing, useDerivedValue, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
@@ -100,6 +97,58 @@ function hashStringToFloat(str, salt=0){
     h = Math.imul(h, 16777619);
   }
   return ((h >>> 0) % 10000) / 10000;
+}
+
+
+function makeStarPath(r){
+  const p = Skia.Path.Make();
+  const points = 8;
+  const inner = r * 0.52;
+  for(let i=0;i<points*2;i++){
+    const a = (-Math.PI/2) + (i*Math.PI/points);
+    const rr = i%2===0 ? r : inner;
+    const x = Math.cos(a)*rr;
+    const y = Math.sin(a)*rr;
+    if(i===0) p.moveTo(x,y);
+    else p.lineTo(x,y);
+  }
+  p.close();
+  return p;
+}
+function makeHexStonePath(r, seedKey){
+  const p = Skia.Path.Make();
+  for(let i=0;i<6;i++){
+    const a = (-Math.PI/2) + (i*Math.PI/3);
+    const j = 0.88 + hashStringToFloat(`${seedKey}_${i}`, 17) * 0.2;
+    const x = Math.cos(a)*r*j;
+    const y = Math.sin(a)*r*j;
+    if(i===0) p.moveTo(x,y);
+    else p.lineTo(x,y);
+  }
+  p.close();
+  return p;
+}
+function makeDiamondPath(r){
+  const b = r*0.3;
+  const pts = [
+    {x:0,y:-r},{x:b,y:-(r-b)},{x:r,y:0},{x:r-b,y:b},
+    {x:0,y:r},{x:-b,y:r-b},{x:-r,y:0},{x:-(r-b),y:-b},
+  ];
+  const p = Skia.Path.Make();
+  pts.forEach((pt,i)=>{ if(i===0) p.moveTo(pt.x,pt.y); else p.lineTo(pt.x,pt.y); });
+  p.close();
+  return p;
+}
+function makeRoundSquarePath(r, corner=10){
+  const c = Math.min(corner, r*0.45);
+  const pts = [
+    {x:-r+c,y:-r},{x:r-c,y:-r},{x:r,y:-r+c},{x:r,y:r-c},
+    {x:r-c,y:r},{x:-r+c,y:r},{x:-r,y:r-c},{x:-r,y:-r+c},
+  ];
+  const p = Skia.Path.Make();
+  pts.forEach((pt,i)=>{ if(i===0) p.moveTo(pt.x,pt.y); else p.lineTo(pt.x,pt.y); });
+  p.close();
+  return p;
 }
 
 function canUnlock(id,nodes,edges){
@@ -358,38 +407,24 @@ function SkiaTreeCanvas({
   canvasSize, nStyle,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
-  const gradientCacheRef = useRef(new Map());
-  const nodeSeedMap = useMemo(()=>{
-    const m={};
-    for(const n of tree.nodes){
-      m[n.id]={
-        phase: hashStringToFloat(n.id, 1),
-        ring: hashStringToFloat(n.id, 2),
-        sparkCount: 4 + Math.floor(hashStringToFloat(n.id, 3) * 5),
-      };
-    }
-    return m;
-  },[tree.nodes]);
+  const shapeCacheRef = useRef(new Map());
+  const warnedMissingRef = useRef(false);
 
-  const warnedMissingXformRef = useRef(false);
   useEffect(()=>{
-    if((!txV||!tyV||!scV)&&!warnedMissingXformRef.current){
-      console.warn('[SkiaTreeCanvas] Missing transform shared values; falling back to identity transform.');
-      warnedMissingXformRef.current=true;
+    if((!txV||!tyV||!scV||!selPulseV)&&!warnedMissingRef.current){
+      if(__DEV__) console.warn('[SkiaTreeCanvas] Missing shared value(s); using safe fallbacks.');
+      warnedMissingRef.current=true;
     }
-  },[txV,tyV,scV]);
+  },[txV,tyV,scV,selPulseV]);
+
   const sceneTransform = useDerivedValue(()=>([
     { translateX: txV?.value ?? 0 },
     { translateY: tyV?.value ?? 0 },
     { scale: scV?.value ?? 1 },
   ]),[txV,tyV,scV]);
-  const selectedRingOpacity = useDerivedValue(()=>0.18 + (selPulseV.value * 0.2),[selPulseV]);
-  const selectedRingRadius = useDerivedValue(()=>NODE_R + 8 + (selPulseV.value * 3),[selPulseV]);
 
   const t = useSharedValue(0);
   useEffect(()=>{
-    // Reanimated-driven universal clock (0..1 loop) for Skia animations.
-    // We removed Skia clock hooks because this app's Skia version doesn't export them.
     let rafId;
     const loopMs = 2000;
     const startedAt = Date.now();
@@ -405,13 +440,20 @@ function SkiaTreeCanvas({
     };
   },[t]);
 
+  const safeSelPulse = useDerivedValue(()=>selPulseV?.value ?? 0,[selPulseV]);
+  const selectedRingOpacity = useDerivedValue(()=>0.15 + (safeSelPulse.value * 0.2),[safeSelPulse]);
+  const selectedRingRadius = useDerivedValue(()=>NODE_R + 8 + (safeSelPulse.value * 3),[safeSelPulse]);
   const shimmer = useDerivedValue(() => t.value * Math.PI * 2, [t]);
-  const auraPulse = useDerivedValue(()=>0.88 + (selPulseV.value * 0.22),[selPulseV]);
   const fogAX = useDerivedValue(() => (canvasSize.width*0.22) + Math.sin((t.value * Math.PI * 2) * 0.35) * 34, [canvasSize.width,t]);
   const fogBX = useDerivedValue(() => (canvasSize.width*0.78) + Math.cos((t.value * Math.PI * 2) * 0.28) * 42, [canvasSize.width,t]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
-  const shimmerArcPath = useMemo(()=>Skia.Path.MakeFromSVGString(`M 0 -${NODE_R+9} A ${NODE_R+9} ${NODE_R+9} 0 0 1 ${NODE_R*0.46} -${NODE_R*0.89}`) || Skia.Path.Make(),[]);
+  const edgeSegments = useMemo(()=>visibleEdges.map(e=>({
+    key:`${e.from}|${e.to}`,
+    from:nodeMap.get(e.from),
+    to:nodeMap.get(e.to),
+    seed:hashStringToFloat(`${e.from}|${e.to}`, 9),
+  })).filter(seg=>seg.from&&seg.to),[visibleEdges,nodeMap]);
 
   const edgeBuckets = useMemo(()=>{
     const mastered = Skia.Path.Make();
@@ -419,10 +461,9 @@ function SkiaTreeCanvas({
     const locked = Skia.Path.Make();
     const readySegments = [];
     let hasMastered=false, hasReady=false, hasLocked=false;
-    for(const e of visibleEdges){
-      const fn=nodeMap.get(e.from);
-      const tn=nodeMap.get(e.to);
-      if(!fn||!tn) continue;
+    for(const seg of edgeSegments){
+      const fn = seg.from;
+      const tn = seg.to;
       const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
       const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
       let bucket=locked;
@@ -439,11 +480,7 @@ function SkiaTreeCanvas({
         }else if((fromLit&&!toLit)||(toReady)||(fromStart&&toState==='locked')){
           bucket=ready;
           hasReady=true;
-          readySegments.push({
-            key:`${e.from}|${e.to}`,
-            x1:fromPos.x,y1:fromPos.y,x2:toPos.x,y2:toPos.y,
-            seed:hashStringToFloat(`${e.from}|${e.to}`, 9),
-          });
+          readySegments.push({ key:seg.key, x1:fromPos.x,y1:fromPos.y,x2:toPos.x,y2:toPos.y, seed:seg.seed });
         }else{
           hasLocked=true;
         }
@@ -454,11 +491,10 @@ function SkiaTreeCanvas({
       bucket.lineTo(toPos.x,toPos.y);
     }
     return { mastered, ready, locked, readySegments, hasMastered, hasReady, hasLocked };
-  },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
+  },[bld,dragVisual,edgeSegments,nodeStatusMap]);
 
   const dustSeeds = useMemo(()=>{
-    // NOTE: dust seeds are plain numbers (not shared values).
-    // A prior version mixed `.value` reads during map() and could crash when a seed field wasn't a shared value.
+    // NOTE: plain numeric seeds only; avoids undefined `.value` crashes in dust map loops.
     return Array.from({length:48},(_,i)=>({
       id:`dust_${i}`,
       x:hashStringToFloat(`dustx_${i}`, 31),
@@ -469,44 +505,37 @@ function SkiaTreeCanvas({
   },[]);
 
   const farNodeR = NODE_R*0.34;
-  const getCachedNodeShader = (status, renderR, fill, core)=>{
-    // PERF: cached by visual state only (ignores x/y) so panning/zooming reuses shader objects.
-    const key = `${status}|${renderR}|${fill}|${core}`;
-    const cached = gradientCacheRef.current.get(key);
-    if(cached) return cached;
-    const shader = Skia.Shader.MakeRadialGradient(
-      {x:-4,y:-7},
-      renderR*1.22,
-      [Skia.Color(core), Skia.Color(fill), Skia.Color('#0d0b09')],
-      [0, 0.45, 1],
-      TileMode.Clamp,
-    );
-    gradientCacheRef.current.set(key, shader);
-    return shader;
-  };
+  const showLabels = LOD.isNear && visibleNodes.length<=90 && !isInteracting;
+  const showEdgeGlow = visibleEdges.length<=180;
 
-  const shouldCheap = isInteracting || LOD.isFar;
+  const sweepPath = useMemo(()=>makeStarPath(8),[]);
+
+  const getNodePath = (id,status,renderR)=>{
+    const key = `${id}|${status}|${renderR.toFixed(2)}`;
+    const cached = shapeCacheRef.current.get(key);
+    if(cached) return cached;
+    let p;
+    if(status==='start') p = makeStarPath(renderR*1.05);
+    else if(status==='mastered') p = makeHexStonePath(renderR, id);
+    else if(status==='ready') p = makeDiamondPath(renderR*0.98);
+    else p = makeRoundSquarePath(renderR*0.95, renderR*0.28);
+    shapeCacheRef.current.set(key,p);
+    return p;
+  };
 
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
-      {/* Ambient vignette (screen-space, static dark edges) */}
       <Circle cx={canvasSize.width*0.5} cy={canvasSize.height*0.5} r={Math.max(canvasSize.width, canvasSize.height)*0.78} color="rgba(0,0,0,0.22)" />
       <Circle cx={canvasSize.width*0.5} cy={canvasSize.height*0.5} r={Math.max(canvasSize.width, canvasSize.height)*1.02} style="stroke" strokeWidth={Math.max(canvasSize.width, canvasSize.height)*0.45} color="rgba(0,0,0,0.34)" />
 
-      {/* Fog bands (idle only, subtle drift in screen-space) */}
-      {!shouldCheap&&(
+      {!isInteracting&&LOD.isNear&&(
         <>
-          <Circle cx={fogAX} cy={canvasSize.height*0.2} r={canvasSize.width*0.42} color="rgba(210,190,150,0.03)">
-            <Blur blur={22} />
-          </Circle>
-          <Circle cx={fogBX} cy={canvasSize.height*0.72} r={canvasSize.width*0.36} color="rgba(170,210,185,0.025)">
-            <Blur blur={18} />
-          </Circle>
+          <Circle cx={fogAX} cy={canvasSize.height*0.2} r={canvasSize.width*0.42} color="rgba(210,190,150,0.03)" />
+          <Circle cx={fogBX} cy={canvasSize.height*0.72} r={canvasSize.width*0.36} color="rgba(170,210,185,0.025)" />
         </>
       )}
 
-      {/* Dust motes in screen-space (disabled on interacting/far) */}
-      {!shouldCheap&&LOD.isNear&&dustSeeds.map((d)=>{
+      {!isInteracting&&LOD.isNear&&dustSeeds.map((d)=>{
         const tt = ((t.value * d.speed) + d.phase) % 1;
         const x=(d.x*canvasSize.width + tt*canvasSize.width*0.18) % canvasSize.width;
         const y=(d.y*canvasSize.height + tt*canvasSize.height*0.06) % canvasSize.height;
@@ -514,19 +543,13 @@ function SkiaTreeCanvas({
       })}
 
       <Group transform={sceneTransform}>
-        {/* Edge glow under-strokes (idle only) */}
-        {edgeBuckets.hasMastered&&!shouldCheap&&USE_GLOW&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+4.4} color="rgba(76,175,80,0.2)" strokeCap="round">
-            <Blur blur={8} />
-          </Path>
+        {edgeBuckets.hasMastered&&!isInteracting&&showEdgeGlow&&(
+          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+3.2} color="rgba(76,175,80,0.18)" strokeCap="round" />
         )}
-        {edgeBuckets.hasReady&&!shouldCheap&&USE_GLOW&&(
-          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW+3.8} color="rgba(255,173,64,0.2)" strokeCap="round">
-            <Blur blur={7} />
-          </Path>
+        {edgeBuckets.hasReady&&!isInteracting&&showEdgeGlow&&(
+          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW+2.8} color="rgba(255,173,64,0.16)" strokeCap="round" />
         )}
 
-        {/* Base edges */}
         {edgeBuckets.hasMastered&&(
           <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW} color={`rgba(76,175,80,${edgeVisual.masteredO})`} strokeCap="round" />
         )}
@@ -539,20 +562,7 @@ function SkiaTreeCanvas({
           <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO})`:`rgba(97,88,79,${edgeVisual.lockedO})`} strokeCap="round" />
         )}
 
-        {/* Animated edge energy flow */}
-        {!shouldCheap&&edgeBuckets.hasMastered&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+0.7} color="rgba(172,255,192,0.52)" strokeCap="round">
-            <DashPathEffect intervals={[14,18]} />
-          </Path>
-        )}
-        {!shouldCheap&&edgeBuckets.hasReady&&(
-          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW+0.8} color="rgba(255,220,150,0.5)" strokeCap="round">
-            <DashPathEffect intervals={[10,16]} />
-          </Path>
-        )}
-
-        {/* Ready-edge sparks */}
-        {!shouldCheap&&LOD.isNear&&edgeBuckets.readySegments.slice(0,20).map(seg=>{
+        {!isInteracting&&LOD.isNear&&edgeBuckets.readySegments.slice(0,20).map(seg=>{
           const segT=((t.value + seg.seed) % 1);
           const x=seg.x1 + (seg.x2-seg.x1)*segT;
           const y=seg.y1 + (seg.y2-seg.y1)*segT;
@@ -572,90 +582,36 @@ function SkiaTreeCanvas({
           const isMastered=status==='start'||status==='mastered';
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
-          const showCheapHalo=USE_GLOW&&isLit;
-          const haloColor=isInteracting
-            ?(isReady?'rgba(255,152,0,0.2)':'rgba(76,175,80,0.18)')
-            :(isReady?'rgba(255,170,80,0.22)':'rgba(92,212,130,0.2)');
-          const coreColor=isReady?'#fff0c4':'#eaffef';
-          const bodyGrad = shouldCheap ? null : getCachedNodeShader(status, renderR, fill, coreColor);
-          const seed = nodeSeedMap[n.id] || {phase:0,ring:0,sparkCount:4};
-          const pulse = 0.85 + Math.sin((t.value + seed.phase)*Math.PI*2)*0.15;
-          const auraR = NODE_R*(isReady?1.58:1.46)*pulse;
+          const nodePath = getNodePath(n.id, status, renderR);
+          const haloColor=isReady?'rgba(255,152,0,0.2)':'rgba(76,175,80,0.18)';
+          const seedPhase = hashStringToFloat(n.id, 101);
+          const scalePulse = 0.96 + Math.sin((t.value + seedPhase) * Math.PI * 2) * 0.04;
 
           return(
             <Group key={n.id}>
-              {LOD.showOuterRing&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.2} color="rgba(76,175,80,0.34)" />}
-              {LOD.showOuterRing&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.1} color="rgba(255,193,7,0.44)" />}
-              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.8} color="rgba(212,128,10,0.68)" />}
+              {isLit&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.58:NODE_R*0.92} color={haloColor} />}
 
-              {/* A+B. AAA outer aura bloom + pulsing aura */}
-              {!shouldCheap&&LOD.isNear&&isLit&&(
-                <>
-                  <Circle cx={rx} cy={ry} r={auraR} color={isReady?'rgba(255,177,68,0.2)':'rgba(92,214,136,0.18)'}>
-                    <Blur blur={GLOW_QUALITY==='high'?24:16} />
-                  </Circle>
-                  <Circle cx={rx} cy={ry} r={NODE_R*(isReady?1.2:1.12)*auraPulse} color={isReady?'rgba(255,153,36,0.24)':'rgba(76,175,80,0.22)'}>
-                    <Blur blur={GLOW_QUALITY==='high'?15:10} />
-                  </Circle>
-                </>
-              )}
-
-              {/* Interaction/far cheap halo fallback */}
-              {showCheapHalo&&<Circle cx={rx} cy={ry} r={isInteracting?NODE_R*1.02:(LOD.isFar?NODE_R*0.62:NODE_R*0.92)} color={haloColor} />}
-
-              {/* C. Shimmer ring sweep for mastered/start */}
-              {!shouldCheap&&isMastered&&LOD.showInnerRing&&(
-                <>
-                  <Circle cx={rx} cy={ry} r={NODE_R+9} style="stroke" strokeWidth={1.2} color="rgba(170,255,190,0.32)" />
-                  <Group transform={[{translateX:rx},{translateY:ry},{rotate:shimmer.value + (seed.ring*Math.PI*2)}]}> 
-                    <Path
-                      path={shimmerArcPath}
-                      style="stroke"
-                      strokeWidth={2.2}
-                      color="rgba(233,255,241,0.92)"
-                      strokeCap="round"
-                    />
-                  </Group>
-                </>
-              )}
+              <Group transform={[{translateX:rx},{translateY:ry}]}> 
+                <Path path={nodePath} style="fill" color={fill} opacity={opacity} />
+                {/* Cheap inner shade layer replaces per-node gradient shader work. */}
+                <Group transform={[{scale:0.92*scalePulse}]}> 
+                  <Path path={nodePath} style="fill" color="#000000" opacity={0.14} />
+                </Group>
+                <Path path={nodePath} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
+                {!LOD.isFar&&<Circle cx={-7} cy={-8} r={NODE_R*0.11} color="rgba(255,255,255,0.28)" />}
+              </Group>
 
               {selectedNodeId===n.id&&(
                 <Circle cx={rx} cy={ry} r={selectedRingRadius} style="stroke" strokeWidth={1.6} color="rgba(255,215,120,1)" opacity={selectedRingOpacity} />
               )}
 
-              {/* E. Jewel-like core: cached gradient body + bright inner core */}
-              {shouldCheap?(
-                <Circle cx={rx} cy={ry} r={renderR} color={fill} opacity={opacity} />
-              ):(
-                <Group transform={[{translateX:rx},{translateY:ry}]}> 
-                  <Circle cx={0} cy={0} r={renderR} opacity={opacity}>
-                    <Paint shader={bodyGrad} />
-                  </Circle>
-                  <Circle cx={-3} cy={-5} r={renderR*0.35} color={isReady?'rgba(255,244,200,0.36)':'rgba(224,255,235,0.36)'} />
+              {!isInteracting&&LOD.isNear&&isMastered&&(
+                <Group transform={[{translateX:rx},{translateY:ry},{rotate:shimmer.value + (seedPhase*Math.PI*2)}]}> 
+                  <Path path={sweepPath} style="stroke" strokeWidth={1.6} color="rgba(233,255,241,0.7)" strokeCap="round" />
                 </Group>
               )}
-              <Circle cx={rx} cy={ry} r={renderR} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
 
-              {/* D. Spark particles orbiting lit nodes (near + idle only, capped globally) */}
-              {!shouldCheap&&LOD.isNear&&isLit&&visibleNodes.length<=18&&Array.from({length:Math.min(seed.sparkCount,7)},(_,i)=>{
-                const sp=hashStringToFloat(`${n.id}_sp_${i}`, i+15);
-                const ang=((t.value*0.5) + sp) * Math.PI*2;
-                const rad=NODE_R*(1.12 + sp*0.52);
-                return (
-                  <Circle
-                    key={`${n.id}_sp_${i}`}
-                    cx={rx + Math.cos(ang)*rad}
-                    cy={ry + Math.sin(ang)*rad}
-                    r={0.8 + sp*1.6}
-                    color={isReady?'rgba(255,220,170,0.74)':'rgba(183,255,210,0.72)'}
-                  />
-                );
-              })}
-
-              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-8} style="stroke" strokeWidth={0.5} color={stroke} opacity={0.34} />}
-              {!LOD.isFar&&<Circle cx={rx-8} cy={ry-8} r={NODE_R*0.12} color="rgba(255,255,255,0.3)" />}
-
-              {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>(
+              {showLabels&&lines.map((ln,li)=>(
                 <SkiaText
                   key={`${n.id}_${li}`}
                   x={rx-ln.dx}
