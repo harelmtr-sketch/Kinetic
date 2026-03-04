@@ -28,7 +28,7 @@ import {
   TileMode,
   matchFont,
 } from '@shopify/react-native-skia';
-import Animated, { Easing, useDerivedValue, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import { Easing, useDerivedValue, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
 const STORAGE_KEY = 'calisthenics_tree_v1';
 const NODE_R = 46;
@@ -37,7 +37,6 @@ const MAX_SC = 6;
 const DEV_PERF_LOG = false;
 const USE_GLOW = true;
 const GLOW_QUALITY = 'low'; // 'low' | 'high'
-const _AnimatedCompat = Animated; // keep Animated import explicit per Reanimated runtime requirement
 
 // Colours — dark stone palette
 const C = {
@@ -372,25 +371,44 @@ function SkiaTreeCanvas({
     return m;
   },[tree.nodes]);
 
+  const warnedMissingXformRef = useRef(false);
+  useEffect(()=>{
+    if((!txV||!tyV||!scV)&&!warnedMissingXformRef.current){
+      console.warn('[SkiaTreeCanvas] Missing transform shared values; falling back to identity transform.');
+      warnedMissingXformRef.current=true;
+    }
+  },[txV,tyV,scV]);
   const sceneTransform = useDerivedValue(()=>([
-    { translateX: txV.value },
-    { translateY: tyV.value },
-    { scale: scV.value },
-  ]),[]);
+    { translateX: txV?.value ?? 0 },
+    { translateY: tyV?.value ?? 0 },
+    { scale: scV?.value ?? 1 },
+  ]),[txV,tyV,scV]);
   const selectedRingOpacity = useDerivedValue(()=>0.18 + (selPulseV.value * 0.2),[selPulseV]);
   const selectedRingRadius = useDerivedValue(()=>NODE_R + 8 + (selPulseV.value * 3),[selPulseV]);
+
   const t = useSharedValue(0);
-  useEffect(() => {
-    // Universal 0..1 time loop (Reanimated UI thread) replacing Skia clock hooks.
-    t.value = withRepeat(withTiming(1, { duration: 2000, easing: Easing.linear }), -1, false);
-    return () => { t.value = 0; };
-  }, [t]);
-  const pulse = useDerivedValue(() => 0.5 + 0.5 * Math.sin(t.value * Math.PI * 2), [t]);
+  useEffect(()=>{
+    // Reanimated-driven universal clock (0..1 loop) for Skia animations.
+    // We removed Skia clock hooks because this app's Skia version doesn't export them.
+    let rafId;
+    const loopMs = 2000;
+    const startedAt = Date.now();
+    const tick = ()=>{
+      const elapsed = (Date.now() - startedAt) % loopMs;
+      t.value = elapsed / loopMs;
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return ()=>{
+      if(rafId!=null) cancelAnimationFrame(rafId);
+      t.value = 0;
+    };
+  },[t]);
+
   const shimmer = useDerivedValue(() => t.value * Math.PI * 2, [t]);
-  const dashPhase = useDerivedValue(() => t.value, [t]);
   const auraPulse = useDerivedValue(()=>0.88 + (selPulseV.value * 0.22),[selPulseV]);
-  const fogDriftA = useDerivedValue(() => Math.sin((t.value * Math.PI * 2) * 0.35) * 34, [t]);
-  const fogDriftB = useDerivedValue(() => Math.cos((t.value * Math.PI * 2) * 0.28) * 42, [t]);
+  const fogAX = useDerivedValue(() => (canvasSize.width*0.22) + Math.sin((t.value * Math.PI * 2) * 0.35) * 34, [canvasSize.width,t]);
+  const fogBX = useDerivedValue(() => (canvasSize.width*0.78) + Math.cos((t.value * Math.PI * 2) * 0.28) * 42, [canvasSize.width,t]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
   const shimmerArcPath = useMemo(()=>Skia.Path.MakeFromSVGString(`M 0 -${NODE_R+9} A ${NODE_R+9} ${NODE_R+9} 0 0 1 ${NODE_R*0.46} -${NODE_R*0.89}`) || Skia.Path.Make(),[]);
@@ -439,11 +457,14 @@ function SkiaTreeCanvas({
   },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
 
   const dustSeeds = useMemo(()=>{
+    // NOTE: dust seeds are plain numbers (not shared values).
+    // A prior version mixed `.value` reads during map() and could crash when a seed field wasn't a shared value.
     return Array.from({length:48},(_,i)=>({
       id:`dust_${i}`,
       x:hashStringToFloat(`dustx_${i}`, 31),
       y:hashStringToFloat(`dusty_${i}`, 37),
-      s:hashStringToFloat(`dusts_${i}`, 41),
+      phase:hashStringToFloat(`dustp_${i}`, 41),
+      speed:0.35 + hashStringToFloat(`dustv_${i}`, 43) * 0.9,
     }));
   },[]);
 
@@ -475,21 +496,21 @@ function SkiaTreeCanvas({
       {/* Fog bands (idle only, subtle drift in screen-space) */}
       {!shouldCheap&&(
         <>
-          <Circle cx={canvasSize.width*0.22+fogDriftA} cy={canvasSize.height*0.2} r={canvasSize.width*0.42} color="rgba(210,190,150,0.03)">
+          <Circle cx={fogAX} cy={canvasSize.height*0.2} r={canvasSize.width*0.42} color="rgba(210,190,150,0.03)">
             <Blur blur={22} />
           </Circle>
-          <Circle cx={canvasSize.width*0.78+fogDriftB} cy={canvasSize.height*0.72} r={canvasSize.width*0.36} color="rgba(170,210,185,0.025)">
+          <Circle cx={fogBX} cy={canvasSize.height*0.72} r={canvasSize.width*0.36} color="rgba(170,210,185,0.025)">
             <Blur blur={18} />
           </Circle>
         </>
       )}
 
       {/* Dust motes in screen-space (disabled on interacting/far) */}
-      {!shouldCheap&&LOD.isNear&&dustSeeds.map((d,i)=>{
-        const t=(t.value + d.s) % 1;
-        const x=(d.x*canvasSize.width + t*canvasSize.width*0.18) % canvasSize.width;
-        const y=(d.y*canvasSize.height + t*canvasSize.height*0.06) % canvasSize.height;
-        return <Circle key={d.id} cx={x} cy={y} r={0.8 + d.s*1.4} color={`rgba(230,220,190,${0.05 + d.s*0.11})`} />;
+      {!shouldCheap&&LOD.isNear&&dustSeeds.map((d)=>{
+        const tt = ((t.value * d.speed) + d.phase) % 1;
+        const x=(d.x*canvasSize.width + tt*canvasSize.width*0.18) % canvasSize.width;
+        const y=(d.y*canvasSize.height + tt*canvasSize.height*0.06) % canvasSize.height;
+        return <Circle key={d.id} cx={x} cy={y} r={0.8 + d.phase*1.4} color={`rgba(230,220,190,${0.05 + d.phase*0.11})`} />;
       })}
 
       <Group transform={sceneTransform}>
@@ -532,9 +553,9 @@ function SkiaTreeCanvas({
 
         {/* Ready-edge sparks */}
         {!shouldCheap&&LOD.isNear&&edgeBuckets.readySegments.slice(0,20).map(seg=>{
-          const t=(t.value + seg.seed) % 1;
-          const x=seg.x1 + (seg.x2-seg.x1)*t;
-          const y=seg.y1 + (seg.y2-seg.y1)*t;
+          const segT=((t.value + seg.seed) % 1);
+          const x=seg.x1 + (seg.x2-seg.x1)*segT;
+          const y=seg.y1 + (seg.y2-seg.y1)*segT;
           return <Circle key={`spark_${seg.key}`} cx={x} cy={y} r={1.8} color="rgba(255,223,167,0.86)" />;
         })}
 
