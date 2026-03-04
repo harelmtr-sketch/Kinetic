@@ -398,6 +398,11 @@ function TreeScreen(){
     setLiveXform(txN.current,tyN.current,scN.current);
   },[tree,bld,tool,connA,sel,prompt]);
 
+  useEffect(()=>()=>{
+    if(dragVisualRaf.current!=null) cancelAnimationFrame(dragVisualRaf.current);
+    if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
+  },[]);
+
   const cL=useRef(0),cT=useRef(0),cRef=useRef(null);
   const measureC=()=>cRef.current?.measure((_,__,_w,_h,px,py)=>{cL.current=px;cT.current=py;});
 
@@ -416,6 +421,41 @@ function TreeScreen(){
   const dId=useRef(null),dNx=useRef(0),dNy=useRef(0),dPx=useRef(0),dPy=useRef(0);
   const dragLive=useRef({id:null,x:0,y:0});
   const [dragVisual,setDragVisual]=useState(null);
+  const dragVisualRef=useRef(null);
+  const dragVisualRaf=useRef(null);
+  const glowDebounceRef=useRef(null);
+  const [isInteracting,setIsInteracting]=useState(false);
+
+  const setDragVisualThrottled=next=>{
+    dragVisualRef.current=next;
+    if(dragVisualRaf.current!=null) return;
+    dragVisualRaf.current=requestAnimationFrame(()=>{
+      dragVisualRaf.current=null;
+      setDragVisual(dragVisualRef.current);
+    });
+  };
+  const clearDragVisual=()=>{
+    dragVisualRef.current=null;
+    if(dragVisualRaf.current!=null){
+      cancelAnimationFrame(dragVisualRaf.current);
+      dragVisualRaf.current=null;
+    }
+    setDragVisual(null);
+  };
+  const beginInteraction=()=>{
+    if(glowDebounceRef.current){
+      clearTimeout(glowDebounceRef.current);
+      glowDebounceRef.current=null;
+    }
+    setIsInteracting(true);
+  };
+  const endInteraction=()=>{
+    if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
+    glowDebounceRef.current=setTimeout(()=>{
+      setIsInteracting(false);
+      glowDebounceRef.current=null;
+    },90);
+  };
 
   const panR=useRef(PanResponder.create({
     onStartShouldSetPanResponder:()=>true,
@@ -426,7 +466,8 @@ function TreeScreen(){
       const ts=evt.nativeEvent.touches;
       moved.current=false;dId.current=null;pOn.current=false;
       dragLive.current={id:null,x:0,y:0};
-      setDragVisual(null);
+      clearDragVisual();
+      beginInteraction();
       if(ts.length>=2){
         gestureActive.current=true;
         pOn.current=true;
@@ -444,7 +485,7 @@ function TreeScreen(){
           dId.current=hit.id;dNx.current=hit.x;dNy.current=hit.y;
           const p=toSVG(t.pageX,t.pageY);dPx.current=p.x;dPy.current=p.y;
           dragLive.current={id:hit.id,x:hit.x,y:hit.y};
-          setDragVisual({id:hit.id,x:hit.x,y:hit.y});
+          setDragVisualThrottled({id:hit.id,x:hit.x,y:hit.y});
         }
       }
     },
@@ -477,7 +518,7 @@ function TreeScreen(){
         const p=toSVG(t.pageX,t.pageY);
         const nx=dNx.current+(p.x-dPx.current),ny=dNy.current+(p.y-dPy.current);
         dragLive.current={id:dId.current,x:nx,y:ny};
-        setDragVisual({id:dId.current,x:nx,y:ny});
+        setDragVisualThrottled({id:dId.current,x:nx,y:ny});
         gLx.current=t.pageX;gLy.current=t.pageY;return;
       }
       gestureActive.current=true;
@@ -490,6 +531,7 @@ function TreeScreen(){
         gestureActive.current=false;
         commitLiveXform();
       }
+      endInteraction();
       if(bR.current&&tR2.current==='move'&&dId.current&&moved.current){
         const live=dragLive.current;
         if(live.id){
@@ -497,12 +539,12 @@ function TreeScreen(){
         }
         dId.current=null;
         dragLive.current={id:null,x:0,y:0};
-        setDragVisual(null);
+        clearDragVisual();
         return;
       }
       dId.current=null;
       dragLive.current={id:null,x:0,y:0};
-      setDragVisual(null);
+      clearDragVisual();
       if(moved.current) return;
       const{pageX,pageY}=evt.nativeEvent;
       const hit=hitNode(pageX,pageY);
@@ -548,9 +590,10 @@ function TreeScreen(){
     onPanResponderTerminate:()=>{
       pOn.current=false;
       if(gestureActive.current){gestureActive.current=false;commitLiveXform();}
+      endInteraction();
       dId.current=null;
       dragLive.current={id:null,x:0,y:0};
-      setDragVisual(null);
+      clearDragVisual();
     },
   })).current;
 
@@ -706,6 +749,8 @@ function TreeScreen(){
     return {masteredW:2.5,readyW:2.1,lockedW:1.4,masteredO:0.86,readyO:0.72,lockedO:0.38};
   },[LOD.isFar,LOD.isMid]);
 
+  const canUseFilterGlow=USE_GLOW&&LOD.isNear&&!isInteracting;
+
   // Batch edges into a few <Path> elements to avoid per-edge React/SVG overhead.
   const edgePaths=useMemo(()=>{
     const segments={mastered:'',ready:'',locked:''};
@@ -825,8 +870,8 @@ function TreeScreen(){
         {...panR.panHandlers}>
         <Svg width="100%" height="100%">
           <Defs>
-            <Filter id="filterGreenGlow" x={-20000} y={-20000} width={40000} height={40000} filterUnits="userSpaceOnUse">
-              <FeGaussianBlur in="SourceGraphic" stdDeviation={USE_GLOW?glowMetrics.glowBlur:0} result="blur"/>
+            <Filter id="filterGreenGlow" x="-80%" y="-80%" width="260%" height="260%" filterUnits="objectBoundingBox">
+              <FeGaussianBlur in="SourceGraphic" stdDeviation={canUseFilterGlow?glowMetrics.glowBlur:0} result="blur"/>
               <FeColorMatrix
                 in="blur"
                 type="matrix"
@@ -838,8 +883,8 @@ function TreeScreen(){
                 <FeMergeNode in="SourceGraphic"/>
               </FeMerge>
             </Filter>
-            <Filter id="filterOrangeGlow" x={-20000} y={-20000} width={40000} height={40000} filterUnits="userSpaceOnUse">
-              <FeGaussianBlur in="SourceGraphic" stdDeviation={USE_GLOW?glowMetrics.glowBlur:0} result="blur"/>
+            <Filter id="filterOrangeGlow" x="-80%" y="-80%" width="260%" height="260%" filterUnits="objectBoundingBox">
+              <FeGaussianBlur in="SourceGraphic" stdDeviation={canUseFilterGlow?glowMetrics.glowBlur:0} result="blur"/>
               <FeColorMatrix
                 in="blur"
                 type="matrix"
@@ -851,8 +896,8 @@ function TreeScreen(){
                 <FeMergeNode in="SourceGraphic"/>
               </FeMerge>
             </Filter>
-            <Filter id="filterWhiteSoft" x={-20000} y={-20000} width={40000} height={40000} filterUnits="userSpaceOnUse">
-              <FeGaussianBlur in="SourceGraphic" stdDeviation={USE_GLOW?glowMetrics.whiteBlur:0} result="blur"/>
+            <Filter id="filterWhiteSoft" x="-70%" y="-70%" width="240%" height="240%" filterUnits="objectBoundingBox">
+              <FeGaussianBlur in="SourceGraphic" stdDeviation={canUseFilterGlow?glowMetrics.whiteBlur:0} result="blur"/>
               <FeColorMatrix
                 in="blur"
                 type="matrix"
@@ -863,7 +908,7 @@ function TreeScreen(){
 
           {/* ── Tree (transformed) ── */}
           <AnimatedG ref={gRef} matrix={mk(xform.tx,xform.ty,xform.sc)} overflow="visible">
-            {!!edgePaths.mastered&&LOD.isNear&&USE_GLOW&&GLOW_QUALITY==='high'&&(
+            {!!edgePaths.mastered&&LOD.isNear&&!isInteracting&&USE_GLOW&&GLOW_QUALITY==='high'&&(
               <Path d={edgePaths.mastered} stroke="#4CAF50" strokeWidth={edgeVisual.masteredW+2.2}
                 strokeOpacity={0.17} strokeLinecap="round" fill="none"/>
             )}
@@ -897,6 +942,7 @@ function TreeScreen(){
               const renderR=LOD.isFar?NODE_R*0.34:NODE_R;
               const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
               const glowFilter=isReady?'url(#filterOrangeGlow)':(isLit?'url(#filterGreenGlow)':undefined);
+              const showCheapHalo=USE_GLOW&&isLit&&(!LOD.isNear||isInteracting);
               return(
                 <G key={n.id}>
                   {LOD.showOuterRing&&isMastered&&(
@@ -912,6 +958,16 @@ function TreeScreen(){
                       stroke={C.amber} strokeWidth={1.8} opacity={0.68}/>
                   )}
 
+                  {showCheapHalo&&(
+                    <Circle
+                      cx={rx}
+                      cy={ry}
+                      r={LOD.isFar?NODE_R*0.62:NODE_R*0.9}
+                      fill={isReady?'#FF9800':'#4CAF50'}
+                      opacity={LOD.isFar?0.12:0.16}
+                    />
+                  )}
+
                   <Circle
                     cx={rx}
                     cy={ry}
@@ -920,7 +976,7 @@ function TreeScreen(){
                     stroke={stroke}
                     strokeWidth={nodeStrokeWidth}
                     opacity={opacity}
-                    filter={USE_GLOW&&isLit?glowFilter:undefined}
+                    filter={canUseFilterGlow&&isLit?glowFilter:undefined}
                   />
 
                   {LOD.showInnerRing&&(
@@ -928,11 +984,8 @@ function TreeScreen(){
                       stroke={stroke} strokeWidth={0.5} opacity={0.34}/>
                   )}
 
-                  {USE_GLOW&&GLOW_QUALITY==='high'&&LOD.isMid&&isLit&&(
-                    <Circle cx={rx} cy={ry} r={NODE_R*0.22} fill="#ffffff" opacity={0.23} filter="url(#filterWhiteSoft)"/>
-                  )}
-                  {USE_GLOW&&GLOW_QUALITY==='high'&&LOD.isNear&&isLit&&(
-                    <Circle cx={rx} cy={ry} r={NODE_R*0.26} fill="#ffffff" opacity={0.26} filter="url(#filterWhiteSoft)"/>
+                  {canUseFilterGlow&&GLOW_QUALITY==='high'&&LOD.isNear&&isLit&&(
+                    <Circle cx={rx} cy={ry} r={NODE_R*0.24} fill="#ffffff" opacity={0.2} filter="url(#filterWhiteSoft)"/>
                   )}
 
                   {LOD.showLabels&&lines.map((ln,li)=>(
