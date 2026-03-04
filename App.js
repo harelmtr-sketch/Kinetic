@@ -6,7 +6,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal,
-  StatusBar, PanResponder, TextInput, Alert, Animated,
+  StatusBar, PanResponder, TextInput, Alert,
   KeyboardAvoidingView, Platform, ScrollView, Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,18 +15,20 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, {
-  Path,
+import {
+  Blur,
+  Canvas,
   Circle,
-  Text as SvgText,
-  G,
-  Defs,
-  Filter,
-  FeGaussianBlur,
-  FeColorMatrix,
-  FeMerge,
-  FeMergeNode,
-} from 'react-native-svg';
+  DashPathEffect,
+  Group,
+  Paint,
+  Path,
+  Skia,
+  Text as SkiaText,
+  matchFont,
+  useComputedValue,
+  useValue,
+} from '@shopify/react-native-skia';
 
 const STORAGE_KEY = 'calisthenics_tree_v1';
 const NODE_R = 46;
@@ -35,8 +37,6 @@ const MAX_SC = 6;
 const DEV_PERF_LOG = false;
 const USE_GLOW = true;
 const GLOW_QUALITY = 'low'; // 'low' | 'high'
-
-const AnimatedG = Animated.createAnimatedComponent(G);
 
 // Colours — dark stone palette
 const C = {
@@ -339,6 +339,145 @@ const np = StyleSheet.create({
   addT:   {color:C.gold,fontWeight:'800',letterSpacing:2},
 });
 
+function SkiaTreeCanvas({
+  tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
+  xform, txN, tyN, scN, txV, tyV, scV,
+  dragVisual, LOD, edgeVisual,
+  bld, connA, isInteracting,
+  canvasSize, nStyle,
+}){
+  const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
+  useEffect(()=>{
+    txV.current=txN.current;
+    tyV.current=tyN.current;
+    scV.current=scN.current;
+  },[scN,scV,txN,txV,tyN,tyV,xform.sc,xform.tx,xform.ty]);
+  const sceneTransform = useComputedValue(()=>([
+    { translateX: txV.current },
+    { translateY: tyV.current },
+    { scale: scV.current },
+  ]),[txV,tyV,scV]);
+
+  const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+
+  const edgeBuckets = useMemo(()=>{
+    const mastered = Skia.Path.Make();
+    const ready = Skia.Path.Make();
+    const locked = Skia.Path.Make();
+    let hasMastered=false, hasReady=false, hasLocked=false;
+    for(const e of visibleEdges){
+      const fn=nodeMap.get(e.from);
+      const tn=nodeMap.get(e.to);
+      if(!fn||!tn) continue;
+      const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
+      const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
+      let bucket=locked;
+      if(!bld){
+        const fromState=nodeStatusMap[fn.id] || 'locked';
+        const toState=nodeStatusMap[tn.id] || 'locked';
+        const fromLit=fromState==='start'||fromState==='mastered';
+        const toLit=toState==='start'||toState==='mastered';
+        const toReady=toState==='ready';
+        const fromStart=fromState==='start';
+        if(fromLit&&toLit){
+          bucket=mastered;
+          hasMastered=true;
+        }else if((fromLit&&!toLit)||(toReady)||(fromStart&&toState==='locked')){
+          bucket=ready;
+          hasReady=true;
+        }else{
+          hasLocked=true;
+        }
+      }else{
+        hasLocked=true;
+      }
+      bucket.moveTo(fromPos.x,fromPos.y);
+      bucket.lineTo(toPos.x,toPos.y);
+    }
+    return { mastered, ready, locked, hasMastered, hasReady, hasLocked };
+  },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
+
+  const farNodeR = NODE_R*0.34;
+  return(
+    <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
+      <Group transform={sceneTransform}>
+        {edgeBuckets.hasMastered&&LOD.isNear&&!isInteracting&&USE_GLOW&&(
+          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+2.2} color="rgba(76,175,80,0.17)" strokeCap="round" />
+        )}
+        {edgeBuckets.hasMastered&&(
+          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW} color={`rgba(76,175,80,${edgeVisual.masteredO})`} strokeCap="round" />
+        )}
+        {edgeBuckets.hasReady&&(
+          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW} color={`rgba(255,152,0,${edgeVisual.readyO})`} strokeCap="round">
+            {LOD.useDashedReady&&!bld&&<DashPathEffect intervals={[12,10]} />}
+          </Path>
+        )}
+        {edgeBuckets.hasLocked&&(
+          <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO})`:`rgba(97,88,79,${edgeVisual.lockedO})`} strokeCap="round" />
+        )}
+
+        {visibleNodes.map(n=>{
+          const {fill,stroke,sw,opacity}=nStyle(n);
+          const rx=dragVisual?.id===n.id?dragVisual.x:n.x;
+          const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
+          const lines=wrappedLabels[n.id]||[n.name];
+          const lh=13;
+          const sy=ry-(lines.length*lh)/2+lh*0.8;
+          const status=nodeStatusMap[n.id]||'locked';
+          const isLit=status==='start'||status==='mastered'||status==='ready';
+          const isReady=status==='ready';
+          const isMastered=status==='start'||status==='mastered';
+          const renderR=LOD.isFar?farNodeR:NODE_R;
+          const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
+          const showCheapHalo=USE_GLOW&&isLit;
+          const haloColor=isReady?'rgba(255,152,0,0.18)':'rgba(76,175,80,0.17)';
+          const bodyGrad=Skia.Shader.MakeRadialGradient(
+            {x:rx-6,y:ry-8},
+            renderR*1.15,
+            [Skia.Color(fill), Skia.Color('#0f0d0b')],
+            [0,1],
+            Skia.TileMode.Clamp,
+          );
+          return(
+            <Group key={n.id}>
+              {LOD.showOuterRing&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.2} color="rgba(76,175,80,0.34)" />}
+              {LOD.showOuterRing&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.1} color="rgba(255,193,7,0.44)" />}
+              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.8} color="rgba(212,128,10,0.68)" />}
+
+              {showCheapHalo&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.62:NODE_R*0.9} color={haloColor} />}
+
+              {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
+                <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={isReady?'rgba(255,152,0,0.16)':'rgba(76,175,80,0.14)'}>
+                  <Blur blur={GLOW_QUALITY==='high'?16:10} />
+                </Circle>
+              )}
+
+              <Circle cx={rx} cy={ry} r={renderR} opacity={opacity}>
+                <Paint shader={bodyGrad} />
+              </Circle>
+              <Circle cx={rx} cy={ry} r={renderR} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
+
+              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-8} style="stroke" strokeWidth={0.5} color={stroke} opacity={0.34} />}
+              {!LOD.isFar&&<Circle cx={rx-8} cy={ry-8} r={NODE_R*0.12} color="rgba(255,255,255,0.22)" />}
+
+              {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>(
+                <SkiaText
+                  key={`${n.id}_${li}`}
+                  x={rx-(ln.length*2.8)}
+                  y={sy+li*lh}
+                  text={ln}
+                  font={labelFont}
+                  color={isLit?C.textMain:C.textDim}
+                />
+              ))}
+            </Group>
+          );
+        })}
+      </Group>
+    </Canvas>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 function TreeScreen(){
   const insets = useSafeAreaInsets();
@@ -378,13 +517,12 @@ function TreeScreen(){
   const pendingPos=useRef({x:450,y:400});
 
   const txN=useRef(0),tyN=useRef(0),scN=useRef(1);
+  const txV=useValue(0),tyV=useValue(0),scV=useValue(1);
   const [xform,setXform]=useState({tx:0,ty:0,sc:1});
-  const gRef=useRef(null);
   const gestureActive=useRef(false);
-  const mk=(tx,ty,sc)=>[sc,0,0,sc,tx,ty];
   const setLiveXform=(tx,ty,sc)=>{
     txN.current=tx;tyN.current=ty;scN.current=sc;
-    gRef.current?.setNativeProps({ matrix: mk(tx,ty,sc) });
+    txV.current=tx;tyV.current=ty;scV.current=sc;
   };
   const commitLiveXform=()=>{
     const next={tx:txN.current,ty:tyN.current,sc:scN.current};
@@ -394,9 +532,13 @@ function TreeScreen(){
   const [canvasSize,setCanvasSize]=useState({width:0,height:0});
 
   useEffect(()=>{
-    // Keep native transform in sync after non-gesture renders.
+    // Keep live transform values in sync after non-gesture renders.
     setLiveXform(txN.current,tyN.current,scN.current);
   },[tree,bld,tool,connA,sel,prompt]);
+
+  useEffect(()=>{
+    setLiveXform(xform.tx,xform.ty,xform.sc);
+  },[xform.sc,xform.tx,xform.ty]);
 
   useEffect(()=>()=>{
     if(dragVisualRaf.current!=null) cancelAnimationFrame(dragVisualRaf.current);
@@ -684,23 +826,11 @@ function TreeScreen(){
     if(cur)lines.push(cur);return lines;
   };
 
-  const getNodeRenderPos=n=>{
-    if(dragVisual?.id===n.id) return {x:dragVisual.x,y:dragVisual.y};
-    return {x:n.x,y:n.y};
-  };
-
   const wrappedLabels=useMemo(()=>{
     const labels={};
     for(const n of tree.nodes) labels[n.id]=wrap(n.name);
     return labels;
   },[tree.nodes]);
-
-  const glowMetrics=useMemo(()=>{
-    const inv=1/Math.max(0.2,xform.sc);
-    const glowBlur=Math.max(1.6,Math.min(4.8,inv*1.8));
-    const whiteBlur=Math.max(0.8,Math.min(2.2,inv*0.95));
-    return { glowBlur, whiteBlur };
-  },[xform.sc]);
 
   const visibleBounds=useMemo(()=>{
     if(!canvasSize.width||!canvasSize.height) return null;
@@ -748,39 +878,6 @@ function TreeScreen(){
     if(LOD.isMid) return {masteredW:1.7,readyW:1.4,lockedW:1.1,masteredO:0.74,readyO:0.6,lockedO:0.3};
     return {masteredW:2.5,readyW:2.1,lockedW:1.4,masteredO:0.86,readyO:0.72,lockedO:0.38};
   },[LOD.isFar,LOD.isMid]);
-
-  const canUseFilterGlow=USE_GLOW&&LOD.isNear&&!isInteracting;
-
-  // Batch edges into a few <Path> elements to avoid per-edge React/SVG overhead.
-  const edgePaths=useMemo(()=>{
-    const segments={mastered:'',ready:'',locked:''};
-    for(const e of visibleEdges){
-      const fn=nodeMap.get(e.from);
-      const tn=nodeMap.get(e.to);
-      if(!fn||!tn) continue;
-      const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
-      const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
-      const segment=`M ${fromPos.x} ${fromPos.y} L ${toPos.x} ${toPos.y} `;
-      if(bld){
-        segments.locked+=segment;
-        continue;
-      }
-      const fromState=nodeStatusMap[fn.id] || 'locked';
-      const toState=nodeStatusMap[tn.id] || 'locked';
-      const fromLit=fromState==='start'||fromState==='mastered';
-      const toLit=toState==='start'||toState==='mastered';
-      const toReady=toState==='ready';
-      const fromStart=fromState==='start';
-      if(fromLit&&toLit){
-        segments.mastered+=segment;
-      }else if((fromLit&&!toLit)||(toReady)||(fromStart&&toState==='locked')){
-        segments.ready+=segment;
-      }else{
-        segments.locked+=segment;
-      }
-    }
-    return segments;
-  },[bld,nodeMap,visibleEdges,dragVisual,nodeStatusMap]);
 
   useEffect(()=>{
     if(!DEV_PERF_LOG) return;
@@ -868,137 +965,30 @@ function TreeScreen(){
           setTimeout(measureC,50);
         }}
         {...panR.panHandlers}>
-        <Svg width="100%" height="100%">
-          <Defs>
-            <Filter id="filterGreenGlow" x="-80%" y="-80%" width="260%" height="260%" filterUnits="objectBoundingBox">
-              <FeGaussianBlur in="SourceGraphic" stdDeviation={canUseFilterGlow?glowMetrics.glowBlur:0} result="blur"/>
-              <FeColorMatrix
-                in="blur"
-                type="matrix"
-                values="0 0 0 0 0.30  0 0 0 0 0.82  0 0 0 0 0.48  0 0 0 0.95 0"
-                result="glow"
-              />
-              <FeMerge>
-                <FeMergeNode in="glow"/>
-                <FeMergeNode in="SourceGraphic"/>
-              </FeMerge>
-            </Filter>
-            <Filter id="filterOrangeGlow" x="-80%" y="-80%" width="260%" height="260%" filterUnits="objectBoundingBox">
-              <FeGaussianBlur in="SourceGraphic" stdDeviation={canUseFilterGlow?glowMetrics.glowBlur:0} result="blur"/>
-              <FeColorMatrix
-                in="blur"
-                type="matrix"
-                values="0 0 0 0 0.99  0 0 0 0 0.56  0 0 0 0 0.10  0 0 0 0.90 0"
-                result="glow"
-              />
-              <FeMerge>
-                <FeMergeNode in="glow"/>
-                <FeMergeNode in="SourceGraphic"/>
-              </FeMerge>
-            </Filter>
-            <Filter id="filterWhiteSoft" x="-70%" y="-70%" width="240%" height="240%" filterUnits="objectBoundingBox">
-              <FeGaussianBlur in="SourceGraphic" stdDeviation={canUseFilterGlow?glowMetrics.whiteBlur:0} result="blur"/>
-              <FeColorMatrix
-                in="blur"
-                type="matrix"
-                values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.55 0"
-              />
-            </Filter>
-          </Defs>
-
-          {/* ── Tree (transformed) ── */}
-          <AnimatedG ref={gRef} matrix={mk(xform.tx,xform.ty,xform.sc)} overflow="visible">
-            {!!edgePaths.mastered&&LOD.isNear&&!isInteracting&&USE_GLOW&&GLOW_QUALITY==='high'&&(
-              <Path d={edgePaths.mastered} stroke="#4CAF50" strokeWidth={edgeVisual.masteredW+2.2}
-                strokeOpacity={0.17} strokeLinecap="round" fill="none"/>
-            )}
-
-            {/* Batched edges */}
-            {!!edgePaths.mastered&&(
-              <Path d={edgePaths.mastered} stroke="#4CAF50" strokeWidth={edgeVisual.masteredW}
-                strokeOpacity={edgeVisual.masteredO} strokeDasharray="none" strokeLinecap="round" fill="none"/>
-            )}
-            {!!edgePaths.ready&&(
-              <Path d={edgePaths.ready} stroke="#FF9800" strokeWidth={edgeVisual.readyW}
-                strokeOpacity={edgeVisual.readyO}
-                strokeDasharray={LOD.useDashedReady&&!bld?'12,10':'none'} strokeLinecap="round" fill="none"/>
-            )}
-            {!!edgePaths.locked&&(
-              <Path d={edgePaths.locked} stroke={bld?'#5b5248':'#61584f'} strokeWidth={edgeVisual.lockedW}
-                strokeOpacity={edgeVisual.lockedO} strokeDasharray="none" strokeLinecap="round" fill="none"/>
-            )}
-
-            {/* Nodes */}
-            {visibleNodes.map(n=>{
-              const {fill,stroke,sw,opacity}=nStyle(n);
-              const {x:rx,y:ry}=getNodeRenderPos(n);
-              const lines=wrappedLabels[n.id]||[n.name];
-              const lh=13;
-              const sy=ry-(lines.length*lh)/2+lh*0.8;
-              const status=nodeStatusMap[n.id]||'locked';
-              const isLit=status==='start'||status==='mastered'||status==='ready';
-              const isReady=status==='ready';
-              const isMastered=status==='start'||status==='mastered';
-              const renderR=LOD.isFar?NODE_R*0.34:NODE_R;
-              const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
-              const glowFilter=isReady?'url(#filterOrangeGlow)':(isLit?'url(#filterGreenGlow)':undefined);
-              const showCheapHalo=USE_GLOW&&isLit&&(!LOD.isNear||isInteracting);
-              return(
-                <G key={n.id}>
-                  {LOD.showOuterRing&&isMastered&&(
-                    <Circle cx={rx} cy={ry} r={NODE_R+12} fill="none"
-                      stroke="#4CAF50" strokeWidth={1.2} opacity={0.34}/>
-                  )}
-                  {LOD.showOuterRing&&isReady&&(
-                    <Circle cx={rx} cy={ry} r={NODE_R+12} fill="none"
-                      stroke="#FFC107" strokeWidth={1.1} opacity={0.44}/>
-                  )}
-                  {LOD.showOuterRing&&bld&&connA===n.id&&(
-                    <Circle cx={rx} cy={ry} r={NODE_R+12} fill="none"
-                      stroke={C.amber} strokeWidth={1.8} opacity={0.68}/>
-                  )}
-
-                  {showCheapHalo&&(
-                    <Circle
-                      cx={rx}
-                      cy={ry}
-                      r={LOD.isFar?NODE_R*0.62:NODE_R*0.9}
-                      fill={isReady?'#FF9800':'#4CAF50'}
-                      opacity={LOD.isFar?0.12:0.16}
-                    />
-                  )}
-
-                  <Circle
-                    cx={rx}
-                    cy={ry}
-                    r={renderR}
-                    fill={fill}
-                    stroke={stroke}
-                    strokeWidth={nodeStrokeWidth}
-                    opacity={opacity}
-                    filter={canUseFilterGlow&&isLit?glowFilter:undefined}
-                  />
-
-                  {LOD.showInnerRing&&(
-                    <Circle cx={rx} cy={ry} r={NODE_R-8} fill="none"
-                      stroke={stroke} strokeWidth={0.5} opacity={0.34}/>
-                  )}
-
-                  {canUseFilterGlow&&GLOW_QUALITY==='high'&&LOD.isNear&&isLit&&(
-                    <Circle cx={rx} cy={ry} r={NODE_R*0.24} fill="#ffffff" opacity={0.2} filter="url(#filterWhiteSoft)"/>
-                  )}
-
-                  {LOD.showLabels&&lines.map((ln,li)=>(
-                    <SvgText key={li} x={rx} y={sy+li*lh}
-                      fill={isLit?C.textMain:C.textDim}
-                      fontSize={10} fontWeight="bold" textAnchor="middle"
-                      letterSpacing={0.5}>{ln}</SvgText>
-                  ))}
-                </G>
-              );
-            })}
-          </AnimatedG>
-        </Svg>
+        {!!canvasSize.width&&!!canvasSize.height&&(
+          <SkiaTreeCanvas
+            tree={tree}
+            visibleNodes={visibleNodes}
+            visibleEdges={visibleEdges}
+            nodeStatusMap={nodeStatusMap}
+            wrappedLabels={wrappedLabels}
+            xform={xform}
+            txN={txN}
+            tyN={tyN}
+            scN={scN}
+            txV={txV}
+            tyV={tyV}
+            scV={scV}
+            dragVisual={dragVisual}
+            LOD={LOD}
+            edgeVisual={edgeVisual}
+            bld={bld}
+            connA={connA}
+            isInteracting={isInteracting}
+            canvasSize={canvasSize}
+            nStyle={nStyle}
+          />
+        )}
       </View>
 
       {/* Legend */}
