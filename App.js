@@ -15,13 +15,26 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Circle, Text as SvgText, G, Defs, RadialGradient, Stop } from 'react-native-svg';
+import Svg, {
+  Path,
+  Circle,
+  Text as SvgText,
+  G,
+  Defs,
+  Filter,
+  FeGaussianBlur,
+  FeColorMatrix,
+  FeMerge,
+  FeMergeNode,
+} from 'react-native-svg';
 
 const STORAGE_KEY = 'calisthenics_tree_v1';
 const NODE_R = 46;
 const MIN_SC = 0.15;
 const MAX_SC = 6;
 const DEV_PERF_LOG = false;
+const USE_GLOW = true;
+const GLOW_QUALITY = 'low'; // 'low' | 'high'
 
 const AnimatedG = Animated.createAnimatedComponent(G);
 
@@ -582,14 +595,44 @@ function TreeScreen(){
   };
 
   const nodeMap=useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+  const incomingByNode=useMemo(()=>{
+    const incoming=new Map();
+    for(const e of tree.edges){
+      if(!incoming.has(e.to)) incoming.set(e.to,[]);
+      incoming.get(e.to).push(e.from);
+    }
+    return incoming;
+  },[tree.edges]);
+
+  const nodeStatusMap=useMemo(()=>{
+    const status={};
+    for(const n of tree.nodes){
+      if(n.isStart){
+        status[n.id]='start';
+        continue;
+      }
+      if(n.unlocked){
+        status[n.id]='mastered';
+        continue;
+      }
+      if(!bld){
+        const prereqs=incomingByNode.get(n.id) || [];
+        const ready=prereqs.length>0 && prereqs.every(pid=>nodeMap.get(pid)?.unlocked);
+        status[n.id]=ready?'ready':'locked';
+      }else{
+        status[n.id]='locked';
+      }
+    }
+    return status;
+  },[tree.nodes,bld,incomingByNode,nodeMap]);
 
   // ── SVG node/edge styling ──────────────────────────────────────────────────
   const nStyle=n=>{
-    if(bld&&connA===n.id) return{fill:'#2a1a00',stroke:C.amber,sw:2.5};
-    if(n.isStart)          return{fill:'#0a1a0e',stroke:'#4CAF50',sw:2.5};
-    if(n.unlocked)         return{fill:'#0a1a0e',stroke:'#4CAF50',sw:2.5};
-    if(!bld&&canUnlock(n.id,tree.nodes,tree.edges)) return{fill:'#1a1800',stroke:'#FFC107',sw:2};
-    return{fill:'#141210',stroke:'#3a3028',sw:1.5};
+    if(bld&&connA===n.id) return{fill:'#2a1a00',stroke:C.amber,sw:2.5,opacity:1};
+    const status=nodeStatusMap[n.id] || 'locked';
+    if(status==='start'||status==='mastered') return{fill:'#d9efe0',stroke:'#4CAF50',sw:2.2,opacity:0.95};
+    if(status==='ready') return{fill:'#f1e4cf',stroke:'#FFC107',sw:2.1,opacity:0.95};
+    return{fill:'#cfcfcf',stroke:'#7b7266',sw:1.2,opacity:0.78};
   };
 
   const wrap=name=>{
@@ -608,6 +651,13 @@ function TreeScreen(){
     for(const n of tree.nodes) labels[n.id]=wrap(n.name);
     return labels;
   },[tree.nodes]);
+
+  const glowMetrics=useMemo(()=>{
+    const inv=1/Math.max(0.2,xform.sc);
+    const glowBlur=Math.max(1.6,Math.min(4.8,inv*1.8));
+    const whiteBlur=Math.max(0.8,Math.min(2.2,inv*0.95));
+    return { glowBlur, whiteBlur };
+  },[xform.sc]);
 
   const visibleBounds=useMemo(()=>{
     if(!canvasSize.width||!canvasSize.height) return null;
@@ -634,17 +684,31 @@ function TreeScreen(){
     visibleNodeIds.has(e.from)||visibleNodeIds.has(e.to)
   ),[tree.edges,visibleNodeIds]);
 
-  // LOD tiers keep close-up detail intact while reducing expensive SVG work in map mode.
+  const lodTier=useMemo(()=>{
+    if(xform.sc<0.35) return 'far';
+    if(xform.sc<0.75) return 'mid';
+    return 'near';
+  },[xform.sc]);
+
   const LOD=useMemo(()=>({
-    showLabels:xform.sc>=0.60,
-    showHalos:xform.sc>=0.45,
-    useDashedEdges:xform.sc>=0.80,
-    simplifiedNodes:xform.sc<0.35,
-  }),[xform.sc]);
+    isFar:lodTier==='far',
+    isMid:lodTier==='mid',
+    isNear:lodTier==='near',
+    showLabels:lodTier==='near',
+    showInnerRing:lodTier!=='far',
+    showOuterRing:lodTier==='near',
+    useDashedReady:lodTier==='near',
+  }),[lodTier]);
+
+  const edgeVisual=useMemo(()=>{
+    if(LOD.isFar) return {masteredW:1.1,readyW:0.95,lockedW:0.85,masteredO:0.62,readyO:0.48,lockedO:0.25};
+    if(LOD.isMid) return {masteredW:1.7,readyW:1.4,lockedW:1.1,masteredO:0.74,readyO:0.6,lockedO:0.3};
+    return {masteredW:2.5,readyW:2.1,lockedW:1.4,masteredO:0.86,readyO:0.72,lockedO:0.38};
+  },[LOD.isFar,LOD.isMid]);
 
   // Batch edges into a few <Path> elements to avoid per-edge React/SVG overhead.
   const edgePaths=useMemo(()=>{
-    const segments={mastered:'',unlockedLeading:'',locked:''};
+    const segments={mastered:'',ready:'',locked:''};
     for(const e of visibleEdges){
       const fn=nodeMap.get(e.from);
       const tn=nodeMap.get(e.to);
@@ -654,17 +718,24 @@ function TreeScreen(){
       const segment=`M ${fromPos.x} ${fromPos.y} L ${toPos.x} ${toPos.y} `;
       if(bld){
         segments.locked+=segment;
-      }else if(fn.unlocked&&tn.unlocked){
+        continue;
+      }
+      const fromState=nodeStatusMap[fn.id] || 'locked';
+      const toState=nodeStatusMap[tn.id] || 'locked';
+      const fromLit=fromState==='start'||fromState==='mastered';
+      const toLit=toState==='start'||toState==='mastered';
+      const toReady=toState==='ready';
+      const fromStart=fromState==='start';
+      if(fromLit&&toLit){
         segments.mastered+=segment;
-      }else if(fn.unlocked&&!tn.unlocked){
-        segments.unlockedLeading+=segment;
+      }else if((fromLit&&!toLit)||(toReady)||(fromStart&&toState==='locked')){
+        segments.ready+=segment;
       }else{
         segments.locked+=segment;
       }
     }
     return segments;
-  },[bld,nodeMap,visibleEdges,dragVisual]);
-
+  },[bld,nodeMap,visibleEdges,dragVisual,nodeStatusMap]);
 
   useEffect(()=>{
     if(!DEV_PERF_LOG) return;
@@ -673,11 +744,11 @@ function TreeScreen(){
         visibleNodes:visibleNodes.length,
         visibleEdges:visibleEdges.length,
         scale:xform.sc.toFixed(3),
-        simplifiedNodes:LOD.simplifiedNodes,
+        lodTier,
       });
     },1000);
     return ()=>clearInterval(id);
-  },[visibleNodes.length,visibleEdges.length,xform.sc,LOD.simplifiedNodes]);
+  },[visibleNodes.length,visibleEdges.length,xform.sc,lodTier]);
 
   const hints={
     move:   'Drag nodes to reposition · Tap empty space to add',
@@ -754,70 +825,119 @@ function TreeScreen(){
         {...panR.panHandlers}>
         <Svg width="100%" height="100%">
           <Defs>
-            <RadialGradient id="haloGreen" cx="50%" cy="50%" rx="50%" ry="50%">
-              <Stop offset="0%"   stopColor="#4CAF50" stopOpacity="0.18"/>
-              <Stop offset="55%"  stopColor="#4CAF50" stopOpacity="0.06"/>
-              <Stop offset="100%" stopColor="#4CAF50" stopOpacity="0"/>
-            </RadialGradient>
+            <Filter id="filterGreenGlow" x={-20000} y={-20000} width={40000} height={40000} filterUnits="userSpaceOnUse">
+              <FeGaussianBlur in="SourceGraphic" stdDeviation={USE_GLOW?glowMetrics.glowBlur:0} result="blur"/>
+              <FeColorMatrix
+                in="blur"
+                type="matrix"
+                values="0 0 0 0 0.30  0 0 0 0 0.82  0 0 0 0 0.48  0 0 0 0.95 0"
+                result="glow"
+              />
+              <FeMerge>
+                <FeMergeNode in="glow"/>
+                <FeMergeNode in="SourceGraphic"/>
+              </FeMerge>
+            </Filter>
+            <Filter id="filterOrangeGlow" x={-20000} y={-20000} width={40000} height={40000} filterUnits="userSpaceOnUse">
+              <FeGaussianBlur in="SourceGraphic" stdDeviation={USE_GLOW?glowMetrics.glowBlur:0} result="blur"/>
+              <FeColorMatrix
+                in="blur"
+                type="matrix"
+                values="0 0 0 0 0.99  0 0 0 0 0.56  0 0 0 0 0.10  0 0 0 0.90 0"
+                result="glow"
+              />
+              <FeMerge>
+                <FeMergeNode in="glow"/>
+                <FeMergeNode in="SourceGraphic"/>
+              </FeMerge>
+            </Filter>
+            <Filter id="filterWhiteSoft" x={-20000} y={-20000} width={40000} height={40000} filterUnits="userSpaceOnUse">
+              <FeGaussianBlur in="SourceGraphic" stdDeviation={USE_GLOW?glowMetrics.whiteBlur:0} result="blur"/>
+              <FeColorMatrix
+                in="blur"
+                type="matrix"
+                values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.55 0"
+              />
+            </Filter>
           </Defs>
 
           {/* ── Tree (transformed) ── */}
-          <AnimatedG ref={gRef} matrix={mk(xform.tx,xform.ty,xform.sc)}>
-
-            {/* Green halos behind lit nodes */}
-            {LOD.showHalos&&visibleNodes.map(n=>{
-              if(!(n.isStart||n.unlocked)) return null;
-              const {x:rx,y:ry}=getNodeRenderPos(n);
-              const r=NODE_R*(xform.sc>=0.9?5:3);
-              return <Circle key={'h'+n.id} cx={rx} cy={ry} r={r} fill="url(#haloGreen)"/>;
-            })}
+          <AnimatedG ref={gRef} matrix={mk(xform.tx,xform.ty,xform.sc)} overflow="visible">
+            {!!edgePaths.mastered&&LOD.isNear&&USE_GLOW&&GLOW_QUALITY==='high'&&(
+              <Path d={edgePaths.mastered} stroke="#4CAF50" strokeWidth={edgeVisual.masteredW+2.2}
+                strokeOpacity={0.17} strokeLinecap="round" fill="none"/>
+            )}
 
             {/* Batched edges */}
             {!!edgePaths.mastered&&(
-              <Path d={edgePaths.mastered} stroke="#4CAF50" strokeWidth={3}
-                strokeDasharray="none" strokeLinecap="round" fill="none"/>
+              <Path d={edgePaths.mastered} stroke="#4CAF50" strokeWidth={edgeVisual.masteredW}
+                strokeOpacity={edgeVisual.masteredO} strokeDasharray="none" strokeLinecap="round" fill="none"/>
             )}
-            {!!edgePaths.unlockedLeading&&(
-              <Path d={edgePaths.unlockedLeading} stroke="#FFC107" strokeWidth={2}
-                strokeDasharray={LOD.useDashedEdges&&!bld?'16,16':'none'} strokeLinecap="round" fill="none"/>
+            {!!edgePaths.ready&&(
+              <Path d={edgePaths.ready} stroke="#FF9800" strokeWidth={edgeVisual.readyW}
+                strokeOpacity={edgeVisual.readyO}
+                strokeDasharray={LOD.useDashedReady&&!bld?'12,10':'none'} strokeLinecap="round" fill="none"/>
             )}
             {!!edgePaths.locked&&(
-              <Path d={edgePaths.locked} stroke={bld?'#3a3028':'#4a3e2e'} strokeWidth={bld?2:1.5}
-                strokeDasharray="none" strokeLinecap="round" fill="none"/>
+              <Path d={edgePaths.locked} stroke={bld?'#5b5248':'#61584f'} strokeWidth={edgeVisual.lockedW}
+                strokeOpacity={edgeVisual.lockedO} strokeDasharray="none" strokeLinecap="round" fill="none"/>
             )}
 
             {/* Nodes */}
             {visibleNodes.map(n=>{
-              const{fill,stroke,sw}=nStyle(n);
+              const {fill,stroke,sw,opacity}=nStyle(n);
               const {x:rx,y:ry}=getNodeRenderPos(n);
-              const lines=wrappedLabels[n.id]||[n.name];const lh=13;
+              const lines=wrappedLabels[n.id]||[n.name];
+              const lh=13;
               const sy=ry-(lines.length*lh)/2+lh*0.8;
-              const unlockable=!bld&&canUnlock(n.id,tree.nodes,tree.edges)&&!n.unlocked&&!n.isStart;
-              const mastered=n.unlocked&&!bld;
-              const renderR=LOD.simplifiedNodes?NODE_R*0.55:NODE_R;
-              const nodeStrokeWidth=LOD.simplifiedNodes?1:sw;
+              const status=nodeStatusMap[n.id]||'locked';
+              const isLit=status==='start'||status==='mastered'||status==='ready';
+              const isReady=status==='ready';
+              const isMastered=status==='start'||status==='mastered';
+              const renderR=LOD.isFar?NODE_R*0.34:NODE_R;
+              const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
+              const glowFilter=isReady?'url(#filterOrangeGlow)':(isLit?'url(#filterGreenGlow)':undefined);
               return(
                 <G key={n.id}>
-                  {!LOD.simplifiedNodes&&(mastered||n.isStart)&&(
-                    <Circle cx={rx} cy={ry} r={NODE_R+14} fill="none"
-                      stroke='#4CAF50' strokeWidth={1} opacity={0.3}/>
+                  {LOD.showOuterRing&&isMastered&&(
+                    <Circle cx={rx} cy={ry} r={NODE_R+12} fill="none"
+                      stroke="#4CAF50" strokeWidth={1.2} opacity={0.34}/>
                   )}
-                  {!LOD.simplifiedNodes&&unlockable&&(
-                    <Circle cx={rx} cy={ry} r={NODE_R+14} fill="none"
-                      stroke="#FFC107" strokeWidth={1.5} opacity={0.6}/>
+                  {LOD.showOuterRing&&isReady&&(
+                    <Circle cx={rx} cy={ry} r={NODE_R+12} fill="none"
+                      stroke="#FFC107" strokeWidth={1.1} opacity={0.44}/>
                   )}
-                  {!LOD.simplifiedNodes&&bld&&connA===n.id&&(
-                    <Circle cx={rx} cy={ry} r={NODE_R+14} fill="none"
-                      stroke={C.amber} strokeWidth={2} opacity={0.7}/>
+                  {LOD.showOuterRing&&bld&&connA===n.id&&(
+                    <Circle cx={rx} cy={ry} r={NODE_R+12} fill="none"
+                      stroke={C.amber} strokeWidth={1.8} opacity={0.68}/>
                   )}
-                  <Circle cx={rx} cy={ry} r={renderR} fill={fill} stroke={stroke} strokeWidth={nodeStrokeWidth}/>
-                  {!LOD.simplifiedNodes&&(
+
+                  <Circle
+                    cx={rx}
+                    cy={ry}
+                    r={renderR}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={nodeStrokeWidth}
+                    opacity={opacity}
+                    filter={USE_GLOW&&isLit?glowFilter:undefined}
+                  />
+
+                  {LOD.showInnerRing&&(
                     <Circle cx={rx} cy={ry} r={NODE_R-8} fill="none"
-                      stroke={stroke} strokeWidth={0.5} opacity={0.4}/>
+                      stroke={stroke} strokeWidth={0.5} opacity={0.34}/>
                   )}
+
+                  {USE_GLOW&&GLOW_QUALITY==='high'&&LOD.isMid&&isLit&&(
+                    <Circle cx={rx} cy={ry} r={NODE_R*0.22} fill="#ffffff" opacity={0.23} filter="url(#filterWhiteSoft)"/>
+                  )}
+                  {USE_GLOW&&GLOW_QUALITY==='high'&&LOD.isNear&&isLit&&(
+                    <Circle cx={rx} cy={ry} r={NODE_R*0.26} fill="#ffffff" opacity={0.26} filter="url(#filterWhiteSoft)"/>
+                  )}
+
                   {LOD.showLabels&&lines.map((ln,li)=>(
                     <SvgText key={li} x={rx} y={sy+li*lh}
-                      fill={n.unlocked||n.isStart?C.textMain:C.textDim}
+                      fill={isLit?C.textMain:C.textDim}
                       fontSize={10} fontWeight="bold" textAnchor="middle"
                       letterSpacing={0.5}>{ln}</SvgText>
                   ))}
