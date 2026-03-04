@@ -27,10 +27,8 @@ import {
   Text as SkiaText,
   TileMode,
   matchFont,
-  useClockValue,
-  useComputedValue,
 } from '@shopify/react-native-skia';
-import { cancelAnimation, Easing, useDerivedValue, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useDerivedValue, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
 const STORAGE_KEY = 'calisthenics_tree_v1';
 const NODE_R = 46;
@@ -39,6 +37,7 @@ const MAX_SC = 6;
 const DEV_PERF_LOG = false;
 const USE_GLOW = true;
 const GLOW_QUALITY = 'low'; // 'low' | 'high'
+const _AnimatedCompat = Animated; // keep Animated import explicit per Reanimated runtime requirement
 
 // Colours — dark stone palette
 const C = {
@@ -356,7 +355,7 @@ function SkiaTreeCanvas({
   txV, tyV, scV,
   dragVisual, LOD, edgeVisual,
   bld, connA, isInteracting,
-  selectedNodeId, selPulseV, flowV,
+  selectedNodeId, selPulseV,
   canvasSize, nStyle,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
@@ -373,7 +372,6 @@ function SkiaTreeCanvas({
     return m;
   },[tree.nodes]);
 
-  const clock = useClockValue();
   const sceneTransform = useDerivedValue(()=>([
     { translateX: txV.value },
     { translateY: tyV.value },
@@ -381,10 +379,18 @@ function SkiaTreeCanvas({
   ]),[]);
   const selectedRingOpacity = useDerivedValue(()=>0.18 + (selPulseV.value * 0.2),[selPulseV]);
   const selectedRingRadius = useDerivedValue(()=>NODE_R + 8 + (selPulseV.value * 3),[selPulseV]);
+  const t = useSharedValue(0);
+  useEffect(() => {
+    // Universal 0..1 time loop (Reanimated UI thread) replacing Skia clock hooks.
+    t.value = withRepeat(withTiming(1, { duration: 2000, easing: Easing.linear }), -1, false);
+    return () => { t.value = 0; };
+  }, [t]);
+  const pulse = useDerivedValue(() => 0.5 + 0.5 * Math.sin(t.value * Math.PI * 2), [t]);
+  const shimmer = useDerivedValue(() => t.value * Math.PI * 2, [t]);
+  const dashPhase = useDerivedValue(() => t.value, [t]);
   const auraPulse = useDerivedValue(()=>0.88 + (selPulseV.value * 0.22),[selPulseV]);
-  const flowDashPhase = useDerivedValue(()=>flowV.value*36,[flowV]);
-  const fogDriftA = useComputedValue(()=>Math.sin(clock.current/5500)*34,[clock]);
-  const fogDriftB = useComputedValue(()=>Math.cos(clock.current/7000)*42,[clock]);
+  const fogDriftA = useDerivedValue(() => Math.sin((t.value * Math.PI * 2) * 0.35) * 34, [t]);
+  const fogDriftB = useDerivedValue(() => Math.cos((t.value * Math.PI * 2) * 0.28) * 42, [t]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
   const shimmerArcPath = useMemo(()=>Skia.Path.MakeFromSVGString(`M 0 -${NODE_R+9} A ${NODE_R+9} ${NODE_R+9} 0 0 1 ${NODE_R*0.46} -${NODE_R*0.89}`) || Skia.Path.Make(),[]);
@@ -480,7 +486,7 @@ function SkiaTreeCanvas({
 
       {/* Dust motes in screen-space (disabled on interacting/far) */}
       {!shouldCheap&&LOD.isNear&&dustSeeds.map((d,i)=>{
-        const t=(flowV.value + d.s) % 1;
+        const t=(t.value + d.s) % 1;
         const x=(d.x*canvasSize.width + t*canvasSize.width*0.18) % canvasSize.width;
         const y=(d.y*canvasSize.height + t*canvasSize.height*0.06) % canvasSize.height;
         return <Circle key={d.id} cx={x} cy={y} r={0.8 + d.s*1.4} color={`rgba(230,220,190,${0.05 + d.s*0.11})`} />;
@@ -515,18 +521,18 @@ function SkiaTreeCanvas({
         {/* Animated edge energy flow */}
         {!shouldCheap&&edgeBuckets.hasMastered&&(
           <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+0.7} color="rgba(172,255,192,0.52)" strokeCap="round">
-            <DashPathEffect intervals={[14,18]} phase={flowDashPhase} />
+            <DashPathEffect intervals={[14,18]} />
           </Path>
         )}
         {!shouldCheap&&edgeBuckets.hasReady&&(
           <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW+0.8} color="rgba(255,220,150,0.5)" strokeCap="round">
-            <DashPathEffect intervals={[10,16]} phase={flowDashPhase} />
+            <DashPathEffect intervals={[10,16]} />
           </Path>
         )}
 
         {/* Ready-edge sparks */}
         {!shouldCheap&&LOD.isNear&&edgeBuckets.readySegments.slice(0,20).map(seg=>{
-          const t=(flowV.value + seg.seed) % 1;
+          const t=(t.value + seg.seed) % 1;
           const x=seg.x1 + (seg.x2-seg.x1)*t;
           const y=seg.y1 + (seg.y2-seg.y1)*t;
           return <Circle key={`spark_${seg.key}`} cx={x} cy={y} r={1.8} color="rgba(255,223,167,0.86)" />;
@@ -552,7 +558,7 @@ function SkiaTreeCanvas({
           const coreColor=isReady?'#fff0c4':'#eaffef';
           const bodyGrad = shouldCheap ? null : getCachedNodeShader(status, renderR, fill, coreColor);
           const seed = nodeSeedMap[n.id] || {phase:0,ring:0,sparkCount:4};
-          const pulse = 0.85 + Math.sin((flowV.value + seed.phase)*Math.PI*2)*0.15;
+          const pulse = 0.85 + Math.sin((t.value + seed.phase)*Math.PI*2)*0.15;
           const auraR = NODE_R*(isReady?1.58:1.46)*pulse;
 
           return(
@@ -580,7 +586,7 @@ function SkiaTreeCanvas({
               {!shouldCheap&&isMastered&&LOD.showInnerRing&&(
                 <>
                   <Circle cx={rx} cy={ry} r={NODE_R+9} style="stroke" strokeWidth={1.2} color="rgba(170,255,190,0.32)" />
-                  <Group transform={[{translateX:rx},{translateY:ry},{rotate:(flowV.value + seed.ring)*Math.PI*2}]}> 
+                  <Group transform={[{translateX:rx},{translateY:ry},{rotate:shimmer.value + (seed.ring*Math.PI*2)}]}> 
                     <Path
                       path={shimmerArcPath}
                       style="stroke"
@@ -612,7 +618,7 @@ function SkiaTreeCanvas({
               {/* D. Spark particles orbiting lit nodes (near + idle only, capped globally) */}
               {!shouldCheap&&LOD.isNear&&isLit&&visibleNodes.length<=18&&Array.from({length:Math.min(seed.sparkCount,7)},(_,i)=>{
                 const sp=hashStringToFloat(`${n.id}_sp_${i}`, i+15);
-                const ang=((flowV.value*0.5) + sp) * Math.PI*2;
+                const ang=((t.value*0.5) + sp) * Math.PI*2;
                 const rad=NODE_R*(1.12 + sp*0.52);
                 return (
                   <Circle
@@ -737,7 +743,6 @@ function TreeScreen(){
   const [isInteracting,setIsInteracting]=useState(false);
   const isInteractingRef=useRef(false);
   const selPulseV=useSharedValue(0);
-  const flowV=useSharedValue(0);
 
   const setDragVisualThrottled=next=>{
     dragVisualRef.current=next;
@@ -782,16 +787,10 @@ function TreeScreen(){
       -1,
       true,
     );
-    flowV.value = withRepeat(
-      withTiming(1,{duration:3200,easing:Easing.linear}),
-      -1,
-      false,
-    );
     return ()=>{
-      cancelAnimation(selPulseV);
-      cancelAnimation(flowV);
+      selPulseV.value = 0;
     };
-  },[flowV,selPulseV]);
+  },[selPulseV]);
 
   const panR=useRef(PanResponder.create({
     onStartShouldSetPanResponder:()=>true,
@@ -1183,7 +1182,6 @@ function TreeScreen(){
             isInteracting={isInteracting}
             selectedNodeId={sel?.id ?? null}
             selPulseV={selPulseV}
-            flowV={flowV}
             canvasSize={canvasSize}
             nStyle={nStyle}
           />
