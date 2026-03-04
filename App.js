@@ -26,9 +26,8 @@ import {
   Skia,
   Text as SkiaText,
   matchFont,
-  useComputedValue,
-  useValue,
 } from '@shopify/react-native-skia';
+import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
 
 const STORAGE_KEY = 'calisthenics_tree_v1';
 const NODE_R = 46;
@@ -341,22 +340,17 @@ const np = StyleSheet.create({
 
 function SkiaTreeCanvas({
   tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
-  xform, txN, tyN, scN, txV, tyV, scV,
+  txV, tyV, scV,
   dragVisual, LOD, edgeVisual,
   bld, connA, isInteracting,
   canvasSize, nStyle,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
-  useEffect(()=>{
-    txV.current=txN.current;
-    tyV.current=tyN.current;
-    scV.current=scN.current;
-  },[scN,scV,txN,txV,tyN,tyV,xform.sc,xform.tx,xform.ty]);
-  const sceneTransform = useComputedValue(()=>([
-    { translateX: txV.current },
-    { translateY: tyV.current },
-    { scale: scV.current },
-  ]),[txV,tyV,scV]);
+  const sceneTransform = useDerivedValue(()=>([
+    { translateX: txV.value },
+    { translateY: tyV.value },
+    { scale: scV.value },
+  ]),[]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
 
@@ -517,12 +511,12 @@ function TreeScreen(){
   const pendingPos=useRef({x:450,y:400});
 
   const txN=useRef(0),tyN=useRef(0),scN=useRef(1);
-  const txV=useValue(0),tyV=useValue(0),scV=useValue(1);
+  const txV=useSharedValue(0),tyV=useSharedValue(0),scV=useSharedValue(1);
   const [xform,setXform]=useState({tx:0,ty:0,sc:1});
   const gestureActive=useRef(false);
   const setLiveXform=(tx,ty,sc)=>{
     txN.current=tx;tyN.current=ty;scN.current=sc;
-    txV.current=tx;tyV.current=ty;scV.current=sc;
+    txV.value=tx;tyV.value=ty;scV.value=sc;
   };
   const commitLiveXform=()=>{
     const next={tx:txN.current,ty:tyN.current,sc:scN.current};
@@ -972,10 +966,6 @@ function TreeScreen(){
             visibleEdges={visibleEdges}
             nodeStatusMap={nodeStatusMap}
             wrappedLabels={wrappedLabels}
-            xform={xform}
-            txN={txN}
-            tyN={tyN}
-            scN={scN}
             txV={txV}
             tyV={tyV}
             scV={scV}
