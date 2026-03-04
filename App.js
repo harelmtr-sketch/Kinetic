@@ -25,6 +25,7 @@ import {
   Path,
   Skia,
   Text as SkiaText,
+  TileMode,
   matchFont,
 } from '@shopify/react-native-skia';
 import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
@@ -430,7 +431,7 @@ function SkiaTreeCanvas({
             renderR*1.15,
             [Skia.Color(fill), Skia.Color('#0f0d0b')],
             [0,1],
-            Skia.TileMode.Clamp,
+            TileMode.Clamp,
           );
           return(
             <Group key={n.id}>
