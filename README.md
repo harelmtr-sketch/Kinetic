@@ -9,7 +9,9 @@ Kinetic is a React Native (Expo) app that turns calisthenics training into an in
 
 ## Setup
 - npm install
-- npx expo start --tunnel
+- npx expo prebuild --clean (after native dependency changes)
+- npx expo run:android (build/install the Android dev client)
+- npm run start (starts Metro for the dev client; Skia will not run in Expo Go)
 
 ## Project Structure
 - components/ – UI components
@@ -23,3 +25,7 @@ Kinetic is a React Native (Expo) app that turns calisthenics training into an in
 - Open a Pull Request into main
 - Squash merge after review
 - Do NOT touch the skill tree data/logic unless explicitly stated otherwise.
+
+## Runtime notes
+- `@shopify/react-native-skia` requires a development build (Expo Dev Client / EAS build).
+- Use `npm run start` (dev-client mode) for local Android testing; `npm run start:go` is kept only for non-Skia screens.
