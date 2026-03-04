@@ -20,12 +20,14 @@ import {
   Circle,
   DashPathEffect,
   Group,
+  Paint,
   Path,
   Skia,
   Text as SkiaText,
+  TileMode,
   matchFont,
 } from '@shopify/react-native-skia';
-import { Easing, useDerivedValue, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import { Easing, useDerivedValue, useSharedValue, withRepeat, withTiming, configureReanimatedLogger } from 'react-native-reanimated';
 
 const STORAGE_KEY = 'calisthenics_tree_v1';
 const NODE_R = 46;
@@ -34,6 +36,11 @@ const MAX_SC = 6;
 const DEV_PERF_LOG = false;
 const USE_GLOW = true;
 const GLOW_QUALITY = 'low'; // 'low' | 'high'
+
+configureReanimatedLogger({
+  level: 1,
+  strict: false,
+});
 
 // Colours — dark stone palette
 const C = {
@@ -423,14 +430,12 @@ function SkiaTreeCanvas({
     { scale: scV?.value ?? 1 },
   ]),[txV,tyV,scV]);
 
-  const dragPos = useDerivedValue(()=>(
-    {
-      id: dragIdV?.value ?? '',
-      x: dragXV?.value ?? 0,
-      y: dragYV?.value ?? 0,
-      on: (draggingV?.value ?? 0) === 1,
-    }
-  ),[dragIdV,dragXV,dragYV,draggingV]);
+  const dragPos = useDerivedValue(()=>({
+    id: dragIdV?.value ?? '',
+    x: dragXV?.value ?? 0,
+    y: dragYV?.value ?? 0,
+    on: (draggingV?.value ?? 0) === 1,
+  }),[dragIdV,dragXV,dragYV,draggingV]);
 
   const t = useSharedValue(0);
   useEffect(()=>{
@@ -453,10 +458,9 @@ function SkiaTreeCanvas({
   const selectedRingOpacity = useDerivedValue(()=>0.15 + (safeSelPulse.value * 0.2),[safeSelPulse]);
   const selectedRingRadius = useDerivedValue(()=>NODE_R + 8 + (safeSelPulse.value * 3),[safeSelPulse]);
   const shimmer = useDerivedValue(() => t.value * Math.PI * 2, [t]);
-  const fogAX = useDerivedValue(() => (canvasSize.width*0.22) + Math.sin((t.value * Math.PI * 2) * 0.35) * 34, [canvasSize.width,t]);
-  const fogBX = useDerivedValue(() => (canvasSize.width*0.78) + Math.cos((t.value * Math.PI * 2) * 0.28) * 42, [canvasSize.width,t]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+
   const edgeSegments = useMemo(()=>visibleEdges.map(e=>({
     key:`${e.from}|${e.to}`,
     from:nodeMap.get(e.from),
@@ -510,22 +514,54 @@ function SkiaTreeCanvas({
   },[bld,edgeSegments,nodeStatusMap]);
 
   const dustSeeds = useMemo(()=>{
-    // NOTE: plain numeric seeds only; avoids undefined `.value` crashes in dust map loops.
-    return Array.from({length:48},(_,i)=>({
+    // Static particles generated once. No `.value` reads to avoid undefined shared-value crashes.
+    return Array.from({length:44},(_,i)=>({
       id:`dust_${i}`,
       x:hashStringToFloat(`dustx_${i}`, 31),
       y:hashStringToFloat(`dusty_${i}`, 37),
-      phase:hashStringToFloat(`dustp_${i}`, 41),
-      speed:0.35 + hashStringToFloat(`dustv_${i}`, 43) * 0.9,
+      r:0.5 + hashStringToFloat(`dustr_${i}`, 41) * 0.7,
+      o:0.04 + hashStringToFloat(`dusto_${i}`, 43) * 0.04,
     }));
   },[]);
+
+  const vignetteShader = useMemo(()=>{
+    if(!canvasSize.width||!canvasSize.height) return null;
+    const cx=canvasSize.width/2;
+    const cy=canvasSize.height/2;
+    const rr=Math.max(canvasSize.width,canvasSize.height)*0.78;
+    return Skia.Shader.MakeRadialGradient(
+      {x:cx,y:cy},
+      rr,
+      [Skia.Color('#00000000'),Skia.Color('#000000D8')],
+      [0.52,1],
+      TileMode.Clamp,
+    );
+  },[canvasSize.height,canvasSize.width]);
+
+  const rootNetworkPath = useMemo(()=>{
+    const p=Skia.Path.Make();
+    if(!canvasSize.width||!canvasSize.height) return p;
+    const lines=14;
+    for(let i=0;i<lines;i++){
+      const sx=hashStringToFloat(`root_sx_${i}`,51)*canvasSize.width;
+      const sy=hashStringToFloat(`root_sy_${i}`,53)*canvasSize.height;
+      const ex=hashStringToFloat(`root_ex_${i}`,55)*canvasSize.width;
+      const ey=hashStringToFloat(`root_ey_${i}`,57)*canvasSize.height;
+      const mx=(sx+ex)/2;
+      const my=(sy+ey)/2;
+      const bend=(hashStringToFloat(`root_b_${i}`,59)-0.5)*80;
+      p.moveTo(sx,sy);
+      p.cubicTo(mx,my+bend,mx,my-bend,ex,ey);
+    }
+    return p;
+  },[canvasSize.height,canvasSize.width]);
 
   const farNodeR = NODE_R*0.34;
   const showLabels = LOD.isNear && visibleNodes.length<=90 && !isInteracting;
   const showEdgeGlow = visibleEdges.length<=180;
+  const disableNodeGlow = visibleNodes.length>120 || LOD.isMid || LOD.isFar || isInteracting;
 
   const sweepPath = useMemo(()=>makeStarPath(8),[]);
-
   const getNodePath = (id,status,renderR)=>{
     const key = `${id}|${status}|${renderR.toFixed(2)}`;
     const cached = shapeCacheRef.current.get(key);
@@ -541,22 +577,18 @@ function SkiaTreeCanvas({
 
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
-      <Circle cx={canvasSize.width*0.5} cy={canvasSize.height*0.5} r={Math.max(canvasSize.width, canvasSize.height)*0.78} color="rgba(0,0,0,0.22)" />
-      <Circle cx={canvasSize.width*0.5} cy={canvasSize.height*0.5} r={Math.max(canvasSize.width, canvasSize.height)*1.02} style="stroke" strokeWidth={Math.max(canvasSize.width, canvasSize.height)*0.45} color="rgba(0,0,0,0.34)" />
-
-      {!isInteracting&&LOD.isNear&&(
-        <>
-          <Circle cx={fogAX} cy={canvasSize.height*0.2} r={canvasSize.width*0.42} color="rgba(210,190,150,0.03)" />
-          <Circle cx={fogBX} cy={canvasSize.height*0.72} r={canvasSize.width*0.36} color="rgba(170,210,185,0.025)" />
-        </>
+      {/* Layer 1: screen-space radial vignette */}
+      {vignetteShader&&(
+        <Circle cx={canvasSize.width*0.5} cy={canvasSize.height*0.5} r={Math.max(canvasSize.width, canvasSize.height)*0.78}>
+          <Paint shader={vignetteShader} />
+        </Circle>
       )}
-
-      {!isInteracting&&LOD.isNear&&dustSeeds.map((d)=>{
-        const tt = ((t.value * d.speed) + d.phase) % 1;
-        const x=(d.x*canvasSize.width + tt*canvasSize.width*0.18) % canvasSize.width;
-        const y=(d.y*canvasSize.height + tt*canvasSize.height*0.06) % canvasSize.height;
-        return <Circle key={d.id} cx={x} cy={y} r={0.8 + d.phase*1.4} color={`rgba(230,220,190,${0.05 + d.phase*0.11})`} />;
-      })}
+      {/* Layer 2: faint background root network (screen-space) */}
+      <Path path={rootNetworkPath} style="stroke" strokeWidth={1.1} color="rgba(124,110,90,0.08)" strokeCap="round" />
+      {/* Layer 3: static dust particles (screen-space) */}
+      {dustSeeds.map(d=>(
+        <Circle key={d.id} cx={d.x*canvasSize.width} cy={d.y*canvasSize.height} r={d.r} color={`rgba(230,220,190,${d.o})`} />
+      ))}
 
       <Group transform={sceneTransform}>
         {edgeBuckets.hasMastered&&!isInteracting&&showEdgeGlow&&(
@@ -593,23 +625,21 @@ function SkiaTreeCanvas({
           const lh=13;
           const sy=ry-(lines.length*lh)/2+lh*0.8;
           const status=nodeStatusMap[n.id]||'locked';
-          const isLit=status==='start'||status==='mastered'||status==='ready';
           const isReady=status==='ready';
           const isMastered=status==='start'||status==='mastered';
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
           const nodePath = getNodePath(n.id, status, renderR);
-          const haloColor=isReady?'rgba(255,152,0,0.2)':'rgba(76,175,80,0.18)';
           const seedPhase = hashStringToFloat(n.id, 101);
           const scalePulse = 0.96 + Math.sin((t.value + seedPhase) * Math.PI * 2) * 0.04;
 
           return(
             <Group key={n.id}>
-              {isLit&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.58:NODE_R*0.92} color={haloColor} />}
+              {!disableNodeGlow&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.1} color="rgba(76,175,80,0.2)" />}
+              {!disableNodeGlow&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R*1.05} color="rgba(255,152,0,0.2)" />}
 
               <Group transform={[{translateX:rx},{translateY:ry}]}> 
                 <Path path={nodePath} style="fill" color={fill} opacity={opacity} />
-                {/* Cheap inner shade layer replaces per-node gradient shader work. */}
                 <Group transform={[{scale:0.92*scalePulse}]}> 
                   <Path path={nodePath} style="fill" color="#000000" opacity={0.14} />
                 </Group>
@@ -634,7 +664,7 @@ function SkiaTreeCanvas({
                   y={sy+li*lh}
                   text={ln.text}
                   font={labelFont}
-                  color={isLit?C.textMain:C.textDim}
+                  color={(isMastered||isReady)?C.textMain:C.textDim}
                 />
               ))}
             </Group>
@@ -709,6 +739,10 @@ function TreeScreen(){
 
   useEffect(()=>()=>{
     if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
+    if(dragVisualRaf.current!=null){
+      cancelAnimationFrame(dragVisualRaf.current);
+      dragVisualRaf.current=null;
+    }
   },[]);
 
   const cL=useRef(0),cT=useRef(0),cRef=useRef(null);
@@ -732,6 +766,8 @@ function TreeScreen(){
   const dragXV=useSharedValue(0);
   const dragYV=useSharedValue(0);
   const draggingV=useSharedValue(0);
+  const dragVisualRaf=useRef(null);
+  const dragVisualPending=useRef({id:'',x:0,y:0,on:0});
   const glowDebounceRef=useRef(null);
   const [isInteracting,setIsInteracting]=useState(false);
   const isInteractingRef=useRef(false);
@@ -769,6 +805,19 @@ function TreeScreen(){
     };
   },[selPulseV]);
 
+  const setDragVisualThrottled=(id,x,y,on=1)=>{
+    dragVisualPending.current={id,x,y,on};
+    if(dragVisualRaf.current!=null) return;
+    dragVisualRaf.current=requestAnimationFrame(()=>{
+      dragVisualRaf.current=null;
+      const next=dragVisualPending.current;
+      dragIdV.value=next.id;
+      dragXV.value=next.x;
+      dragYV.value=next.y;
+      draggingV.value=next.on;
+    });
+  };
+
   const panR=useRef(PanResponder.create({
     onStartShouldSetPanResponder:()=>true,
     onStartShouldSetPanResponderCapture:()=>true,
@@ -778,7 +827,7 @@ function TreeScreen(){
       const ts=evt.nativeEvent.touches;
       moved.current=false;dId.current=null;pOn.current=false;
       dragLive.current={id:null,x:0,y:0};
-      draggingV.value=0; dragIdV.value='';
+      setDragVisualThrottled('',0,0,0);
       beginInteraction();
       if(ts.length>=2){
         gestureActive.current=true;
@@ -797,7 +846,7 @@ function TreeScreen(){
           dId.current=hit.id;dNx.current=hit.x;dNy.current=hit.y;
           const p=toSVG(t.pageX,t.pageY);dPx.current=p.x;dPy.current=p.y;
           dragLive.current={id:hit.id,x:hit.x,y:hit.y};
-          dragIdV.value=hit.id; dragXV.value=hit.x; dragYV.value=hit.y; draggingV.value=1;
+          setDragVisualThrottled(hit.id,hit.x,hit.y,1);
         }
       }
     },
@@ -830,7 +879,7 @@ function TreeScreen(){
         const p=toSVG(t.pageX,t.pageY);
         const nx=dNx.current+(p.x-dPx.current),ny=dNy.current+(p.y-dPy.current);
         dragLive.current={id:dId.current,x:nx,y:ny};
-        dragIdV.value=dId.current; dragXV.value=nx; dragYV.value=ny; draggingV.value=1;
+        setDragVisualThrottled(dId.current,nx,ny,1);
         gLx.current=t.pageX;gLy.current=t.pageY;return;
       }
       gestureActive.current=true;
@@ -851,12 +900,12 @@ function TreeScreen(){
         }
         dId.current=null;
         dragLive.current={id:null,x:0,y:0};
-        draggingV.value=0; dragIdV.value='';
+        setDragVisualThrottled('',0,0,0);
         return;
       }
       dId.current=null;
       dragLive.current={id:null,x:0,y:0};
-      draggingV.value=0; dragIdV.value='';
+      setDragVisualThrottled('',0,0,0);
       if(moved.current) return;
       const{pageX,pageY}=evt.nativeEvent;
       const hit=hitNode(pageX,pageY);
@@ -905,7 +954,7 @@ function TreeScreen(){
       endInteraction();
       dId.current=null;
       dragLive.current={id:null,x:0,y:0};
-      draggingV.value=0; dragIdV.value='';
+      setDragVisualThrottled('',0,0,0);
     },
   })).current;
 
