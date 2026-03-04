@@ -107,14 +107,11 @@ function hashStringToFloat(str, salt=0){
   return ((h >>> 0) % 10000) / 10000;
 }
 
-function makeSeededRng(seed=1337){
-  let s = seed >>> 0;
-  return ()=>{
-    s = (s + 0x6D2B79F5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+function hash01(seed, i){
+  let x = (seed + i * 374761393) | 0;
+  x = Math.imul(x ^ (x >>> 13), 1274126177);
+  x ^= x >>> 16;
+  return (x >>> 0) / 4294967296;
 }
 
 
@@ -416,13 +413,117 @@ const np = StyleSheet.create({
   addT:   {color:C.gold,fontWeight:'800',letterSpacing:2},
 });
 
+function StoneBackgroundSkia({canvasSize, txV, tyV, scV, isInteracting}){
+  const bgTransform = useDerivedValue(() => {
+    const tx = txV?.value ?? 0;
+    const ty = tyV?.value ?? 0;
+    const sc = scV?.value ?? 1;
+    const bgSc = Math.max(0.75, Math.min(1.05, 0.85 + (sc - 1) * 0.10));
+    return [
+      { translateX: tx * 0.22 },
+      { translateY: ty * 0.22 },
+      { scale: bgSc },
+    ];
+  }, [txV, tyV, scV]);
+
+  const bgGeometry = useMemo(() => {
+    const w = canvasSize.width;
+    const h = canvasSize.height;
+    if (!w || !h) return { veinPath: Skia.Path.Make(), dust: [] };
+
+    const seed = 1337;
+    const span = Math.max(w, h) * 8;
+    const minX = -span;
+    const minY = -span;
+    const area = span * 2;
+    const veinPath = Skia.Path.Make();
+    const veinCount = Math.min(180, Math.max(90, Math.floor((w * h) / 7000)));
+
+    for(let v=0; v<veinCount; v++){
+      let x = minX + hash01(seed, v * 11 + 1) * area;
+      let y = minY + hash01(seed, v * 11 + 2) * area;
+      const segCount = 4 + Math.floor(hash01(seed, v * 11 + 3) * 5);
+      let angle = hash01(seed, v * 11 + 4) * Math.PI * 2;
+      const baseStep = 55 + hash01(seed, v * 11 + 5) * 95;
+      veinPath.moveTo(x, y);
+      for(let s=0; s<segCount; s++){
+        angle += (hash01(seed, v * 211 + s * 17 + 6) - 0.5) * 0.85;
+        const step = baseStep * (0.7 + hash01(seed, v * 211 + s * 17 + 7) * 0.9);
+        x += Math.cos(angle) * step;
+        y += Math.sin(angle) * step;
+        veinPath.lineTo(x, y);
+      }
+    }
+
+    const dustCount = Math.min(900, Math.max(300, Math.floor((w * h) / 1150)));
+    const dust = Array.from({ length: dustCount }, (_, i) => ({
+      id: `dust_${i}`,
+      x: minX + hash01(seed, i * 13 + 91) * area,
+      y: minY + hash01(seed, i * 13 + 92) * area,
+      s: 1 + Math.floor(hash01(seed, i * 13 + 93) * 3),
+      o: 0.05 + hash01(seed, i * 13 + 94) * 0.11,
+    }));
+
+    return { veinPath, dust };
+  }, [canvasSize.height, canvasSize.width]);
+
+  const stoneShader = useMemo(() => {
+    if(!canvasSize.height) return null;
+    return Skia.Shader.MakeLinearGradient(
+      { x: 0, y: 0 },
+      { x: 0, y: canvasSize.height },
+      [Skia.Color(C.bg), Skia.Color(C.bgDeep)],
+      [0, 1],
+      TileMode.Clamp,
+    );
+  }, [canvasSize.height]);
+
+  const vignetteShader = useMemo(() => {
+    if(!canvasSize.width || !canvasSize.height) return null;
+    const cx = canvasSize.width * 0.5;
+    const cy = canvasSize.height * 0.5;
+    const rr = Math.max(canvasSize.width, canvasSize.height) * 0.74;
+    return Skia.Shader.MakeRadialGradient(
+      { x: cx, y: cy },
+      rr,
+      [Skia.Color('#00000000'), Skia.Color('#000000D6')],
+      [0.48, 1],
+      TileMode.Clamp,
+    );
+  }, [canvasSize.height, canvasSize.width]);
+
+  const dustOpacity = isInteracting ? 0.75 : 1;
+  const veinOpacity = isInteracting ? 0.75 : 1;
+
+  return (
+    <>
+      {stoneShader && (
+        <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height}>
+          <Paint shader={stoneShader} />
+        </Rect>
+      )}
+      {vignetteShader && (
+        <Circle cx={canvasSize.width * 0.5} cy={canvasSize.height * 0.5} r={Math.max(canvasSize.width, canvasSize.height) * 0.74}>
+          <Paint shader={vignetteShader} />
+        </Circle>
+      )}
+      <Group transform={bgTransform}>
+        <Path path={bgGeometry.veinPath} style="stroke" strokeWidth={1.05} color={`rgba(110,102,93,${0.08 * veinOpacity})`} strokeCap="round" />
+        {bgGeometry.dust.map(d => (
+          <Rect key={d.id} x={d.x} y={d.y} width={d.s} height={d.s} color={`rgba(190,180,164,${d.o * dustOpacity})`} />
+        ))}
+      </Group>
+    </>
+  );
+}
+
 function SkiaTreeCanvas({
   tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
   dragIdV, dragXV, dragYV, draggingV, LOD, edgeVisual,
   bld, connA, isInteracting,
   selectedNodeId, selPulseV,
-  canvasSize, nStyle, xform,
+  canvasSize, nStyle,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
   const shapeCacheRef = useRef(new Map());
@@ -525,101 +626,10 @@ function SkiaTreeCanvas({
     return { mastered, ready, locked, readySegments, hasMastered, hasReady, hasLocked };
   },[bld,connA,edgeSegments,nodeStatusMap]);
 
-  const tileSize = 1200;
-  const worldBgPattern = useMemo(()=>{
-    const rng = makeSeededRng(1337);
-    const lines = Array.from({length:34},(_,idx)=>{
-      const points = 4 + Math.floor(rng() * 4);
-      const p = Skia.Path.Make();
-      const pts = [];
-      for(let i=0;i<points;i++){
-        pts.push({
-          x: rng() * tileSize,
-          y: rng() * tileSize,
-        });
-      }
-      p.moveTo(pts[0].x, pts[0].y);
-      for(let i=1;i<pts.length;i++){
-        const prev = pts[i-1];
-        const cur = pts[i];
-        const mx = (prev.x + cur.x) * 0.5;
-        const my = (prev.y + cur.y) * 0.5;
-        const bend = (rng() - 0.5) * 120;
-        p.cubicTo(prev.x + bend, prev.y - bend * 0.35, mx, my, cur.x, cur.y);
-      }
-      return { id:`l_${idx}`, path:p, width:0.9 + rng() * 1.8, opacity:0.03 + rng() * 0.06 };
-    });
-    const particles = Array.from({length:68},(_,idx)=>({
-      id:`p_${idx}`,
-      x:rng()*tileSize,
-      y:rng()*tileSize,
-      s:2 + rng()*4,
-      o:0.05 + rng()*0.13,
-    }));
-    const grain = Array.from({length:26},(_,idx)=>({
-      id:`g_${idx}`,
-      x:rng(),
-      y:rng(),
-      w:20 + rng()*80,
-      h:20 + rng()*90,
-      o:0.02 + rng()*0.05,
-    }));
-    return { lines, particles, grain };
-  },[]);
-
-  const visibleTiles = useMemo(()=>{
-    if(!canvasSize.width||!canvasSize.height) return [];
-    const left = (-xform.tx) / xform.sc;
-    const top = (-xform.ty) / xform.sc;
-    const right = (canvasSize.width - xform.tx) / xform.sc;
-    const bottom = (canvasSize.height - xform.ty) / xform.sc;
-    const minX = Math.floor(left / tileSize) - 1;
-    const maxX = Math.floor(right / tileSize) + 1;
-    const minY = Math.floor(top / tileSize) - 1;
-    const maxY = Math.floor(bottom / tileSize) + 1;
-    const tiles = [];
-    for(let gx=minX;gx<=maxX;gx++){
-      for(let gy=minY;gy<=maxY;gy++){
-        tiles.push({ key:`${gx}_${gy}`, x:gx*tileSize, y:gy*tileSize });
-      }
-    }
-    return tiles;
-  },[canvasSize.height,canvasSize.width,tileSize,xform.sc,xform.tx,xform.ty]);
-
-  const vignetteShader = useMemo(()=>{
-    if(!canvasSize.width||!canvasSize.height) return null;
-    const cx=canvasSize.width/2;
-    const cy=canvasSize.height/2;
-    const rr=Math.max(canvasSize.width,canvasSize.height)*0.78;
-    return Skia.Shader.MakeRadialGradient(
-      {x:cx,y:cy},
-      rr,
-      [Skia.Color('#00000000'),Skia.Color('#000000D8')],
-      [0.52,1],
-      TileMode.Clamp,
-    );
-  },[canvasSize.height,canvasSize.width]);
-
-  const topShadeShader = useMemo(()=>{
-    if(!canvasSize.height) return null;
-    return Skia.Shader.MakeLinearGradient(
-      {x:0,y:0},
-      {x:0,y:canvasSize.height},
-      [Skia.Color('rgba(70,64,58,0.14)'),Skia.Color('rgba(0,0,0,0.02)')],
-      [0,1],
-      TileMode.Clamp,
-    );
-  },[canvasSize.height]);
-
   const farNodeR = NODE_R*0.34;
   const showLabels = LOD.isNear && visibleNodes.length<=90 && !isInteracting;
   const showEdgeGlow = visibleEdges.length<=180;
   const disableNodeGlow = visibleNodes.length>120 || LOD.isMid || LOD.isFar || isInteracting;
-  const worldBgVisual = LOD.isFar
-    ? { lineCount:14, particleCount:32, lineOpacity:0.72, particleOpacity:0.7, strokeScale:0.72 }
-    : LOD.isMid
-      ? { lineCount:24, particleCount:54, lineOpacity:0.9, particleOpacity:0.88, strokeScale:0.88 }
-      : { lineCount:34, particleCount:68, lineOpacity:1, particleOpacity:1, strokeScale:1 };
   const edgeInteractionOpacity = isInteracting ? 0.85 : 1;
 
   const sweepPath = useMemo(()=>makeStarPath(8),[]);
@@ -653,55 +663,15 @@ function SkiaTreeCanvas({
 
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
-      {/* Screen-space background layer: subtle top shade, grain blocks, vignette. */}
-      {topShadeShader&&(
-        <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height}>
-          <Paint shader={topShadeShader} />
-        </Rect>
-      )}
-      {worldBgPattern.grain.map(g=>(
-        <Rect
-          key={g.id}
-          x={g.x*canvasSize.width}
-          y={g.y*canvasSize.height}
-          width={g.w}
-          height={g.h}
-          color={`rgba(210,190,165,${g.o})`}
-        />
-      ))}
-      {vignetteShader&&(
-        <Circle cx={canvasSize.width*0.5} cy={canvasSize.height*0.5} r={Math.max(canvasSize.width, canvasSize.height)*0.78}>
-          <Paint shader={vignetteShader} />
-        </Circle>
-      )}
+      <StoneBackgroundSkia
+        canvasSize={canvasSize}
+        txV={txV}
+        tyV={tyV}
+        scV={scV}
+        isInteracting={isInteracting}
+      />
 
       <Group transform={sceneTransform}>
-        {/* World-space tiled layer: deterministic crack lines + square dust. */}
-        {visibleTiles.map(tile=>(
-          <Group key={tile.key} transform={[{translateX:tile.x},{translateY:tile.y}]}>
-            {worldBgPattern.lines.slice(0,worldBgVisual.lineCount).map(line=>(
-              <Path
-                key={line.id}
-                path={line.path}
-                style="stroke"
-                strokeWidth={line.width * worldBgVisual.strokeScale}
-                color={`rgba(116,126,110,${line.opacity * worldBgVisual.lineOpacity})`}
-                strokeCap="round"
-              />
-            ))}
-            {worldBgPattern.particles.slice(0,worldBgVisual.particleCount).map(part=>(
-              <Rect
-                key={part.id}
-                x={part.x}
-                y={part.y}
-                width={part.s}
-                height={part.s}
-                color={`rgba(205,193,170,${part.o * worldBgVisual.particleOpacity})`}
-              />
-            ))}
-          </Group>
-        ))}
-
         {edgeBuckets.hasMastered&&!isInteracting&&showEdgeGlow&&(
           <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+3.2} color="rgba(76,175,80,0.18)" strokeCap="round" />
         )}
@@ -750,6 +720,8 @@ function SkiaTreeCanvas({
             <Group key={n.id}>
               {!disableNodeGlow&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.1} color="rgba(76,175,80,0.2)" />}
               {!disableNodeGlow&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R*1.05} color="rgba(255,152,0,0.2)" />}
+              {isInteracting&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.1)" />}
+              {isInteracting&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R} color="rgba(255,152,0,0.09)" />}
 
               <Group transform={[{translateX:rx},{translateY:ry}]}> 
                 {nodeShader ? (
@@ -1332,7 +1304,6 @@ function TreeScreen(){
             selPulseV={selPulseV}
             canvasSize={canvasSize}
             nStyle={nStyle}
-            xform={xform}
           />
         )}
       </View>
