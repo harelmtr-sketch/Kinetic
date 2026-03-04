@@ -494,6 +494,11 @@ function StoneBackgroundSkia({canvasSize, txV, tyV, scV, isInteracting}){
 
   const dustOpacity = isInteracting ? 0.75 : 1;
   const veinOpacity = isInteracting ? 0.75 : 1;
+  const visibleDust = useMemo(() => {
+    if(!isInteracting) return bgGeometry.dust;
+    const keep = Math.max(180, Math.floor(bgGeometry.dust.length * 0.45));
+    return bgGeometry.dust.slice(0, keep);
+  }, [bgGeometry.dust, isInteracting]);
 
   return (
     <>
@@ -509,7 +514,7 @@ function StoneBackgroundSkia({canvasSize, txV, tyV, scV, isInteracting}){
       )}
       <Group transform={bgTransform}>
         <Path path={bgGeometry.veinPath} style="stroke" strokeWidth={1.05} color={`rgba(110,102,93,${0.08 * veinOpacity})`} strokeCap="round" />
-        {bgGeometry.dust.map(d => (
+        {visibleDust.map(d => (
           <Rect key={d.id} x={d.x} y={d.y} width={d.s} height={d.s} color={`rgba(190,180,164,${d.o * dustOpacity})`} />
         ))}
       </Group>
@@ -627,10 +632,10 @@ function SkiaTreeCanvas({
   },[bld,connA,edgeSegments,nodeStatusMap]);
 
   const farNodeR = NODE_R*0.34;
+  const fastMode = isInteracting || LOD.isFar;
   const showLabels = LOD.isNear && visibleNodes.length<=90 && !isInteracting;
   const showEdgeGlow = visibleEdges.length<=180;
   const disableNodeGlow = visibleNodes.length>120 || LOD.isMid || LOD.isFar || isInteracting;
-  const edgeInteractionOpacity = isInteracting ? 0.85 : 1;
 
   const sweepPath = useMemo(()=>makeStarPath(8),[]);
   const getNodePath = (id,status,renderR)=>{
@@ -680,15 +685,15 @@ function SkiaTreeCanvas({
         )}
 
         {edgeBuckets.hasMastered&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW} color={`rgba(76,175,80,${edgeVisual.masteredO*edgeInteractionOpacity})`} strokeCap="round" />
+          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW} color={`rgba(76,175,80,${edgeVisual.masteredO})`} strokeCap="round" />
         )}
         {edgeBuckets.hasReady&&(
-          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW} color={`rgba(255,152,0,${edgeVisual.readyO*edgeInteractionOpacity})`} strokeCap="round">
+          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW} color={`rgba(255,152,0,${edgeVisual.readyO})`} strokeCap="round">
             {LOD.useDashedReady&&!bld&&<DashPathEffect intervals={[12,10]} />}
           </Path>
         )}
         {edgeBuckets.hasLocked&&(
-          <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO*edgeInteractionOpacity})`:`rgba(97,88,79,${edgeVisual.lockedO*edgeInteractionOpacity})`} strokeCap="round" />
+          <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO})`:`rgba(97,88,79,${edgeVisual.lockedO})`} strokeCap="round" />
         )}
 
         {!isInteracting&&LOD.isNear&&edgeBuckets.readySegments.slice(0,20).map(seg=>{
@@ -711,13 +716,15 @@ function SkiaTreeCanvas({
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
           const nodePath = getNodePath(n.id, status, renderR);
-          const useNodeGradient = LOD.isNear && !isInteracting;
+          const useNodeGradient = LOD.isNear && !fastMode;
           const nodeShader = useNodeGradient ? getCachedNodeShader(n.id, rx, ry, fill) : null;
           const seedPhase = hashStringToFloat(n.id, 101);
           const scalePulse = 0.96 + Math.sin((t.value + seedPhase) * Math.PI * 2) * 0.04;
 
           return(
             <Group key={n.id}>
+              {LOD.isMid&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.08)" />}
+              {LOD.isMid&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R} color="rgba(255,152,0,0.075)" />}
               {!disableNodeGlow&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.1} color="rgba(76,175,80,0.2)" />}
               {!disableNodeGlow&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R*1.05} color="rgba(255,152,0,0.2)" />}
               {isInteracting&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.1)" />}
@@ -731,9 +738,11 @@ function SkiaTreeCanvas({
                 ) : (
                   <Path path={nodePath} style="fill" color={fill} opacity={opacity} />
                 )}
-                <Group transform={[{scale:0.92*scalePulse}]}> 
-                  <Path path={nodePath} style="fill" color="#000000" opacity={0.14} />
-                </Group>
+                {!fastMode&&(
+                  <Group transform={[{scale:0.92*scalePulse}]}> 
+                    <Path path={nodePath} style="fill" color="#000000" opacity={0.14} />
+                  </Group>
+                )}
                 <Path path={nodePath} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
                 {!LOD.isFar&&!isInteracting&&<Circle cx={-7} cy={-8} r={NODE_R*0.11} color="rgba(255,255,255,0.28)" />}
               </Group>
@@ -1161,10 +1170,14 @@ function TreeScreen(){
   const visibleNodes=useMemo(()=>{
     if(!visibleBounds) return tree.nodes;
     const margin=Math.min(Math.max((NODE_R*2)/xform.sc,NODE_R*2),NODE_R*12);
-    return tree.nodes.filter(n=>
+    const arr = tree.nodes.filter(n=>
       n.x>=visibleBounds.left-margin&&n.x<=visibleBounds.right+margin&&
       n.y>=visibleBounds.top-margin&&n.y<=visibleBounds.bottom+margin
     );
+    if(xform.sc<0.35&&arr.length>220){
+      return arr.filter((_,i)=>i%2===0);
+    }
+    return arr;
   },[tree.nodes,visibleBounds,xform.sc]);
 
   const visibleNodeIds=useMemo(()=>new Set(visibleNodes.map(n=>n.id)),[visibleNodes]);
@@ -1190,10 +1203,18 @@ function TreeScreen(){
   }),[lodTier]);
 
   const edgeVisual=useMemo(()=>{
-    if(LOD.isFar) return {masteredW:1.1,readyW:0.95,lockedW:0.85,masteredO:0.62,readyO:0.48,lockedO:0.25};
-    if(LOD.isMid) return {masteredW:1.7,readyW:1.4,lockedW:1.1,masteredO:0.74,readyO:0.6,lockedO:0.3};
-    return {masteredW:2.5,readyW:2.1,lockedW:1.4,masteredO:0.86,readyO:0.72,lockedO:0.38};
-  },[LOD.isFar,LOD.isMid]);
+    let v;
+    if(LOD.isFar) v = {masteredW:1.1,readyW:0.95,lockedW:0.85,masteredO:0.62,readyO:0.48,lockedO:0.25};
+    else if(LOD.isMid) v = {masteredW:1.7,readyW:1.4,lockedW:1.1,masteredO:0.74,readyO:0.6,lockedO:0.3};
+    else v = {masteredW:2.5,readyW:2.1,lockedW:1.4,masteredO:0.86,readyO:0.72,lockedO:0.38};
+    if(!isInteracting) return v;
+    return {
+      ...v,
+      masteredO:v.masteredO*0.6,
+      readyO:v.readyO*0.6,
+      lockedO:v.lockedO*0.6,
+    };
+  },[LOD.isFar,LOD.isMid,isInteracting]);
 
   useEffect(()=>{
     if(!DEV_PERF_LOG) return;
