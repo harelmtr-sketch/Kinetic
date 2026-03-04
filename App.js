@@ -401,7 +401,7 @@ const np = StyleSheet.create({
 function SkiaTreeCanvas({
   tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
-  dragVisual, LOD, edgeVisual,
+  dragIdV, dragXV, dragYV, draggingV, LOD, edgeVisual,
   bld, connA, isInteracting,
   selectedNodeId, selPulseV,
   canvasSize, nStyle,
@@ -411,17 +411,26 @@ function SkiaTreeCanvas({
   const warnedMissingRef = useRef(false);
 
   useEffect(()=>{
-    if((!txV||!tyV||!scV||!selPulseV)&&!warnedMissingRef.current){
+    if((!txV||!tyV||!scV||!selPulseV||!dragIdV||!dragXV||!dragYV||!draggingV)&&!warnedMissingRef.current){
       if(__DEV__) console.warn('[SkiaTreeCanvas] Missing shared value(s); using safe fallbacks.');
       warnedMissingRef.current=true;
     }
-  },[txV,tyV,scV,selPulseV]);
+  },[txV,tyV,scV,selPulseV,dragIdV,dragXV,dragYV,draggingV]);
 
   const sceneTransform = useDerivedValue(()=>([
     { translateX: txV?.value ?? 0 },
     { translateY: tyV?.value ?? 0 },
     { scale: scV?.value ?? 1 },
   ]),[txV,tyV,scV]);
+
+  const dragPos = useDerivedValue(()=>(
+    {
+      id: dragIdV?.value ?? '',
+      x: dragXV?.value ?? 0,
+      y: dragYV?.value ?? 0,
+      on: (draggingV?.value ?? 0) === 1,
+    }
+  ),[dragIdV,dragXV,dragYV,draggingV]);
 
   const t = useSharedValue(0);
   useEffect(()=>{
@@ -464,8 +473,8 @@ function SkiaTreeCanvas({
     for(const seg of edgeSegments){
       const fn = seg.from;
       const tn = seg.to;
-      const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
-      const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
+      const fromPos=fn;
+      const toPos=tn;
       let bucket=locked;
       if(!bld){
         const fromState=nodeStatusMap[fn.id] || 'locked';
@@ -487,11 +496,18 @@ function SkiaTreeCanvas({
       }else{
         hasLocked=true;
       }
-      bucket.moveTo(fromPos.x,fromPos.y);
-      bucket.lineTo(toPos.x,toPos.y);
+      const ax=fromPos.x, ay=fromPos.y, bx=toPos.x, by=toPos.y;
+      const mx=(ax+bx)/2, my=(ay+by)/2;
+      const bend=0.14;
+      const cx1=ax+(mx-ax)*0.6;
+      const cy1=ay+(my-ay)*0.6-(bx-ax)*bend;
+      const cx2=bx-(bx-mx)*0.6;
+      const cy2=by-(by-my)*0.6+(bx-ax)*bend;
+      bucket.moveTo(ax,ay);
+      bucket.cubicTo(cx1,cy1,cx2,cy2,bx,by);
     }
     return { mastered, ready, locked, readySegments, hasMastered, hasReady, hasLocked };
-  },[bld,dragVisual,edgeSegments,nodeStatusMap]);
+  },[bld,edgeSegments,nodeStatusMap]);
 
   const dustSeeds = useMemo(()=>{
     // NOTE: plain numeric seeds only; avoids undefined `.value` crashes in dust map loops.
@@ -571,8 +587,8 @@ function SkiaTreeCanvas({
 
         {visibleNodes.map(n=>{
           const {fill,stroke,sw,opacity}=nStyle(n);
-          const rx=dragVisual?.id===n.id?dragVisual.x:n.x;
-          const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
+          const rx=dragPos.value.on&&dragPos.value.id===n.id?dragPos.value.x:n.x;
+          const ry=dragPos.value.on&&dragPos.value.id===n.id?dragPos.value.y:n.y;
           const lines=wrappedLabels[n.id]||[{text:n.name,dx:n.name.length*2.8}];
           const lh=13;
           const sy=ry-(lines.length*lh)/2+lh*0.8;
@@ -692,7 +708,6 @@ function TreeScreen(){
   },[xform.sc,xform.tx,xform.ty]);
 
   useEffect(()=>()=>{
-    if(dragVisualRaf.current!=null) cancelAnimationFrame(dragVisualRaf.current);
     if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
   },[]);
 
@@ -713,30 +728,15 @@ function TreeScreen(){
   const pMx0=useRef(0),pMy0=useRef(0);
   const dId=useRef(null),dNx=useRef(0),dNy=useRef(0),dPx=useRef(0),dPy=useRef(0);
   const dragLive=useRef({id:null,x:0,y:0});
-  const [dragVisual,setDragVisual]=useState(null);
-  const dragVisualRef=useRef(null);
-  const dragVisualRaf=useRef(null);
+  const dragIdV=useSharedValue('');
+  const dragXV=useSharedValue(0);
+  const dragYV=useSharedValue(0);
+  const draggingV=useSharedValue(0);
   const glowDebounceRef=useRef(null);
   const [isInteracting,setIsInteracting]=useState(false);
   const isInteractingRef=useRef(false);
   const selPulseV=useSharedValue(0);
 
-  const setDragVisualThrottled=next=>{
-    dragVisualRef.current=next;
-    if(dragVisualRaf.current!=null) return;
-    dragVisualRaf.current=requestAnimationFrame(()=>{
-      dragVisualRaf.current=null;
-      setDragVisual(dragVisualRef.current);
-    });
-  };
-  const clearDragVisual=()=>{
-    dragVisualRef.current=null;
-    if(dragVisualRaf.current!=null){
-      cancelAnimationFrame(dragVisualRaf.current);
-      dragVisualRaf.current=null;
-    }
-    setDragVisual(null);
-  };
   const beginInteraction=()=>{
     if(glowDebounceRef.current){
       clearTimeout(glowDebounceRef.current);
@@ -778,7 +778,7 @@ function TreeScreen(){
       const ts=evt.nativeEvent.touches;
       moved.current=false;dId.current=null;pOn.current=false;
       dragLive.current={id:null,x:0,y:0};
-      clearDragVisual();
+      draggingV.value=0; dragIdV.value='';
       beginInteraction();
       if(ts.length>=2){
         gestureActive.current=true;
@@ -797,7 +797,7 @@ function TreeScreen(){
           dId.current=hit.id;dNx.current=hit.x;dNy.current=hit.y;
           const p=toSVG(t.pageX,t.pageY);dPx.current=p.x;dPy.current=p.y;
           dragLive.current={id:hit.id,x:hit.x,y:hit.y};
-          setDragVisualThrottled({id:hit.id,x:hit.x,y:hit.y});
+          dragIdV.value=hit.id; dragXV.value=hit.x; dragYV.value=hit.y; draggingV.value=1;
         }
       }
     },
@@ -830,7 +830,7 @@ function TreeScreen(){
         const p=toSVG(t.pageX,t.pageY);
         const nx=dNx.current+(p.x-dPx.current),ny=dNy.current+(p.y-dPy.current);
         dragLive.current={id:dId.current,x:nx,y:ny};
-        setDragVisualThrottled({id:dId.current,x:nx,y:ny});
+        dragIdV.value=dId.current; dragXV.value=nx; dragYV.value=ny; draggingV.value=1;
         gLx.current=t.pageX;gLy.current=t.pageY;return;
       }
       gestureActive.current=true;
@@ -851,12 +851,12 @@ function TreeScreen(){
         }
         dId.current=null;
         dragLive.current={id:null,x:0,y:0};
-        clearDragVisual();
+        draggingV.value=0; dragIdV.value='';
         return;
       }
       dId.current=null;
       dragLive.current={id:null,x:0,y:0};
-      clearDragVisual();
+      draggingV.value=0; dragIdV.value='';
       if(moved.current) return;
       const{pageX,pageY}=evt.nativeEvent;
       const hit=hitNode(pageX,pageY);
@@ -905,7 +905,7 @@ function TreeScreen(){
       endInteraction();
       dId.current=null;
       dragLive.current={id:null,x:0,y:0};
-      clearDragVisual();
+      draggingV.value=0; dragIdV.value='';
     },
   })).current;
 
@@ -1151,7 +1151,10 @@ function TreeScreen(){
             txV={txV}
             tyV={tyV}
             scV={scV}
-            dragVisual={dragVisual}
+            dragIdV={dragIdV}
+            dragXV={dragXV}
+            dragYV={dragYV}
+            draggingV={draggingV}
             LOD={LOD}
             edgeVisual={edgeVisual}
             bld={bld}
