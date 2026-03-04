@@ -526,9 +526,10 @@ function SkiaTreeCanvas({
   tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
   dragIdV, dragXV, dragYV, draggingV, LOD, edgeVisual,
-  bld, connA, isInteracting,
+  bld, connA, isInteractingV,
   selectedNodeId, selPulseV,
   canvasSize, nStyle,
+  incidentByNode,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
   const shapeCacheRef = useRef(new Map());
@@ -555,6 +556,28 @@ function SkiaTreeCanvas({
     on: (draggingV?.value ?? 0) === 1,
   }),[dragIdV,dragXV,dragYV,draggingV]);
 
+  const interactionOn = ((isInteractingV?.value ?? 0) === 1) || dragPos.value.on;
+  const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+
+  const dragEdgeOverlay = useMemo(()=>{
+    if(!dragPos.value.on || !dragPos.value.id) return null;
+    const list = incidentByNode?.get(dragPos.value.id);
+    if(!list || !list.length) return null;
+    const p = Skia.Path.Make();
+    for(const e of list){
+      const a = nodeMap.get(e.from);
+      const b = nodeMap.get(e.to);
+      if(!a || !b) continue;
+      const ax = a.id===dragPos.value.id ? dragPos.value.x : a.x;
+      const ay = a.id===dragPos.value.id ? dragPos.value.y : a.y;
+      const bx = b.id===dragPos.value.id ? dragPos.value.x : b.x;
+      const by = b.id===dragPos.value.id ? dragPos.value.y : b.y;
+      p.moveTo(ax, ay);
+      p.lineTo(bx, by);
+    }
+    return p;
+  },[incidentByNode,nodeMap,dragPos.value.id,dragPos.value.on,dragPos.value.x,dragPos.value.y]);
+
   const t = useSharedValue(0);
   useEffect(()=>{
     let rafId;
@@ -576,8 +599,6 @@ function SkiaTreeCanvas({
   const selectedRingOpacity = useDerivedValue(()=>0.15 + (safeSelPulse.value * 0.2),[safeSelPulse]);
   const selectedRingRadius = useDerivedValue(()=>NODE_R + 8 + (safeSelPulse.value * 3),[safeSelPulse]);
   const shimmer = useDerivedValue(() => t.value * Math.PI * 2, [t]);
-
-  const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
 
   const edgeSegments = useMemo(()=>visibleEdges.map(e=>({
     key:`${e.from}|${e.to}`,
@@ -632,10 +653,10 @@ function SkiaTreeCanvas({
   },[bld,connA,edgeSegments,nodeStatusMap]);
 
   const farNodeR = NODE_R*0.34;
-  const fastMode = isInteracting || LOD.isFar;
-  const showLabels = LOD.isNear && visibleNodes.length<=90 && !isInteracting;
+  const fastMode = interactionOn || LOD.isFar;
+  const showLabels = LOD.isNear && visibleNodes.length<=90 && !interactionOn;
   const showEdgeGlow = visibleEdges.length<=180;
-  const disableNodeGlow = visibleNodes.length>120 || LOD.isMid || LOD.isFar || isInteracting;
+  const disableNodeGlow = visibleNodes.length>120 || LOD.isMid || LOD.isFar || interactionOn;
 
   const sweepPath = useMemo(()=>makeStarPath(8),[]);
   const getNodePath = (id,status,renderR)=>{
@@ -673,14 +694,14 @@ function SkiaTreeCanvas({
         txV={txV}
         tyV={tyV}
         scV={scV}
-        isInteracting={isInteracting}
+        isInteracting={interactionOn}
       />
 
       <Group transform={sceneTransform}>
-        {edgeBuckets.hasMastered&&!isInteracting&&showEdgeGlow&&(
+        {edgeBuckets.hasMastered&&!interactionOn&&showEdgeGlow&&(
           <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+3.2} color="rgba(76,175,80,0.18)" strokeCap="round" />
         )}
-        {edgeBuckets.hasReady&&!isInteracting&&showEdgeGlow&&(
+        {edgeBuckets.hasReady&&!interactionOn&&showEdgeGlow&&(
           <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW+2.8} color="rgba(255,173,64,0.16)" strokeCap="round" />
         )}
 
@@ -696,7 +717,11 @@ function SkiaTreeCanvas({
           <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO})`:`rgba(97,88,79,${edgeVisual.lockedO})`} strokeCap="round" />
         )}
 
-        {!isInteracting&&LOD.isNear&&edgeBuckets.readySegments.slice(0,20).map(seg=>{
+        {dragEdgeOverlay&&(
+          <Path path={dragEdgeOverlay} style="stroke" strokeWidth={edgeVisual.readyW+0.6} color="rgba(255,193,7,0.55)" strokeCap="round" />
+        )}
+
+        {!interactionOn&&LOD.isNear&&edgeBuckets.readySegments.slice(0,20).map(seg=>{
           const segT=((t.value + seg.seed) % 1);
           const x=seg.x1 + (seg.x2-seg.x1)*segT;
           const y=seg.y1 + (seg.y2-seg.y1)*segT;
@@ -727,8 +752,8 @@ function SkiaTreeCanvas({
               {LOD.isMid&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R} color="rgba(255,152,0,0.075)" />}
               {!disableNodeGlow&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.1} color="rgba(76,175,80,0.2)" />}
               {!disableNodeGlow&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R*1.05} color="rgba(255,152,0,0.2)" />}
-              {isInteracting&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.1)" />}
-              {isInteracting&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R} color="rgba(255,152,0,0.09)" />}
+              {interactionOn&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.1)" />}
+              {interactionOn&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R} color="rgba(255,152,0,0.09)" />}
 
               <Group transform={[{translateX:rx},{translateY:ry}]}> 
                 {nodeShader ? (
@@ -744,14 +769,14 @@ function SkiaTreeCanvas({
                   </Group>
                 )}
                 <Path path={nodePath} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
-                {!LOD.isFar&&!isInteracting&&<Circle cx={-7} cy={-8} r={NODE_R*0.11} color="rgba(255,255,255,0.28)" />}
+                {!LOD.isFar&&!interactionOn&&<Circle cx={-7} cy={-8} r={NODE_R*0.11} color="rgba(255,255,255,0.28)" />}
               </Group>
 
               {selectedNodeId===n.id&&(
                 <Circle cx={rx} cy={ry} r={selectedRingRadius} style="stroke" strokeWidth={1.6} color="rgba(255,215,120,1)" opacity={selectedRingOpacity} />
               )}
 
-              {!isInteracting&&LOD.isNear&&isMastered&&(
+              {!interactionOn&&LOD.isNear&&isMastered&&(
                 <Group transform={[{translateX:rx},{translateY:ry},{rotate:shimmer.value + (seedPhase*Math.PI*2)}]}> 
                   <Path path={sweepPath} style="stroke" strokeWidth={1.6} color="rgba(233,255,241,0.7)" strokeCap="round" />
                 </Group>
@@ -869,8 +894,7 @@ function TreeScreen(){
   const dragVisualRaf=useRef(null);
   const dragVisualPending=useRef({id:'',x:0,y:0,on:0});
   const glowDebounceRef=useRef(null);
-  const [isInteracting,setIsInteracting]=useState(false);
-  const isInteractingRef=useRef(false);
+  const isInteractingV=useSharedValue(0);
   const selPulseV=useSharedValue(0);
 
   const beginInteraction=()=>{
@@ -878,20 +902,14 @@ function TreeScreen(){
       clearTimeout(glowDebounceRef.current);
       glowDebounceRef.current=null;
     }
-    if(!isInteractingRef.current){
-      isInteractingRef.current=true;
-      setIsInteracting(true);
-    }
+    isInteractingV.value=1;
   };
   const endInteraction=()=>{
     if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
     glowDebounceRef.current=setTimeout(()=>{
-      if(isInteractingRef.current){
-        isInteractingRef.current=false;
-        setIsInteracting(false);
-      }
+      isInteractingV.value=0;
       glowDebounceRef.current=null;
-    },180);
+    },90);
   };
 
   useEffect(()=>{
@@ -1108,6 +1126,17 @@ function TreeScreen(){
     return incoming;
   },[tree.edges]);
 
+  const incidentByNode=useMemo(()=>{
+    const map=new Map();
+    for(const e of tree.edges){
+      if(!map.has(e.from)) map.set(e.from,[]);
+      if(!map.has(e.to)) map.set(e.to,[]);
+      map.get(e.from).push(e);
+      map.get(e.to).push(e);
+    }
+    return map;
+  },[tree.edges]);
+
   const nodeStatusMap=useMemo(()=>{
     const status={};
     for(const n of tree.nodes){
@@ -1203,18 +1232,10 @@ function TreeScreen(){
   }),[lodTier]);
 
   const edgeVisual=useMemo(()=>{
-    let v;
-    if(LOD.isFar) v = {masteredW:1.1,readyW:0.95,lockedW:0.85,masteredO:0.62,readyO:0.48,lockedO:0.25};
-    else if(LOD.isMid) v = {masteredW:1.7,readyW:1.4,lockedW:1.1,masteredO:0.74,readyO:0.6,lockedO:0.3};
-    else v = {masteredW:2.5,readyW:2.1,lockedW:1.4,masteredO:0.86,readyO:0.72,lockedO:0.38};
-    if(!isInteracting) return v;
-    return {
-      ...v,
-      masteredO:v.masteredO*0.6,
-      readyO:v.readyO*0.6,
-      lockedO:v.lockedO*0.6,
-    };
-  },[LOD.isFar,LOD.isMid,isInteracting]);
+    if(LOD.isFar) return {masteredW:1.1,readyW:0.95,lockedW:0.85,masteredO:0.62,readyO:0.48,lockedO:0.25};
+    if(LOD.isMid) return {masteredW:1.7,readyW:1.4,lockedW:1.1,masteredO:0.74,readyO:0.6,lockedO:0.3};
+    return {masteredW:2.5,readyW:2.1,lockedW:1.4,masteredO:0.86,readyO:0.72,lockedO:0.38};
+  },[LOD.isFar,LOD.isMid]);
 
   useEffect(()=>{
     if(!DEV_PERF_LOG) return;
@@ -1320,11 +1341,12 @@ function TreeScreen(){
             edgeVisual={edgeVisual}
             bld={bld}
             connA={connA}
-            isInteracting={isInteracting}
+            isInteractingV={isInteractingV}
             selectedNodeId={sel?.id ?? null}
             selPulseV={selPulseV}
             canvasSize={canvasSize}
             nStyle={nStyle}
+            incidentByNode={incidentByNode}
           />
         )}
       </View>
