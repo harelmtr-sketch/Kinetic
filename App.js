@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -29,8 +29,6 @@ import {
   Text as SkiaText,
   TileMode,
   matchFont,
-  useRectBuffer,
-  useRSXformBuffer,
 } from '@shopify/react-native-skia';
 import { Easing, useDerivedValue, useSharedValue, withRepeat, withTiming, configureReanimatedLogger } from 'react-native-reanimated';
 
@@ -419,6 +417,7 @@ const np = StyleSheet.create({
 
 function StoneBackgroundSkia({canvasSize, txV, tyV, scV, isInteracting}){
   const bgTransform = useDerivedValue(() => {
+    'worklet';
     const tx = txV?.value ?? 0;
     const ty = tyV?.value ?? 0;
     const sc = scV?.value ?? 1;
@@ -547,20 +546,26 @@ function SkiaTreeCanvas({
     }
   },[txV,tyV,scV,selPulseV,dragIdV,dragXV,dragYV,draggingV]);
 
-  const sceneTransform = useDerivedValue(()=>([
+  const sceneTransform = useDerivedValue(()=>{
+    'worklet';
+    return [
     { translateX: txV?.value ?? 0 },
     { translateY: tyV?.value ?? 0 },
     { scale: scV?.value ?? 1 },
-  ]),[txV,tyV,scV]);
+    ];
+  },[txV,tyV,scV]);
 
-  const dragPos = useDerivedValue(()=>({
+  const dragPos = useDerivedValue(()=>{
+    'worklet';
+    return {
     id: dragIdV?.value ?? '',
     x: dragXV?.value ?? 0,
     y: dragYV?.value ?? 0,
     on: (draggingV?.value ?? 0) === 1,
-  }),[dragIdV,dragXV,dragYV,draggingV]);
+    };
+  },[dragIdV,dragXV,dragYV,draggingV]);
 
-  const interactionOn = ((isInteractingV?.value ?? 0) === 1) || dragPos.value.on;
+  const interactionOn = dragPos.value.on;
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
 
   const dragEdgeOverlay = useMemo(()=>{
@@ -731,21 +736,18 @@ function SkiaTreeCanvas({
     return surface.makeImageSnapshot();
   },[]);
 
-  const atlasSprites = useRectBuffer(staticNodes.length, (rect, i)=>{
-    const n = staticNodes[i];
+  const atlasSprites = useMemo(()=>staticNodes.map(n=>{
     const status=nodeStatusMap[n.id]||'locked';
     const spriteIdx = status==='start' ? 3 : status==='mastered' ? 2 : status==='ready' ? 1 : 0;
-    rect.setXYWH(spriteIdx*atlasCell, 0, atlasCell, atlasCell);
-  });
-  const atlasTransforms = useRSXformBuffer(staticNodes.length, (tx, i)=>{
-    const n = staticNodes[i];
-    const status=nodeStatusMap[n.id]||'locked';
+    return {x:spriteIdx*atlasCell,y:0,width:atlasCell,height:atlasCell};
+  }),[atlasCell,nodeStatusMap,staticNodes]);
+  const atlasTransforms = useMemo(()=>staticNodes.map(n=>{
     const renderR=LOD.isFar?farNodeR:NODE_R;
     const scale = renderR / atlasNodeR;
     const cx = atlasCell * 0.5;
     const cy = atlasCell * 0.5;
-    tx.set(scale, 0, n.x - scale * cx, n.y - scale * cy);
-  });
+    return {scos:scale, ssin:0, tx:n.x - scale * cx, ty:n.y - scale * cy};
+  }),[LOD.isFar,atlasCell,atlasNodeR,farNodeR,staticNodes]);
 
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
