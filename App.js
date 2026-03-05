@@ -391,19 +391,14 @@ function SkiaTreeCanvas({
     const image = surface.makeImageSnapshot();
     const sprites = [Skia.XYWHRect(0, 0, spriteSize, spriteSize)];
     const transforms = new Array(N);
-    const indices = new Array(N);
+    const indices = new Uint16Array(N);
 
     for (let i = 0; i < N; i++) {
       const x = (rand() - 0.5) * W;
       const y = (rand() - 0.5) * H;
       const s = 0.45 + rand() * 0.9;
 
-      transforms[i] = {
-        scos: s,
-        ssin: 0,
-        tx: x,
-        ty: y,
-      };
+      transforms[i] = Skia.RSXform(s, 0, x, y);
       indices[i] = 0;
     }
 
@@ -455,8 +450,6 @@ function SkiaTreeCanvas({
           image={dustAtlas.image}
           sprites={dustAtlas.sprites}
           transforms={dustAtlas.transforms}
-          colors={undefined}
-          blendMode="srcOver"
           indices={dustAtlas.indices}
         />
         {edgeBuckets.hasMastered&&LOD.isNear&&!isInteracting&&USE_GLOW&&(
