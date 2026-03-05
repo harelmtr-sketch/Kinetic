@@ -366,6 +366,7 @@ const NODE_ATLAS_VARIANTS = ['locked','ready','mastered','start','selected','con
 const ICON_CELL = 128;
 const ICON_TARGET_SIZE = 70;
 const FORCE_FALLBACK_NODES = false;
+const DEBUG_DISABLE_ATLAS = false;
 const NODE_ICON_MAP = {
   start: 'star',
   dead_hang: 'link',
@@ -628,6 +629,9 @@ function SkiaTreeCanvas({
     };
   }, []);
   const atlasOk = !FORCE_FALLBACK_NODES && !!nodeAtlas?.tokenAtlasImage && !!nodeAtlas?.haloAtlasImage && !!nodeAtlas?.ringAtlasImage && !!nodeAtlas?.rectsByVariant;
+  const atlasWorks = Platform.OS !== 'android';
+  const useAtlas = !DEBUG_DISABLE_ATLAS && atlasWorks && atlasOk;
+  const canManualImageNodes = !DEBUG_DISABLE_ATLAS && !useAtlas && !!nodeAtlas?.tokenAtlasImage && !!nodeAtlas?.rectsByVariant;
 
   const dustAtlasSets = useMemo(() => {
     const W = 3600;
@@ -817,11 +821,13 @@ function SkiaTreeCanvas({
       </Rect>
 
       <Group transform={sceneTransform}>
-        <Atlas
-          image={dustAtlas.image}
-          sprites={dustAtlas.sprites}
-          transforms={dustAtlas.transforms}
-        />
+        {useAtlas && (
+          <Atlas
+            image={dustAtlas.image}
+            sprites={dustAtlas.sprites}
+            transforms={dustAtlas.transforms}
+          />
+        )}
 
         <Path path={edgeBuckets.branchBase} style="stroke" strokeWidth={LOD.isFar?2.2:LOD.isMid?3.1:4.2} color="rgba(42,34,28,0.58)" strokeCap="round" />
         <Path path={edgeBuckets.branchBase} style="stroke" strokeWidth={LOD.isFar?0.9:1.2} color="rgba(20,17,14,0.45)" strokeCap="round" />
@@ -862,7 +868,7 @@ function SkiaTreeCanvas({
           <Path path={dragEdgeOverlay.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(110,95,80,${Math.min(0.6,edgeVisual.lockedO+0.15)})`:`rgba(94,84,75,${Math.min(0.55,edgeVisual.lockedO+0.12)})`} strokeCap="round" />
         )}
 
-        {atlasOk ? (
+        {useAtlas ? (
           <>
             {!LOD.isFar && nodeSprites.haloSprites.length > 0 && (
               <Group blendMode="screen">
@@ -881,6 +887,51 @@ function SkiaTreeCanvas({
             {LOD.isNear && !isInteracting && nodeSprites.iconSprites.length > 0 && (
               <Atlas image={nodeAtlas.iconAtlasImage} sprites={nodeSprites.iconSprites} transforms={nodeSprites.iconTransforms} />
             )}
+          </>
+        ) : canManualImageNodes ? (
+          <>
+            {visibleNodes.map((n) => {
+              const status = nodeStatusMap[n.id] || 'locked';
+              const rx = dragVisual?.id===n.id ? dragVisual.x : n.x;
+              const ry = dragVisual?.id===n.id ? dragVisual.y : n.y;
+              const variant = bld && connA===n.id ? 'connectTarget' : selectedNodeId===n.id ? 'selected' : status;
+              const cellRect = nodeAtlas.rectsByVariant[variant] || nodeAtlas.rectsByVariant.locked;
+              const tokenScale = nodeScaleByLod;
+              const tokenSize = NODE_ATLAS_CELL * tokenScale;
+              const tokenRect = Skia.XYWHRect(rx - tokenSize/2, ry - tokenSize/2, tokenSize, tokenSize);
+              const isLit = status==='start' || status==='mastered' || status==='ready' || variant==='selected' || variant==='connectTarget';
+              const showRing = LOD.showOuterRing && (status === 'mastered' || status === 'start' || status === 'ready' || variant === 'connectTarget' || variant === 'selected');
+              const haloScale = tokenScale * (LOD.isNear ? 1.16 : 1.06);
+              const haloSize = NODE_ATLAS_CELL * haloScale;
+              const haloRect = Skia.XYWHRect(rx - haloSize/2, ry - haloSize/2, haloSize, haloSize);
+              const ringScale = tokenScale * 1.24;
+              const ringSize = NODE_ATLAS_CELL * ringScale;
+              const ringRect = Skia.XYWHRect(rx - ringSize/2, ry - ringSize/2, ringSize, ringSize);
+              const iconKey = NODE_ICON_MAP[n.id] || 'star';
+              const iconRect = nodeAtlas.iconRectsByKey?.[iconKey];
+              const iconScale = 0.26;
+              const iconSize = ICON_CELL * iconScale;
+              const iconDst = Skia.XYWHRect(rx - iconSize/2, ry - iconSize/2, iconSize, iconSize);
+
+              return (
+                <Group key={n.id}>
+                  {isLit && !LOD.isFar && (
+                    <Group blendMode="screen">
+                      <Image image={nodeAtlas.haloAtlasImage} rect={cellRect} x={haloRect.x} y={haloRect.y} width={haloRect.width} height={haloRect.height} fit="fill" />
+                    </Group>
+                  )}
+                  <Image image={nodeAtlas.tokenAtlasImage} rect={cellRect} x={tokenRect.x} y={tokenRect.y} width={tokenRect.width} height={tokenRect.height} fit="fill" />
+                  {showRing && (
+                    <Group blendMode="screen">
+                      <Image image={nodeAtlas.ringAtlasImage} rect={cellRect} x={ringRect.x} y={ringRect.y} width={ringRect.width} height={ringRect.height} fit="fill" />
+                    </Group>
+                  )}
+                  {LOD.isNear && !isInteracting && iconRect && (
+                    <Image image={nodeAtlas.iconAtlasImage} rect={iconRect} x={iconDst.x} y={iconDst.y} width={iconDst.width} height={iconDst.height} fit="fill" />
+                  )}
+                </Group>
+              );
+            })}
           </>
         ) : (
           <>
