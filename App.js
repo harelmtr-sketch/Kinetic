@@ -646,7 +646,7 @@ function SkiaTreeCanvas({
   const farNodeR = NODE_R*0.34;
   const useFancy = (!interactionOn && LOD.isNear);
   const fastMode = !useFancy || LOD.isFar;
-  const showLabels = LOD.isNear && visibleNodes.length<=90 && !interactionOn;
+  const showLabels = LOD.isNear && visibleNodes.length<=90 && !fastMode;
   const showEdgeGlow = visibleEdges.length<=180;
   const disableNodeGlow = visibleNodes.length>120 || LOD.isMid || LOD.isFar || interactionOn;
   const dynamicNodeIds = useMemo(()=>{
@@ -738,14 +738,6 @@ function SkiaTreeCanvas({
   return(
     <View style={{width:canvasSize.width,height:canvasSize.height,position:'relative'}}>
       <Canvas style={{position:'absolute',left:0,top:0,width:canvasSize.width,height:canvasSize.height}}>
-        <StoneBackgroundSkia
-          canvasSize={canvasSize}
-          txV={txV}
-          tyV={tyV}
-          scV={scV}
-          isInteracting={interactionOn}
-        />
-
         <Group transform={sceneTransformFallback}>
           {edgeBuckets.hasMastered&&showEdgeGlow&&(
             <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={interactionOn?(edgeVisual.masteredW+3.8):(edgeVisual.masteredW+3.2)} color={interactionOn?"rgba(86,210,110,0.2)":"rgba(76,175,80,0.2)"} strokeCap="round">
@@ -763,7 +755,7 @@ function SkiaTreeCanvas({
           )}
           {edgeBuckets.hasReady&&(
             <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW} color={`rgba(255,152,0,${edgeVisual.readyO})`} strokeCap="round">
-              {LOD.useDashedReady&&!bld&&<DashPathEffect intervals={[12,10]} />}
+              {LOD.useDashedReady&&!bld&&!fastMode&&<DashPathEffect intervals={[12,10]} />}
             </Path>
           )}
           {edgeBuckets.hasLocked&&(
@@ -955,14 +947,24 @@ function TreeScreen(){
 
   useEffect(()=>()=>{
     if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
-    if(dragVisualRaf.current!=null){
-      cancelAnimationFrame(dragVisualRaf.current);
-      dragVisualRaf.current=null;
-    }
   },[]);
 
   const cL=useRef(0),cT=useRef(0),cRef=useRef(null);
   const measureC=()=>cRef.current?.measure((_,__,_w,_h,px,py)=>{cL.current=px;cT.current=py;});
+
+  const nodeById=useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+  const hitCellSize=NODE_R*3;
+  const nodeGrid=useMemo(()=>{
+    const g=new Map();
+    for(const n of tree.nodes){
+      const cx=Math.floor(n.x/hitCellSize);
+      const cy=Math.floor(n.y/hitCellSize);
+      const k=`${cx},${cy}`;
+      if(!g.has(k)) g.set(k,[]);
+      g.get(k).push(n.id);
+    }
+    return g;
+  },[hitCellSize,tree.nodes]);
 
   const toSVG=(px,py)=>({
     x:(px-cL.current-txN.current)/scN.current,
@@ -970,7 +972,23 @@ function TreeScreen(){
   });
   const hitNode=(px,py)=>{
     const p=toSVG(px,py);
-    return tR.current.nodes.find(n=>Math.hypot(n.x-p.x,n.y-p.y)<=NODE_R+14);
+    const cx=Math.floor(p.x/hitCellSize);
+    const cy=Math.floor(p.y/hitCellSize);
+    let best=null;
+    let bestD=Infinity;
+    for(let ox=-1;ox<=1;ox++){
+      for(let oy=-1;oy<=1;oy++){
+        const ids=nodeGrid.get(`${cx+ox},${cy+oy}`);
+        if(!ids) continue;
+        for(const id of ids){
+          const n=nodeById.get(id);
+          if(!n) continue;
+          const d=Math.hypot(n.x-p.x,n.y-p.y);
+          if(d<=NODE_R+14&&d<bestD){best=n;bestD=d;}
+        }
+      }
+    }
+    return best;
   };
 
   const gSx=useRef(0),gSy=useRef(0),gLx=useRef(0),gLy=useRef(0),moved=useRef(false);
@@ -982,8 +1000,6 @@ function TreeScreen(){
   const dragXV=useSharedValue(0);
   const dragYV=useSharedValue(0);
   const draggingV=useSharedValue(0);
-  const dragVisualRaf=useRef(null);
-  const dragVisualPending=useRef({id:'',x:0,y:0,on:0});
   const glowDebounceRef=useRef(null);
   const isInteractingV=useSharedValue(0);
   const selPulseV=useSharedValue(0);
@@ -1014,17 +1030,11 @@ function TreeScreen(){
     };
   },[selPulseV]);
 
-  const setDragVisualThrottled=(id,x,y,on=1)=>{
-    dragVisualPending.current={id,x,y,on};
-    if(dragVisualRaf.current!=null) return;
-    dragVisualRaf.current=requestAnimationFrame(()=>{
-      dragVisualRaf.current=null;
-      const next=dragVisualPending.current;
-      dragIdV.value=next.id;
-      dragXV.value=next.x;
-      dragYV.value=next.y;
-      draggingV.value=next.on;
-    });
+  const setDragVisual=(id,x,y,on=1)=>{
+    dragIdV.value=id;
+    dragXV.value=x;
+    dragYV.value=y;
+    draggingV.value=on;
   };
 
   const panR=useRef(PanResponder.create({
@@ -1036,7 +1046,7 @@ function TreeScreen(){
       const ts=evt.nativeEvent.touches;
       moved.current=false;dId.current=null;pOn.current=false;
       dragLive.current={id:null,x:0,y:0};
-      setDragVisualThrottled('',0,0,0);
+      setDragVisual('',0,0,0);
       beginInteraction();
       if(ts.length>=2){
         gestureActive.current=true;
@@ -1055,7 +1065,7 @@ function TreeScreen(){
           dId.current=hit.id;dNx.current=hit.x;dNy.current=hit.y;
           const p=toSVG(t.pageX,t.pageY);dPx.current=p.x;dPy.current=p.y;
           dragLive.current={id:hit.id,x:hit.x,y:hit.y};
-          setDragVisualThrottled(hit.id,hit.x,hit.y,1);
+          setDragVisual(hit.id,hit.x,hit.y,1);
         }
       }
     },
@@ -1088,7 +1098,7 @@ function TreeScreen(){
         const p=toSVG(t.pageX,t.pageY);
         const nx=dNx.current+(p.x-dPx.current),ny=dNy.current+(p.y-dPy.current);
         dragLive.current={id:dId.current,x:nx,y:ny};
-        setDragVisualThrottled(dId.current,nx,ny,1);
+        setDragVisual(dId.current,nx,ny,1);
         gLx.current=t.pageX;gLy.current=t.pageY;return;
       }
       gestureActive.current=true;
@@ -1109,12 +1119,12 @@ function TreeScreen(){
         }
         dId.current=null;
         dragLive.current={id:null,x:0,y:0};
-        setDragVisualThrottled('',0,0,0);
+        setDragVisual('',0,0,0);
         return;
       }
       dId.current=null;
       dragLive.current={id:null,x:0,y:0};
-      setDragVisualThrottled('',0,0,0);
+      setDragVisual('',0,0,0);
       if(moved.current) return;
       const{pageX,pageY}=evt.nativeEvent;
       const hit=hitNode(pageX,pageY);
@@ -1163,7 +1173,7 @@ function TreeScreen(){
       endInteraction();
       dId.current=null;
       dragLive.current={id:null,x:0,y:0};
-      setDragVisualThrottled('',0,0,0);
+      setDragVisual('',0,0,0);
     },
   })).current;
 
@@ -1303,7 +1313,7 @@ function TreeScreen(){
   const visibleNodeIds=useMemo(()=>new Set(visibleNodes.map(n=>n.id)),[visibleNodes]);
 
   const visibleEdges=useMemo(()=>tree.edges.filter(e=>
-    visibleNodeIds.has(e.from)||visibleNodeIds.has(e.to)
+    visibleNodeIds.has(e.from)&&visibleNodeIds.has(e.to)
   ),[tree.edges,visibleNodeIds]);
 
   const lodTier=useMemo(()=>{
@@ -1641,7 +1651,7 @@ const S=StyleSheet.create({
   ioT:     {color:C.textDim,fontSize:12,fontWeight:'800',letterSpacing:2},
   hintRow: {paddingHorizontal:16,paddingVertical:6,backgroundColor:C.bg},
   hintT:   {color:C.textFaint,fontSize:11,textAlign:'center',letterSpacing:0.5},
-  canvas:  {flex:1,backgroundColor:'transparent',overflow:'hidden'},
+  canvas:  {flex:1,backgroundColor:'#131110',overflow:'hidden'},
   legend:  {flexDirection:'row',justifyContent:'center',gap:28,paddingVertical:12,
             backgroundColor:C.bg,borderTopWidth:1,borderColor:C.stone},
   lr:      {flexDirection:'row',alignItems:'center',gap:7},
