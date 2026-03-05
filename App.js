@@ -16,6 +16,8 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  Atlas,
+  BlurMask,
   Canvas,
   Circle,
   DashPathEffect,
@@ -27,6 +29,8 @@ import {
   Text as SkiaText,
   TileMode,
   matchFont,
+  useRectBuffer,
+  useRSXformBuffer,
 } from '@shopify/react-native-skia';
 import { Easing, useDerivedValue, useSharedValue, withRepeat, withTiming, configureReanimatedLogger } from 'react-native-reanimated';
 
@@ -472,7 +476,7 @@ function StoneBackgroundSkia({canvasSize, txV, tyV, scV, isInteracting}){
     return Skia.Shader.MakeLinearGradient(
       { x: 0, y: 0 },
       { x: 0, y: canvasSize.height },
-      [Skia.Color(C.bg), Skia.Color(C.bgDeep)],
+      [Skia.Color('#201a15'), Skia.Color('#15110e')],
       [0, 1],
       TileMode.Clamp,
     );
@@ -486,8 +490,8 @@ function StoneBackgroundSkia({canvasSize, txV, tyV, scV, isInteracting}){
     return Skia.Shader.MakeRadialGradient(
       { x: cx, y: cy },
       rr,
-      [Skia.Color('#00000000'), Skia.Color('#000000D6')],
-      [0.48, 1],
+      [Skia.Color('#00000000'), Skia.Color('#0000009a')],
+      [0.58, 1],
       TileMode.Clamp,
     );
   }, [canvasSize.height, canvasSize.width]);
@@ -513,9 +517,9 @@ function StoneBackgroundSkia({canvasSize, txV, tyV, scV, isInteracting}){
         </Circle>
       )}
       <Group transform={bgTransform}>
-        <Path path={bgGeometry.veinPath} style="stroke" strokeWidth={1.05} color={`rgba(110,102,93,${0.08 * veinOpacity})`} strokeCap="round" />
+        <Path path={bgGeometry.veinPath} style="stroke" strokeWidth={1.05} color={`rgba(138,124,108,${0.1 * veinOpacity})`} strokeCap="round" />
         {visibleDust.map(d => (
-          <Rect key={d.id} x={d.x} y={d.y} width={d.s} height={d.s} color={`rgba(190,180,164,${d.o * dustOpacity})`} />
+          <Rect key={d.id} x={d.x} y={d.y} width={d.s} height={d.s} color={`rgba(210,198,176,${d.o * dustOpacity})`} />
         ))}
       </Group>
     </>
@@ -695,6 +699,54 @@ function SkiaTreeCanvas({
     return shader;
   };
 
+  // Atlas setup: render static node sprites once, then draw non-dragged nodes in one batched draw.
+  const atlasCell = 144;
+  const atlasNodeR = NODE_R;
+  const atlasImage = useMemo(()=>{
+    const width = atlasCell * 4;
+    const height = atlasCell;
+    const surface = Skia.Surface.MakeOffscreen(width, height);
+    if(!surface) return null;
+    const c = surface.getCanvas();
+    c.clear(Skia.Color('transparent'));
+
+    const defs = [
+      { body:'#d6d0c7', stroke:'#7b7266', halo:'rgba(170,160,145,0.08)' },
+      { body:'#f1e4cf', stroke:'#FFC107', halo:'rgba(255,193,7,0.12)' },
+      { body:'#d9efe0', stroke:'#4CAF50', halo:'rgba(76,175,80,0.13)' },
+      { body:'#d9efe0', stroke:'#4CAF50', halo:'rgba(76,175,80,0.16)' },
+    ];
+    defs.forEach((d,idx)=>{
+      const cx = atlasCell * idx + atlasCell * 0.5;
+      const cy = atlasCell * 0.5;
+      const haloP = Skia.Paint(); haloP.setColor(Skia.Color(d.halo));
+      c.drawCircle(cx, cy, atlasNodeR * 1.1, haloP);
+      const strokeP = Skia.Paint(); strokeP.setColor(Skia.Color(d.stroke));
+      c.drawCircle(cx, cy, atlasNodeR, strokeP);
+      const bodyP = Skia.Paint(); bodyP.setColor(Skia.Color(d.body));
+      c.drawCircle(cx, cy, atlasNodeR - 2.2, bodyP);
+      const shineP = Skia.Paint(); shineP.setColor(Skia.Color('rgba(255,255,255,0.16)'));
+      c.drawCircle(cx-8, cy-8, atlasNodeR*0.13, shineP);
+    });
+    return surface.makeImageSnapshot();
+  },[]);
+
+  const atlasSprites = useRectBuffer(staticNodes.length, (rect, i)=>{
+    const n = staticNodes[i];
+    const status=nodeStatusMap[n.id]||'locked';
+    const spriteIdx = status==='start' ? 3 : status==='mastered' ? 2 : status==='ready' ? 1 : 0;
+    rect.setXYWH(spriteIdx*atlasCell, 0, atlasCell, atlasCell);
+  });
+  const atlasTransforms = useRSXformBuffer(staticNodes.length, (tx, i)=>{
+    const n = staticNodes[i];
+    const status=nodeStatusMap[n.id]||'locked';
+    const renderR=LOD.isFar?farNodeR:NODE_R;
+    const scale = renderR / atlasNodeR;
+    const cx = atlasCell * 0.5;
+    const cy = atlasCell * 0.5;
+    tx.set(scale, 0, n.x - scale * cx, n.y - scale * cy);
+  });
+
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
       <StoneBackgroundSkia
@@ -706,11 +758,15 @@ function SkiaTreeCanvas({
       />
 
       <Group transform={sceneTransform}>
-        {edgeBuckets.hasMastered&&!interactionOn&&showEdgeGlow&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+3.2} color="rgba(76,175,80,0.18)" strokeCap="round" />
+        {edgeBuckets.hasMastered&&showEdgeGlow&&(
+          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={interactionOn?(edgeVisual.masteredW+3.8):(edgeVisual.masteredW+3.2)} color={interactionOn?"rgba(86,210,110,0.2)":"rgba(76,175,80,0.2)"} strokeCap="round">
+            {!interactionOn&&<BlurMask blur={7} style="solid" />}
+          </Path>
         )}
-        {edgeBuckets.hasReady&&!interactionOn&&showEdgeGlow&&(
-          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW+2.8} color="rgba(255,173,64,0.16)" strokeCap="round" />
+        {edgeBuckets.hasReady&&showEdgeGlow&&(
+          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={interactionOn?(edgeVisual.readyW+3.2):(edgeVisual.readyW+2.8)} color={interactionOn?"rgba(255,184,76,0.18)":"rgba(255,173,64,0.16)"} strokeCap="round">
+            {!interactionOn&&<BlurMask blur={6} style="solid" />}
+          </Path>
         )}
 
         {edgeBuckets.hasMastered&&(
@@ -736,61 +792,27 @@ function SkiaTreeCanvas({
           return <Circle key={`spark_${seg.key}`} cx={x} cy={y} r={1.8} color="rgba(255,223,167,0.86)" />;
         })}
 
-        {staticNodes.map(n=>{
-          const {fill,stroke,sw,opacity}=nStyle(n);
-          const rx=n.x;
-          const ry=n.y;
+        {atlasImage&&staticNodes.length>0&&(
+          <Atlas image={atlasImage} sprites={atlasSprites} transforms={atlasTransforms} />
+        )}
+
+        {showLabels&&staticNodes.map(n=>{
           const lines=wrappedLabels[n.id]||[{text:n.name,dx:n.name.length*2.8}];
           const lh=13;
-          const sy=ry-(lines.length*lh)/2+lh*0.8;
+          const sy=n.y-(lines.length*lh)/2+lh*0.8;
           const status=nodeStatusMap[n.id]||'locked';
           const isReady=status==='ready';
           const isMastered=status==='start'||status==='mastered';
-          const renderR=LOD.isFar?farNodeR:NODE_R;
-          const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
-          const nodePath = getNodePath(n.id, status, renderR);
-          const nodeShader = null;
-          const seedPhase = hashStringToFloat(n.id, 101);
-          const scalePulse = 0.96 + Math.sin((t.value + seedPhase) * Math.PI * 2) * 0.04;
-
-          return(
-            <Group key={n.id}>
-              {LOD.isMid&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.08)" />}
-              {LOD.isMid&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R} color="rgba(255,152,0,0.075)" />}
-              {!disableNodeGlow&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.1} color="rgba(76,175,80,0.2)" />}
-              {!disableNodeGlow&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R*1.05} color="rgba(255,152,0,0.2)" />}
-              {interactionOn&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.1)" />}
-              {interactionOn&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R} color="rgba(255,152,0,0.09)" />}
-
-              <Group transform={[{translateX:rx},{translateY:ry}]}> 
-                {nodeShader ? (
-                  <Path path={nodePath} style="fill" opacity={opacity}>
-                    <Paint shader={nodeShader} />
-                  </Path>
-                ) : (
-                  <Path path={nodePath} style="fill" color={fill} opacity={opacity} />
-                )}
-                {!fastMode&&(
-                  <Group transform={[{scale:0.92*scalePulse}]}> 
-                    <Path path={nodePath} style="fill" color="#000000" opacity={0.14} />
-                  </Group>
-                )}
-                <Path path={nodePath} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
-                {!LOD.isFar&&!interactionOn&&<Circle cx={-7} cy={-8} r={NODE_R*0.11} color="rgba(255,255,255,0.28)" />}
-              </Group>
-
-              {showLabels&&lines.map((ln,li)=>(
-                <SkiaText
-                  key={`${n.id}_${li}`}
-                  x={rx-ln.dx}
-                  y={sy+li*lh}
-                  text={ln.text}
-                  font={labelFont}
-                  color={(isMastered||isReady)?C.textMain:C.textDim}
-                />
-              ))}
-            </Group>
-          );
+          return lines.map((ln,li)=>(
+            <SkiaText
+              key={`st_${n.id}_${li}`}
+              x={n.x-ln.dx}
+              y={sy+li*lh}
+              text={ln.text}
+              font={labelFont}
+              color={(isMastered||isReady)?C.textMain:C.textDim}
+            />
+          ));
         })}
 
         {dynamicNodes.map(n=>{
@@ -1593,7 +1615,7 @@ const S=StyleSheet.create({
   ioT:     {color:C.textDim,fontSize:12,fontWeight:'800',letterSpacing:2},
   hintRow: {paddingHorizontal:16,paddingVertical:6,backgroundColor:C.bg},
   hintT:   {color:C.textFaint,fontSize:11,textAlign:'center',letterSpacing:0.5},
-  canvas:  {flex:1,backgroundColor:'#131110',overflow:'hidden'},
+  canvas:  {flex:1,backgroundColor:'transparent',overflow:'hidden'},
   legend:  {flexDirection:'row',justifyContent:'center',gap:28,paddingVertical:12,
             backgroundColor:C.bg,borderTopWidth:1,borderColor:C.stone},
   lr:      {flexDirection:'row',alignItems:'center',gap:7},
