@@ -17,7 +17,6 @@ import * as Sharing from 'expo-sharing';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Atlas,
-  BlurMask,
   Canvas,
   Circle,
   DashPathEffect,
@@ -740,14 +739,10 @@ function SkiaTreeCanvas({
       <Canvas style={{position:'absolute',left:0,top:0,width:canvasSize.width,height:canvasSize.height}}>
         <Group transform={sceneTransformFallback}>
           {edgeBuckets.hasMastered&&showEdgeGlow&&(
-            <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={interactionOn?(edgeVisual.masteredW+3.8):(edgeVisual.masteredW+3.2)} color={interactionOn?"rgba(86,210,110,0.2)":"rgba(76,175,80,0.2)"} strokeCap="round">
-              {!interactionOn&&<BlurMask blur={7} style="solid" />}
-            </Path>
+            <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={interactionOn?(edgeVisual.masteredW+3.8):(edgeVisual.masteredW+3.2)} color={interactionOn?"rgba(86,210,110,0.2)":"rgba(76,175,80,0.2)"} strokeCap="round" />
           )}
           {edgeBuckets.hasReady&&showEdgeGlow&&(
-            <Path path={edgeBuckets.ready} style="stroke" strokeWidth={interactionOn?(edgeVisual.readyW+3.2):(edgeVisual.readyW+2.8)} color={interactionOn?"rgba(255,184,76,0.18)":"rgba(255,173,64,0.16)"} strokeCap="round">
-              {!interactionOn&&<BlurMask blur={6} style="solid" />}
-            </Path>
+            <Path path={edgeBuckets.ready} style="stroke" strokeWidth={interactionOn?(edgeVisual.readyW+3.2):(edgeVisual.readyW+2.8)} color={interactionOn?"rgba(255,184,76,0.18)":"rgba(255,173,64,0.16)"} strokeCap="round" />
           )}
 
           {edgeBuckets.hasMastered&&(
