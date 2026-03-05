@@ -16,6 +16,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  Blur,
   Canvas,
   Circle,
   DashPathEffect,
@@ -24,10 +25,9 @@ import {
   Path,
   Skia,
   Text as SkiaText,
-  TileMode,
-  matchFont,
+  matchFont, TileMode,
 } from '@shopify/react-native-skia';
-import { Easing, useDerivedValue, useSharedValue, withRepeat, withTiming, configureReanimatedLogger } from 'react-native-reanimated';
+import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
 
 const STORAGE_KEY = 'calisthenics_tree_v1';
 const NODE_R = 46;
@@ -36,11 +36,6 @@ const MAX_SC = 6;
 const DEV_PERF_LOG = false;
 const USE_GLOW = true;
 const GLOW_QUALITY = 'low'; // 'low' | 'high'
-
-configureReanimatedLogger({
-  level: 1,
-  strict: false,
-});
 
 // Colours — dark stone palette
 const C = {
@@ -95,68 +90,6 @@ const INIT = {
   },
 };
 
-
-
-function hashStringToFloat(str, salt=0){
-  let h = 2166136261 ^ salt;
-  for(let i=0;i<str.length;i++){
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 10000) / 10000;
-}
-
-
-function makeStarPath(r){
-  const p = Skia.Path.Make();
-  const points = 8;
-  const inner = r * 0.52;
-  for(let i=0;i<points*2;i++){
-    const a = (-Math.PI/2) + (i*Math.PI/points);
-    const rr = i%2===0 ? r : inner;
-    const x = Math.cos(a)*rr;
-    const y = Math.sin(a)*rr;
-    if(i===0) p.moveTo(x,y);
-    else p.lineTo(x,y);
-  }
-  p.close();
-  return p;
-}
-function makeHexStonePath(r, seedKey){
-  const p = Skia.Path.Make();
-  for(let i=0;i<6;i++){
-    const a = (-Math.PI/2) + (i*Math.PI/3);
-    const j = 0.88 + hashStringToFloat(`${seedKey}_${i}`, 17) * 0.2;
-    const x = Math.cos(a)*r*j;
-    const y = Math.sin(a)*r*j;
-    if(i===0) p.moveTo(x,y);
-    else p.lineTo(x,y);
-  }
-  p.close();
-  return p;
-}
-function makeDiamondPath(r){
-  const b = r*0.3;
-  const pts = [
-    {x:0,y:-r},{x:b,y:-(r-b)},{x:r,y:0},{x:r-b,y:b},
-    {x:0,y:r},{x:-b,y:r-b},{x:-r,y:0},{x:-(r-b),y:-b},
-  ];
-  const p = Skia.Path.Make();
-  pts.forEach((pt,i)=>{ if(i===0) p.moveTo(pt.x,pt.y); else p.lineTo(pt.x,pt.y); });
-  p.close();
-  return p;
-}
-function makeRoundSquarePath(r, corner=10){
-  const c = Math.min(corner, r*0.45);
-  const pts = [
-    {x:-r+c,y:-r},{x:r-c,y:-r},{x:r,y:-r+c},{x:r,y:r-c},
-    {x:r-c,y:r},{x:-r+c,y:r},{x:-r,y:r-c},{x:-r,y:-r+c},
-  ];
-  const p = Skia.Path.Make();
-  pts.forEach((pt,i)=>{ if(i===0) p.moveTo(pt.x,pt.y); else p.lineTo(pt.x,pt.y); });
-  p.close();
-  return p;
-}
 
 function canUnlock(id,nodes,edges){
   const p=edges.filter(e=>e.to===id).map(e=>e.from);
@@ -408,77 +341,30 @@ const np = StyleSheet.create({
 function SkiaTreeCanvas({
   tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
-  dragIdV, dragXV, dragYV, draggingV, LOD, edgeVisual,
+  dragVisual, LOD, edgeVisual,
   bld, connA, isInteracting,
-  selectedNodeId, selPulseV,
   canvasSize, nStyle,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
-  const shapeCacheRef = useRef(new Map());
-  const warnedMissingRef = useRef(false);
-
-  useEffect(()=>{
-    if((!txV||!tyV||!scV||!selPulseV||!dragIdV||!dragXV||!dragYV||!draggingV)&&!warnedMissingRef.current){
-      if(__DEV__) console.warn('[SkiaTreeCanvas] Missing shared value(s); using safe fallbacks.');
-      warnedMissingRef.current=true;
-    }
-  },[txV,tyV,scV,selPulseV,dragIdV,dragXV,dragYV,draggingV]);
-
   const sceneTransform = useDerivedValue(()=>([
-    { translateX: txV?.value ?? 0 },
-    { translateY: tyV?.value ?? 0 },
-    { scale: scV?.value ?? 1 },
-  ]),[txV,tyV,scV]);
-
-  const dragPos = useDerivedValue(()=>({
-    id: dragIdV?.value ?? '',
-    x: dragXV?.value ?? 0,
-    y: dragYV?.value ?? 0,
-    on: (draggingV?.value ?? 0) === 1,
-  }),[dragIdV,dragXV,dragYV,draggingV]);
-
-  const t = useSharedValue(0);
-  useEffect(()=>{
-    let rafId;
-    const loopMs = 2000;
-    const startedAt = Date.now();
-    const tick = ()=>{
-      const elapsed = (Date.now() - startedAt) % loopMs;
-      t.value = elapsed / loopMs;
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return ()=>{
-      if(rafId!=null) cancelAnimationFrame(rafId);
-      t.value = 0;
-    };
-  },[t]);
-
-  const safeSelPulse = useDerivedValue(()=>selPulseV?.value ?? 0,[selPulseV]);
-  const selectedRingOpacity = useDerivedValue(()=>0.15 + (safeSelPulse.value * 0.2),[safeSelPulse]);
-  const selectedRingRadius = useDerivedValue(()=>NODE_R + 8 + (safeSelPulse.value * 3),[safeSelPulse]);
-  const shimmer = useDerivedValue(() => t.value * Math.PI * 2, [t]);
+    { translateX: txV.value },
+    { translateY: tyV.value },
+    { scale: scV.value },
+  ]),[]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
-
-  const edgeSegments = useMemo(()=>visibleEdges.map(e=>({
-    key:`${e.from}|${e.to}`,
-    from:nodeMap.get(e.from),
-    to:nodeMap.get(e.to),
-    seed:hashStringToFloat(`${e.from}|${e.to}`, 9),
-  })).filter(seg=>seg.from&&seg.to),[visibleEdges,nodeMap]);
 
   const edgeBuckets = useMemo(()=>{
     const mastered = Skia.Path.Make();
     const ready = Skia.Path.Make();
     const locked = Skia.Path.Make();
-    const readySegments = [];
     let hasMastered=false, hasReady=false, hasLocked=false;
-    for(const seg of edgeSegments){
-      const fn = seg.from;
-      const tn = seg.to;
-      const fromPos=fn;
-      const toPos=tn;
+    for(const e of visibleEdges){
+      const fn=nodeMap.get(e.from);
+      const tn=nodeMap.get(e.to);
+      if(!fn||!tn) continue;
+      const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
+      const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
       let bucket=locked;
       if(!bld){
         const fromState=nodeStatusMap[fn.id] || 'locked';
@@ -493,111 +379,25 @@ function SkiaTreeCanvas({
         }else if((fromLit&&!toLit)||(toReady)||(fromStart&&toState==='locked')){
           bucket=ready;
           hasReady=true;
-          readySegments.push({ key:seg.key, x1:fromPos.x,y1:fromPos.y,x2:toPos.x,y2:toPos.y, seed:seg.seed });
         }else{
           hasLocked=true;
         }
       }else{
         hasLocked=true;
       }
-      const ax=fromPos.x, ay=fromPos.y, bx=toPos.x, by=toPos.y;
-      const mx=(ax+bx)/2, my=(ay+by)/2;
-      const bend=0.14;
-      const cx1=ax+(mx-ax)*0.6;
-      const cy1=ay+(my-ay)*0.6-(bx-ax)*bend;
-      const cx2=bx-(bx-mx)*0.6;
-      const cy2=by-(by-my)*0.6+(bx-ax)*bend;
-      bucket.moveTo(ax,ay);
-      bucket.cubicTo(cx1,cy1,cx2,cy2,bx,by);
+      bucket.moveTo(fromPos.x,fromPos.y);
+      bucket.lineTo(toPos.x,toPos.y);
     }
-    return { mastered, ready, locked, readySegments, hasMastered, hasReady, hasLocked };
-  },[bld,edgeSegments,nodeStatusMap]);
-
-  const dustSeeds = useMemo(()=>{
-    // Static particles generated once. No `.value` reads to avoid undefined shared-value crashes.
-    return Array.from({length:44},(_,i)=>({
-      id:`dust_${i}`,
-      x:hashStringToFloat(`dustx_${i}`, 31),
-      y:hashStringToFloat(`dusty_${i}`, 37),
-      r:0.5 + hashStringToFloat(`dustr_${i}`, 41) * 0.7,
-      o:0.04 + hashStringToFloat(`dusto_${i}`, 43) * 0.04,
-    }));
-  },[]);
-
-  const vignetteShader = useMemo(()=>{
-    if(!canvasSize.width||!canvasSize.height) return null;
-    const cx=canvasSize.width/2;
-    const cy=canvasSize.height/2;
-    const rr=Math.max(canvasSize.width,canvasSize.height)*0.78;
-    return Skia.Shader.MakeRadialGradient(
-      {x:cx,y:cy},
-      rr,
-      [Skia.Color('#00000000'),Skia.Color('#000000D8')],
-      [0.52,1],
-      TileMode.Clamp,
-    );
-  },[canvasSize.height,canvasSize.width]);
-
-  const rootNetworkPath = useMemo(()=>{
-    const p=Skia.Path.Make();
-    if(!canvasSize.width||!canvasSize.height) return p;
-    const lines=14;
-    for(let i=0;i<lines;i++){
-      const sx=hashStringToFloat(`root_sx_${i}`,51)*canvasSize.width;
-      const sy=hashStringToFloat(`root_sy_${i}`,53)*canvasSize.height;
-      const ex=hashStringToFloat(`root_ex_${i}`,55)*canvasSize.width;
-      const ey=hashStringToFloat(`root_ey_${i}`,57)*canvasSize.height;
-      const mx=(sx+ex)/2;
-      const my=(sy+ey)/2;
-      const bend=(hashStringToFloat(`root_b_${i}`,59)-0.5)*80;
-      p.moveTo(sx,sy);
-      p.cubicTo(mx,my+bend,mx,my-bend,ex,ey);
-    }
-    return p;
-  },[canvasSize.height,canvasSize.width]);
+    return { mastered, ready, locked, hasMastered, hasReady, hasLocked };
+  },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
 
   const farNodeR = NODE_R*0.34;
-  const showLabels = LOD.isNear && visibleNodes.length<=90 && !isInteracting;
-  const showEdgeGlow = visibleEdges.length<=180;
-  const disableNodeGlow = visibleNodes.length>120 || LOD.isMid || LOD.isFar || isInteracting;
-
-  const sweepPath = useMemo(()=>makeStarPath(8),[]);
-  const getNodePath = (id,status,renderR)=>{
-    const key = `${id}|${status}|${renderR.toFixed(2)}`;
-    const cached = shapeCacheRef.current.get(key);
-    if(cached) return cached;
-    let p;
-    if(status==='start') p = makeStarPath(renderR*1.05);
-    else if(status==='mastered') p = makeHexStonePath(renderR, id);
-    else if(status==='ready') p = makeDiamondPath(renderR*0.98);
-    else p = makeRoundSquarePath(renderR*0.95, renderR*0.28);
-    shapeCacheRef.current.set(key,p);
-    return p;
-  };
-
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
-      {/* Layer 1: screen-space radial vignette */}
-      {vignetteShader&&(
-        <Circle cx={canvasSize.width*0.5} cy={canvasSize.height*0.5} r={Math.max(canvasSize.width, canvasSize.height)*0.78}>
-          <Paint shader={vignetteShader} />
-        </Circle>
-      )}
-      {/* Layer 2: faint background root network (screen-space) */}
-      <Path path={rootNetworkPath} style="stroke" strokeWidth={1.1} color="rgba(124,110,90,0.08)" strokeCap="round" />
-      {/* Layer 3: static dust particles (screen-space) */}
-      {dustSeeds.map(d=>(
-        <Circle key={d.id} cx={d.x*canvasSize.width} cy={d.y*canvasSize.height} r={d.r} color={`rgba(230,220,190,${d.o})`} />
-      ))}
-
       <Group transform={sceneTransform}>
-        {edgeBuckets.hasMastered&&!isInteracting&&showEdgeGlow&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+3.2} color="rgba(76,175,80,0.18)" strokeCap="round" />
+        {edgeBuckets.hasMastered&&LOD.isNear&&!isInteracting&&USE_GLOW&&(
+          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+2.2} color="rgba(76,175,80,0.17)" strokeCap="round" />
         )}
-        {edgeBuckets.hasReady&&!isInteracting&&showEdgeGlow&&(
-          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW+2.8} color="rgba(255,173,64,0.16)" strokeCap="round" />
-        )}
-
         {edgeBuckets.hasMastered&&(
           <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW} color={`rgba(76,175,80,${edgeVisual.masteredO})`} strokeCap="round" />
         )}
@@ -610,61 +410,58 @@ function SkiaTreeCanvas({
           <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO})`:`rgba(97,88,79,${edgeVisual.lockedO})`} strokeCap="round" />
         )}
 
-        {!isInteracting&&LOD.isNear&&edgeBuckets.readySegments.slice(0,20).map(seg=>{
-          const segT=((t.value + seg.seed) % 1);
-          const x=seg.x1 + (seg.x2-seg.x1)*segT;
-          const y=seg.y1 + (seg.y2-seg.y1)*segT;
-          return <Circle key={`spark_${seg.key}`} cx={x} cy={y} r={1.8} color="rgba(255,223,167,0.86)" />;
-        })}
-
         {visibleNodes.map(n=>{
           const {fill,stroke,sw,opacity}=nStyle(n);
-          const rx=dragPos.value.on&&dragPos.value.id===n.id?dragPos.value.x:n.x;
-          const ry=dragPos.value.on&&dragPos.value.id===n.id?dragPos.value.y:n.y;
-          const lines=wrappedLabels[n.id]||[{text:n.name,dx:n.name.length*2.8}];
+          const rx=dragVisual?.id===n.id?dragVisual.x:n.x;
+          const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
+          const lines=wrappedLabels[n.id]||[n.name];
           const lh=13;
           const sy=ry-(lines.length*lh)/2+lh*0.8;
           const status=nodeStatusMap[n.id]||'locked';
+          const isLit=status==='start'||status==='mastered'||status==='ready';
           const isReady=status==='ready';
           const isMastered=status==='start'||status==='mastered';
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
-          const nodePath = getNodePath(n.id, status, renderR);
-          const seedPhase = hashStringToFloat(n.id, 101);
-          const scalePulse = 0.96 + Math.sin((t.value + seedPhase) * Math.PI * 2) * 0.04;
-
+          const showCheapHalo=USE_GLOW&&isLit;
+          const haloColor=isReady?'rgba(255,152,0,0.18)':'rgba(76,175,80,0.17)';
+          const bodyGrad=Skia.Shader.MakeRadialGradient(
+            {x:rx-6,y:ry-8},
+            renderR*1.15,
+            [Skia.Color(fill), Skia.Color('#0f0d0b')],
+            [0,1],
+            TileMode.Clamp,
+          );
           return(
             <Group key={n.id}>
-              {!disableNodeGlow&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.1} color="rgba(76,175,80,0.2)" />}
-              {!disableNodeGlow&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R*1.05} color="rgba(255,152,0,0.2)" />}
+              {LOD.showOuterRing&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.2} color="rgba(76,175,80,0.34)" />}
+              {LOD.showOuterRing&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.1} color="rgba(255,193,7,0.44)" />}
+              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.8} color="rgba(212,128,10,0.68)" />}
 
-              <Group transform={[{translateX:rx},{translateY:ry}]}> 
-                <Path path={nodePath} style="fill" color={fill} opacity={opacity} />
-                <Group transform={[{scale:0.92*scalePulse}]}> 
-                  <Path path={nodePath} style="fill" color="#000000" opacity={0.14} />
-                </Group>
-                <Path path={nodePath} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
-                {!LOD.isFar&&<Circle cx={-7} cy={-8} r={NODE_R*0.11} color="rgba(255,255,255,0.28)" />}
-              </Group>
+              {showCheapHalo&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.62:NODE_R*0.9} color={haloColor} />}
 
-              {selectedNodeId===n.id&&(
-                <Circle cx={rx} cy={ry} r={selectedRingRadius} style="stroke" strokeWidth={1.6} color="rgba(255,215,120,1)" opacity={selectedRingOpacity} />
+              {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
+                <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={isReady?'rgba(255,152,0,0.16)':'rgba(76,175,80,0.14)'}>
+                  <Blur blur={GLOW_QUALITY==='high'?16:10} />
+                </Circle>
               )}
 
-              {!isInteracting&&LOD.isNear&&isMastered&&(
-                <Group transform={[{translateX:rx},{translateY:ry},{rotate:shimmer.value + (seedPhase*Math.PI*2)}]}> 
-                  <Path path={sweepPath} style="stroke" strokeWidth={1.6} color="rgba(233,255,241,0.7)" strokeCap="round" />
-                </Group>
-              )}
+              <Circle cx={rx} cy={ry} r={renderR} opacity={opacity}>
+                <Paint shader={bodyGrad} />
+              </Circle>
+              <Circle cx={rx} cy={ry} r={renderR} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
 
-              {showLabels&&lines.map((ln,li)=>(
+              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-8} style="stroke" strokeWidth={0.5} color={stroke} opacity={0.34} />}
+              {!LOD.isFar&&<Circle cx={rx-8} cy={ry-8} r={NODE_R*0.12} color="rgba(255,255,255,0.22)" />}
+
+              {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>(
                 <SkiaText
                   key={`${n.id}_${li}`}
-                  x={rx-ln.dx}
+                  x={rx-(ln.length*2.8)}
                   y={sy+li*lh}
-                  text={ln.text}
+                  text={ln}
                   font={labelFont}
-                  color={(isMastered||isReady)?C.textMain:C.textDim}
+                  color={isLit?C.textMain:C.textDim}
                 />
               ))}
             </Group>
@@ -738,11 +535,8 @@ function TreeScreen(){
   },[xform.sc,xform.tx,xform.ty]);
 
   useEffect(()=>()=>{
+    if(dragVisualRaf.current!=null) cancelAnimationFrame(dragVisualRaf.current);
     if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
-    if(dragVisualRaf.current!=null){
-      cancelAnimationFrame(dragVisualRaf.current);
-      dragVisualRaf.current=null;
-    }
   },[]);
 
   const cL=useRef(0),cT=useRef(0),cRef=useRef(null);
@@ -762,60 +556,41 @@ function TreeScreen(){
   const pMx0=useRef(0),pMy0=useRef(0);
   const dId=useRef(null),dNx=useRef(0),dNy=useRef(0),dPx=useRef(0),dPy=useRef(0);
   const dragLive=useRef({id:null,x:0,y:0});
-  const dragIdV=useSharedValue('');
-  const dragXV=useSharedValue(0);
-  const dragYV=useSharedValue(0);
-  const draggingV=useSharedValue(0);
+  const [dragVisual,setDragVisual]=useState(null);
+  const dragVisualRef=useRef(null);
   const dragVisualRaf=useRef(null);
-  const dragVisualPending=useRef({id:'',x:0,y:0,on:0});
   const glowDebounceRef=useRef(null);
   const [isInteracting,setIsInteracting]=useState(false);
-  const isInteractingRef=useRef(false);
-  const selPulseV=useSharedValue(0);
 
+  const setDragVisualThrottled=next=>{
+    dragVisualRef.current=next;
+    if(dragVisualRaf.current!=null) return;
+    dragVisualRaf.current=requestAnimationFrame(()=>{
+      dragVisualRaf.current=null;
+      setDragVisual(dragVisualRef.current);
+    });
+  };
+  const clearDragVisual=()=>{
+    dragVisualRef.current=null;
+    if(dragVisualRaf.current!=null){
+      cancelAnimationFrame(dragVisualRaf.current);
+      dragVisualRaf.current=null;
+    }
+    setDragVisual(null);
+  };
   const beginInteraction=()=>{
     if(glowDebounceRef.current){
       clearTimeout(glowDebounceRef.current);
       glowDebounceRef.current=null;
     }
-    if(!isInteractingRef.current){
-      isInteractingRef.current=true;
-      setIsInteracting(true);
-    }
+    setIsInteracting(true);
   };
   const endInteraction=()=>{
     if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
     glowDebounceRef.current=setTimeout(()=>{
-      if(isInteractingRef.current){
-        isInteractingRef.current=false;
-        setIsInteracting(false);
-      }
+      setIsInteracting(false);
       glowDebounceRef.current=null;
-    },180);
-  };
-
-  useEffect(()=>{
-    selPulseV.value = withRepeat(
-      withTiming(1,{duration:2200,easing:Easing.inOut(Easing.quad)}),
-      -1,
-      true,
-    );
-    return ()=>{
-      selPulseV.value = 0;
-    };
-  },[selPulseV]);
-
-  const setDragVisualThrottled=(id,x,y,on=1)=>{
-    dragVisualPending.current={id,x,y,on};
-    if(dragVisualRaf.current!=null) return;
-    dragVisualRaf.current=requestAnimationFrame(()=>{
-      dragVisualRaf.current=null;
-      const next=dragVisualPending.current;
-      dragIdV.value=next.id;
-      dragXV.value=next.x;
-      dragYV.value=next.y;
-      draggingV.value=next.on;
-    });
+    },90);
   };
 
   const panR=useRef(PanResponder.create({
@@ -827,7 +602,7 @@ function TreeScreen(){
       const ts=evt.nativeEvent.touches;
       moved.current=false;dId.current=null;pOn.current=false;
       dragLive.current={id:null,x:0,y:0};
-      setDragVisualThrottled('',0,0,0);
+      clearDragVisual();
       beginInteraction();
       if(ts.length>=2){
         gestureActive.current=true;
@@ -846,7 +621,7 @@ function TreeScreen(){
           dId.current=hit.id;dNx.current=hit.x;dNy.current=hit.y;
           const p=toSVG(t.pageX,t.pageY);dPx.current=p.x;dPy.current=p.y;
           dragLive.current={id:hit.id,x:hit.x,y:hit.y};
-          setDragVisualThrottled(hit.id,hit.x,hit.y,1);
+          setDragVisualThrottled({id:hit.id,x:hit.x,y:hit.y});
         }
       }
     },
@@ -879,7 +654,7 @@ function TreeScreen(){
         const p=toSVG(t.pageX,t.pageY);
         const nx=dNx.current+(p.x-dPx.current),ny=dNy.current+(p.y-dPy.current);
         dragLive.current={id:dId.current,x:nx,y:ny};
-        setDragVisualThrottled(dId.current,nx,ny,1);
+        setDragVisualThrottled({id:dId.current,x:nx,y:ny});
         gLx.current=t.pageX;gLy.current=t.pageY;return;
       }
       gestureActive.current=true;
@@ -900,12 +675,12 @@ function TreeScreen(){
         }
         dId.current=null;
         dragLive.current={id:null,x:0,y:0};
-        setDragVisualThrottled('',0,0,0);
+        clearDragVisual();
         return;
       }
       dId.current=null;
       dragLive.current={id:null,x:0,y:0};
-      setDragVisualThrottled('',0,0,0);
+      clearDragVisual();
       if(moved.current) return;
       const{pageX,pageY}=evt.nativeEvent;
       const hit=hitNode(pageX,pageY);
@@ -954,7 +729,7 @@ function TreeScreen(){
       endInteraction();
       dId.current=null;
       dragLive.current={id:null,x:0,y:0};
-      setDragVisualThrottled('',0,0,0);
+      clearDragVisual();
     },
   })).current;
 
@@ -1047,13 +822,7 @@ function TreeScreen(){
 
   const wrappedLabels=useMemo(()=>{
     const labels={};
-    for(const n of tree.nodes){
-      labels[n.id]=wrap(n.name).map(text=>({
-        text,
-        // PERF: precompute rough centered x-offset once, avoid per-frame string math.
-        dx:text.length*2.8,
-      }));
-    }
+    for(const n of tree.nodes) labels[n.id]=wrap(n.name);
     return labels;
   },[tree.nodes]);
 
@@ -1200,17 +969,12 @@ function TreeScreen(){
             txV={txV}
             tyV={tyV}
             scV={scV}
-            dragIdV={dragIdV}
-            dragXV={dragXV}
-            dragYV={dragYV}
-            draggingV={draggingV}
+            dragVisual={dragVisual}
             LOD={LOD}
             edgeVisual={edgeVisual}
             bld={bld}
             connA={connA}
             isInteracting={isInteracting}
-            selectedNodeId={sel?.id ?? null}
-            selPulseV={selPulseV}
             canvasSize={canvasSize}
             nStyle={nStyle}
           />
