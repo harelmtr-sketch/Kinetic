@@ -17,15 +17,16 @@ import * as Sharing from 'expo-sharing';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Blur,
+  Atlas,
   Canvas,
   Circle,
   DashPathEffect,
   Group,
-  Paint,
   Path,
   Skia,
   Text as SkiaText,
-  matchFont, TileMode,
+  matchFont,
+  rect,
 } from '@shopify/react-native-skia';
 import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
 
@@ -338,6 +339,17 @@ const np = StyleSheet.create({
   addT:   {color:C.gold,fontWeight:'800',letterSpacing:2},
 });
 
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (a >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function SkiaTreeCanvas({
   tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
@@ -353,6 +365,39 @@ function SkiaTreeCanvas({
   ]),[]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+
+  const dustAtlas = useMemo(() => {
+    const W = 3600;
+    const H = 3600;
+    const N = 900;
+
+    const rand = mulberry32(1337);
+
+    const spriteSize = 8;
+    const surface = Skia.Surface.MakeOffscreen(spriteSize, spriteSize);
+    const c = surface.getCanvas();
+    c.clear(Skia.Color('rgba(0,0,0,0)'));
+
+    const p = Skia.Paint();
+    p.setColor(Skia.Color('rgba(255,255,255,0.12)'));
+    c.drawRect(Skia.XYWHRect(0, 0, spriteSize, spriteSize), p);
+
+    const image = surface.makeImageSnapshot();
+    const sprites = [rect(0, 0, spriteSize, spriteSize)];
+    const transforms = new Array(N);
+    const indices = new Array(N);
+
+    for (let i = 0; i < N; i++) {
+      const x = (rand() - 0.5) * W;
+      const y = (rand() - 0.5) * H;
+      const s = 0.45 + rand() * 0.9;
+
+      transforms[i] = { x, y, scale: s, rotation: 0 };
+      indices[i] = 0;
+    }
+
+    return { image, sprites, transforms, indices };
+  }, []);
 
   const edgeBuckets = useMemo(()=>{
     const mastered = Skia.Path.Make();
@@ -395,6 +440,14 @@ function SkiaTreeCanvas({
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
       <Group transform={sceneTransform}>
+        <Atlas
+          image={dustAtlas.image}
+          sprites={dustAtlas.sprites}
+          transforms={dustAtlas.transforms}
+          colors={undefined}
+          blendMode="srcOver"
+          indices={dustAtlas.indices}
+        />
         {edgeBuckets.hasMastered&&LOD.isNear&&!isInteracting&&USE_GLOW&&(
           <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+2.2} color="rgba(76,175,80,0.17)" strokeCap="round" />
         )}
@@ -425,13 +478,6 @@ function SkiaTreeCanvas({
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
           const showCheapHalo=USE_GLOW&&isLit;
           const haloColor=isReady?'rgba(255,152,0,0.18)':'rgba(76,175,80,0.17)';
-          const bodyGrad=Skia.Shader.MakeRadialGradient(
-            {x:rx-6,y:ry-8},
-            renderR*1.15,
-            [Skia.Color(fill), Skia.Color('#0f0d0b')],
-            [0,1],
-            TileMode.Clamp,
-          );
           return(
             <Group key={n.id}>
               {LOD.showOuterRing&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.2} color="rgba(76,175,80,0.34)" />}
@@ -446,9 +492,7 @@ function SkiaTreeCanvas({
                 </Circle>
               )}
 
-              <Circle cx={rx} cy={ry} r={renderR} opacity={opacity}>
-                <Paint shader={bodyGrad} />
-              </Circle>
+              <Circle cx={rx} cy={ry} r={renderR} color={fill} opacity={opacity} />
               <Circle cx={rx} cy={ry} r={renderR} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
 
               {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-8} style="stroke" strokeWidth={0.5} color={stroke} opacity={0.34} />}
