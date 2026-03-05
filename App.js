@@ -22,10 +22,13 @@ import {
   Circle,
   DashPathEffect,
   Group,
+  LinearGradient,
   Path,
+  Rect,
   Skia,
   Text as SkiaText,
   matchFont,
+  vec,
 } from '@shopify/react-native-skia';
 import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
 
@@ -356,12 +359,155 @@ function mulberry32(seed) {
   };
 }
 
+const NODE_ATLAS_CELL = 256;
+const NODE_ATLAS_VARIANTS = ['locked','ready','mastered','start','selected','connectTarget'];
+const NODE_ICON_MAP = {
+  start: 'star',
+  dead_hang: 'link',
+  active_hang: 'anchor',
+  scap_pulls: 'bolt',
+  neg_pullup: 'chevronUp',
+  pullup: 'crown',
+  pushup: 'chevronRight',
+  diamond_pu: 'diamond',
+  pike_pu: 'triangle',
+  hspu: 'crown',
+};
+
+const ICON_PATHS = {
+  star: 'M 48 4 L 60 34 L 92 34 L 66 52 L 76 86 L 48 66 L 20 86 L 30 52 L 4 34 L 36 34 Z',
+  link: 'M 30 34 C 30 24 38 16 48 16 C 58 16 66 24 66 34 L 58 34 C 58 28 54 24 48 24 C 42 24 38 28 38 34 C 38 40 42 44 48 44 L 52 44 L 52 52 L 48 52 C 38 52 30 44 30 34 Z M 44 62 L 52 62 L 52 70 L 44 70 Z M 48 52 L 56 52 L 56 62 L 48 62 Z M 44 70 C 34 70 26 78 26 88 C 26 98 34 106 44 106 C 54 106 62 98 62 88 L 54 88 C 54 94 50 98 44 98 C 38 98 34 94 34 88 C 34 82 38 78 44 78 L 48 78 L 48 70 Z',
+  anchor: 'M 44 10 L 52 10 L 52 58 C 62 60 70 68 70 78 L 62 78 C 62 70 56 64 48 64 C 40 64 34 70 34 78 L 26 78 C 26 68 34 60 44 58 Z M 18 78 L 26 78 C 26 92 36 104 48 106 C 60 104 70 92 70 78 L 78 78 C 78 96 64 112 48 114 C 32 112 18 96 18 78 Z M 34 20 C 34 12 40 6 48 6 C 56 6 62 12 62 20 C 62 28 56 34 48 34 C 40 34 34 28 34 20 Z',
+  bolt: 'M 54 8 L 30 54 L 48 54 L 40 108 L 68 50 L 50 50 Z',
+  chevronUp: 'M 16 80 L 48 40 L 80 80 L 68 80 L 48 56 L 28 80 Z',
+  chevronRight: 'M 24 24 L 68 48 L 24 72 Z',
+  crown: 'M 16 88 L 20 40 L 36 58 L 48 30 L 60 58 L 76 40 L 80 88 Z M 24 96 L 72 96 L 72 104 L 24 104 Z',
+  diamond: 'M 48 14 L 80 48 L 48 82 L 16 48 Z',
+  triangle: 'M 48 16 L 84 84 L 12 84 Z',
+};
+
+function buildNodeAtlas() {
+  const cols = 3;
+  const rows = Math.ceil(NODE_ATLAS_VARIANTS.length / cols);
+  const width = cols * NODE_ATLAS_CELL;
+  const height = rows * NODE_ATLAS_CELL;
+  const surface = Skia.Surface.MakeOffscreen(width, height);
+  const canvas = surface.getCanvas();
+  canvas.clear(Skia.Color('rgba(0,0,0,0)'));
+
+  const rectsByVariant = {};
+  const iconPathCache = {};
+  Object.entries(ICON_PATHS).forEach(([k, svg]) => {
+    const path = Skia.Path.MakeFromSVGString(svg);
+    if (path) iconPathCache[k] = path;
+  });
+
+  NODE_ATLAS_VARIANTS.forEach((variant, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const ox = col * NODE_ATLAS_CELL;
+    const oy = row * NODE_ATLAS_CELL;
+    rectsByVariant[variant] = Skia.XYWHRect(ox, oy, NODE_ATLAS_CELL, NODE_ATLAS_CELL);
+
+    const cx = ox + NODE_ATLAS_CELL / 2;
+    const cy = oy + NODE_ATLAS_CELL / 2;
+
+    const haloRings = {
+      locked: ['rgba(69,62,55,0.08)','rgba(69,62,55,0.05)','rgba(69,62,55,0.02)'],
+      ready: ['rgba(255,178,52,0.28)','rgba(255,158,30,0.16)','rgba(255,140,20,0.08)'],
+      mastered: ['rgba(104,211,130,0.26)','rgba(76,175,80,0.16)','rgba(62,150,76,0.07)'],
+      start: ['rgba(163,214,120,0.28)','rgba(120,184,96,0.16)','rgba(92,140,74,0.08)'],
+      selected: ['rgba(250,208,96,0.3)','rgba(227,182,57,0.2)','rgba(212,150,42,0.1)'],
+      connectTarget: ['rgba(247,181,68,0.32)','rgba(225,140,22,0.22)','rgba(202,111,13,0.12)'],
+    }[variant];
+
+    [92, 78, 64].forEach((r, idx) => {
+      const p = Skia.Paint();
+      p.setColor(Skia.Color(haloRings[idx]));
+      canvas.drawCircle(cx, cy, r, p);
+    });
+
+    const tokenFill = {
+      locked: 'rgba(47,42,36,1)',
+      ready: 'rgba(81,57,22,1)',
+      mastered: 'rgba(35,69,46,1)',
+      start: 'rgba(40,78,45,1)',
+      selected: 'rgba(88,69,34,1)',
+      connectTarget: 'rgba(94,54,18,1)',
+    }[variant];
+    const tokenStroke = {
+      locked: 'rgba(120,108,92,0.9)',
+      ready: 'rgba(255,191,71,0.95)',
+      mastered: 'rgba(120,215,138,0.95)',
+      start: 'rgba(155,221,122,0.95)',
+      selected: 'rgba(250,213,116,1)',
+      connectTarget: 'rgba(248,166,61,1)',
+    }[variant];
+
+    const tokenBody = Skia.Paint();
+    tokenBody.setColor(Skia.Color(tokenFill));
+    canvas.drawCircle(cx, cy, 54, tokenBody);
+
+    const rim = Skia.Paint();
+    rim.setColor(Skia.Color(tokenStroke));
+    canvas.drawCircle(cx, cy, 58, rim);
+    canvas.drawCircle(cx, cy, 53, tokenBody);
+
+    const innerRing = Skia.Paint();
+    innerRing.setColor(Skia.Color('rgba(255,255,255,0.22)'));
+    canvas.drawCircle(cx, cy, 43, innerRing);
+    canvas.drawCircle(cx, cy, 41, tokenBody);
+
+    const topShine = Skia.Paint();
+    topShine.setColor(Skia.Color('rgba(255,255,255,0.2)'));
+    canvas.drawCircle(cx - 12, cy - 14, 11, topShine);
+  });
+
+  const iconSurface = Skia.Surface.MakeOffscreen(512, 256);
+  const iconCanvas = iconSurface.getCanvas();
+  iconCanvas.clear(Skia.Color('rgba(0,0,0,0)'));
+  const iconKeys = Object.keys(iconPathCache);
+  const iconRectsByKey = {};
+
+  iconKeys.forEach((key, i) => {
+    const cell = 128;
+    const ox = (i % 4) * cell;
+    const oy = Math.floor(i / 4) * cell;
+    iconRectsByKey[key] = Skia.XYWHRect(ox, oy, cell, cell);
+
+    const path = iconPathCache[key].copy();
+    const m = Skia.Matrix();
+    m.translate(ox + 16, oy + 12);
+    m.scale(1.0, 1.0);
+    path.transform(m);
+
+    const iconUnder = Skia.Paint();
+    iconUnder.setColor(Skia.Color('rgba(10,8,6,0.5)'));
+    const shadow = path.copy();
+    const sm = Skia.Matrix();
+    sm.translate(2, 3);
+    shadow.transform(sm);
+    iconCanvas.drawPath(shadow, iconUnder);
+
+    const icon = Skia.Paint();
+    icon.setColor(Skia.Color('rgba(245,241,228,0.96)'));
+    iconCanvas.drawPath(path, icon);
+  });
+
+  return {
+    image: surface.makeImageSnapshot(),
+    rectsByVariant,
+    iconImage: iconSurface.makeImageSnapshot(),
+    iconRectsByKey,
+  };
+}
+
 function SkiaTreeCanvas({
   tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
   dragVisual, LOD, edgeVisual,
   bld, connA, isInteracting,
-  canvasSize, nStyle,
+  canvasSize, selectedNodeId,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
   const sceneTransform = useDerivedValue(()=>([
@@ -371,6 +517,7 @@ function SkiaTreeCanvas({
   ]),[]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+  const nodeAtlas = useMemo(() => buildNodeAtlas(), []);
 
   const dustAtlas = useMemo(() => {
     const W = 3600;
@@ -443,9 +590,70 @@ function SkiaTreeCanvas({
     return { mastered, ready, locked, hasMastered, hasReady, hasLocked };
   },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
 
-  const farNodeR = NODE_R*0.34;
+  const nodeScaleByLod = LOD.isFar ? 0.28 : LOD.isMid ? 0.34 : 0.4;
+
+  const nodeSprites = useMemo(() => {
+    const sprites = [];
+    const transforms = [];
+    const haloSprites = [];
+    const haloTransforms = [];
+    const ringSprites = [];
+    const ringTransforms = [];
+    const iconSprites = [];
+    const iconTransforms = [];
+
+    for (const n of visibleNodes) {
+      const status = nodeStatusMap[n.id] || 'locked';
+      const rx = dragVisual?.id===n.id ? dragVisual.x : n.x;
+      const ry = dragVisual?.id===n.id ? dragVisual.y : n.y;
+      const variant = bld && connA===n.id
+        ? 'connectTarget'
+        : selectedNodeId===n.id
+          ? 'selected'
+          : status;
+
+      const cellRect = nodeAtlas.rectsByVariant[variant] || nodeAtlas.rectsByVariant.locked;
+      const nodeScale = nodeScaleByLod;
+      const offset = (NODE_ATLAS_CELL * nodeScale) / 2;
+      sprites.push(cellRect);
+      transforms.push(Skia.RSXform(nodeScale, 0, rx - offset, ry - offset));
+
+      const isLit = status === 'start' || status === 'mastered' || status === 'ready' || variant === 'selected' || variant === 'connectTarget';
+      if (isLit && !LOD.isFar) {
+        haloSprites.push(cellRect);
+        haloTransforms.push(Skia.RSXform(nodeScale * (LOD.isNear ? 1.12 : 1.02), 0, rx - offset, ry - offset));
+      }
+
+      if (LOD.showOuterRing && (status === 'mastered' || status === 'start' || status === 'ready' || variant === 'connectTarget')) {
+        ringSprites.push(cellRect);
+        ringTransforms.push(Skia.RSXform(nodeScale * 1.24, 0, rx - offset, ry - offset));
+      }
+
+      if (LOD.isNear && !isInteracting) {
+        const iconKey = NODE_ICON_MAP[n.id] || 'star';
+        const iconRect = nodeAtlas.iconRectsByKey[iconKey];
+        if (iconRect) {
+          const iconScale = 0.26;
+          const iconOffset = (128 * iconScale) / 2;
+          iconSprites.push(iconRect);
+          iconTransforms.push(Skia.RSXform(iconScale, 0, rx - iconOffset, ry - iconOffset));
+        }
+      }
+    }
+
+    return { sprites, transforms, haloSprites, haloTransforms, ringSprites, ringTransforms, iconSprites, iconTransforms };
+  }, [LOD.isFar, LOD.isNear, LOD.showOuterRing, bld, connA, dragVisual, isInteracting, nodeAtlas.iconRectsByKey, nodeAtlas.rectsByVariant, nodeScaleByLod, nodeStatusMap, selectedNodeId, visibleNodes]);
+
+  const selectedNode = useMemo(() => {
+    if (!selectedNodeId || isInteracting) return null;
+    return visibleNodes.find((n) => n.id === selectedNodeId) || tree.nodes.find((n) => n.id === selectedNodeId) || null;
+  }, [isInteracting, selectedNodeId, tree.nodes, visibleNodes]);
+
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
+      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height}>
+        <LinearGradient start={vec(0, 0)} end={vec(canvasSize.width, canvasSize.height)} colors={['#070606', '#0f0b08', '#17120d']} />
+      </Rect>
       <Group transform={sceneTransform}>
         <Atlas
           image={dustAtlas.image}
@@ -467,8 +675,31 @@ function SkiaTreeCanvas({
           <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO})`:`rgba(97,88,79,${edgeVisual.lockedO})`} strokeCap="round" />
         )}
 
+        {!LOD.isFar && nodeSprites.haloSprites.length > 0 && (
+          <Group blendMode="plus">
+            <Atlas image={nodeAtlas.image} sprites={nodeSprites.haloSprites} transforms={nodeSprites.haloTransforms} />
+          </Group>
+        )}
+
+        <Atlas image={nodeAtlas.image} sprites={nodeSprites.sprites} transforms={nodeSprites.transforms} />
+
+        {LOD.showOuterRing && nodeSprites.ringSprites.length > 0 && (
+          <Group blendMode="screen">
+            <Atlas image={nodeAtlas.image} sprites={nodeSprites.ringSprites} transforms={nodeSprites.ringTransforms} />
+          </Group>
+        )}
+
+        {LOD.isNear && !isInteracting && nodeSprites.iconSprites.length > 0 && (
+          <Atlas image={nodeAtlas.iconImage} sprites={nodeSprites.iconSprites} transforms={nodeSprites.iconTransforms} />
+        )}
+
+        {selectedNode && LOD.isNear && (
+          <Circle cx={selectedNode.x} cy={selectedNode.y} r={NODE_R*1.08} color="rgba(240,192,84,0.17)">
+            <Blur blur={GLOW_QUALITY==='high'?16:10} />
+          </Circle>
+        )}
+
         {visibleNodes.map(n=>{
-          const {fill,stroke,sw,opacity}=nStyle(n);
           const rx=dragVisual?.id===n.id?dragVisual.x:n.x;
           const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
           const lines=wrappedLabels[n.id]||[n.name];
@@ -476,44 +707,16 @@ function SkiaTreeCanvas({
           const sy=ry-(lines.length*lh)/2+lh*0.8;
           const status=nodeStatusMap[n.id]||'locked';
           const isLit=status==='start'||status==='mastered'||status==='ready';
-          const isReady=status==='ready';
-          const isMastered=status==='start'||status==='mastered';
-          const renderR=LOD.isFar?farNodeR:NODE_R;
-          const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
-          const showCheapHalo=USE_GLOW&&isLit;
-          const haloColor=isReady?'rgba(255,152,0,0.18)':'rgba(76,175,80,0.17)';
-          return(
-            <Group key={n.id}>
-              {LOD.showOuterRing&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.2} color="rgba(76,175,80,0.34)" />}
-              {LOD.showOuterRing&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.1} color="rgba(255,193,7,0.44)" />}
-              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.8} color="rgba(212,128,10,0.68)" />}
-
-              {showCheapHalo&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.62:NODE_R*0.9} color={haloColor} />}
-
-              {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
-                <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={isReady?'rgba(255,152,0,0.16)':'rgba(76,175,80,0.14)'}>
-                  <Blur blur={GLOW_QUALITY==='high'?16:10} />
-                </Circle>
-              )}
-
-              <Circle cx={rx} cy={ry} r={renderR} color={fill} opacity={opacity} />
-              <Circle cx={rx} cy={ry} r={renderR} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
-
-              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-8} style="stroke" strokeWidth={0.5} color={stroke} opacity={0.34} />}
-              {!LOD.isFar&&<Circle cx={rx-8} cy={ry-8} r={NODE_R*0.12} color="rgba(255,255,255,0.22)" />}
-
-              {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>(
-                <SkiaText
-                  key={`${n.id}_${li}`}
-                  x={rx-(ln.length*2.8)}
-                  y={sy+li*lh}
-                  text={ln}
-                  font={labelFont}
-                  color={isLit?C.textMain:C.textDim}
-                />
-              ))}
-            </Group>
-          );
+          return LOD.showLabels&&!isInteracting ? lines.map((ln,li)=>(
+            <SkiaText
+              key={`${n.id}_${li}`}
+              x={rx-(ln.length*2.8)}
+              y={sy+li*lh}
+              text={ln}
+              font={labelFont}
+              color={isLit?C.textMain:C.textDim}
+            />
+          )) : null;
         })}
       </Group>
     </Canvas>
@@ -853,15 +1056,6 @@ function TreeScreen(){
     return status;
   },[tree.nodes,bld,incomingByNode,nodeMap]);
 
-  // ── SVG node/edge styling ──────────────────────────────────────────────────
-  const nStyle=n=>{
-    if(bld&&connA===n.id) return{fill:'#2a1a00',stroke:C.amber,sw:2.5,opacity:1};
-    const status=nodeStatusMap[n.id] || 'locked';
-    if(status==='start'||status==='mastered') return{fill:'#d9efe0',stroke:'#4CAF50',sw:2.2,opacity:0.95};
-    if(status==='ready') return{fill:'#f1e4cf',stroke:'#FFC107',sw:2.1,opacity:0.95};
-    return{fill:'#cfcfcf',stroke:'#7b7266',sw:1.2,opacity:0.78};
-  };
-
   const wrap=name=>{
     const words=name.split(' ');const lines=[];let cur='';
     for(const w of words){const next=cur?cur+' '+w:w;if(next.length>10&&cur){lines.push(cur);cur=w;}else cur=next;}
@@ -1024,7 +1218,7 @@ function TreeScreen(){
             connA={connA}
             isInteracting={isInteracting}
             canvasSize={canvasSize}
-            nStyle={nStyle}
+            selectedNodeId={sel?.id || null}
           />
         )}
       </View>
