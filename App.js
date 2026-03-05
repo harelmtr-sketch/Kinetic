@@ -39,7 +39,7 @@ const MAX_SC = 6;
 const DEV_PERF_LOG = false;
 const USE_GLOW = true;
 const GLOW_QUALITY = 'low'; // 'low' | 'high'
-const USE_REANIMATED_TRANSFORM = true;
+const USE_REANIMATED_TRANSFORM = Platform.OS !== 'android';
 
 configureReanimatedLogger({
   level: 1,
@@ -571,7 +571,7 @@ function SkiaTreeCanvas({
     };
   }, []);
 
-  const interactionOn = dragPos.value.on;
+  const interactionOn = dragPos.value.on || (isInteractingV?.value ?? 0) === 1;
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
 
   const dragEdgeOverlay = useMemo(()=>{
@@ -757,7 +757,7 @@ function SkiaTreeCanvas({
   const atlasSprites = useMemo(()=>staticNodes.map(n=>{
     const status=nodeStatusMap[n.id]||'locked';
     const spriteIdx = status==='start' ? 3 : status==='mastered' ? 2 : status==='ready' ? 1 : 0;
-    return {x:spriteIdx*atlasCell,y:0,width:atlasCell,height:atlasCell};
+    return Skia.XYWHRect(spriteIdx*atlasCell,0,atlasCell,atlasCell);
   }),[atlasCell,nodeStatusMap,staticNodes]);
   const atlasTransforms = useMemo(()=>staticNodes.map(n=>{
     const renderR=LOD.isFar?farNodeR:NODE_R;
@@ -767,75 +767,115 @@ function SkiaTreeCanvas({
     return {scos:scale, ssin:0, tx:n.x - scale * cx, ty:n.y - scale * cy};
   }),[LOD.isFar,atlasCell,atlasNodeR,farNodeR,staticNodes]);
 
+  const atlasWarnRef = useRef(false);
+  const atlasEnabled = Platform.OS !== 'android';
+  const canRenderAtlas = useMemo(()=>{
+    if(!atlasEnabled || !atlasImage) return false;
+    const imageOk = typeof atlasImage.width === 'function' && typeof atlasImage.height === 'function';
+    const arraysOk = atlasSprites.length === atlasTransforms.length && atlasSprites.length === staticNodes.length;
+    const spriteOk = atlasSprites.every(r=>!!r);
+    const txOk = atlasTransforms.every(t=>t&&Number.isFinite(t.scos)&&Number.isFinite(t.ssin)&&Number.isFinite(t.tx)&&Number.isFinite(t.ty));
+    const ok = imageOk && arraysOk && spriteOk && txOk;
+    if(!ok && !atlasWarnRef.current){
+      atlasWarnRef.current = true;
+      console.log('[atlas-guard] fallback static circles');
+    }
+    return ok;
+  },[atlasEnabled,atlasImage,atlasSprites,atlasTransforms,staticNodes.length]);
+
+  const dynamicTransform = USE_REANIMATED_TRANSFORM ? sceneTransform : sceneTransformFallback;
+
   return(
-    <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
-      <StoneBackgroundSkia
-        canvasSize={canvasSize}
-        txV={txV}
-        tyV={tyV}
-        scV={scV}
-        isInteracting={interactionOn}
-      />
+    <View style={{width:canvasSize.width,height:canvasSize.height,position:'relative'}}>
+      <Canvas style={{position:'absolute',left:0,top:0,width:canvasSize.width,height:canvasSize.height}}>
+        <StoneBackgroundSkia
+          canvasSize={canvasSize}
+          txV={txV}
+          tyV={tyV}
+          scV={scV}
+          isInteracting={interactionOn}
+        />
 
-      <Group transform={USE_REANIMATED_TRANSFORM ? sceneTransform : sceneTransformFallback}>
-        {edgeBuckets.hasMastered&&showEdgeGlow&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={interactionOn?(edgeVisual.masteredW+3.8):(edgeVisual.masteredW+3.2)} color={interactionOn?"rgba(86,210,110,0.2)":"rgba(76,175,80,0.2)"} strokeCap="round">
-            {!interactionOn&&<BlurMask blur={7} style="solid" />}
-          </Path>
-        )}
-        {edgeBuckets.hasReady&&showEdgeGlow&&(
-          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={interactionOn?(edgeVisual.readyW+3.2):(edgeVisual.readyW+2.8)} color={interactionOn?"rgba(255,184,76,0.18)":"rgba(255,173,64,0.16)"} strokeCap="round">
-            {!interactionOn&&<BlurMask blur={6} style="solid" />}
-          </Path>
-        )}
+        <Group transform={sceneTransformFallback}>
+          {edgeBuckets.hasMastered&&showEdgeGlow&&(
+            <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={interactionOn?(edgeVisual.masteredW+3.8):(edgeVisual.masteredW+3.2)} color={interactionOn?"rgba(86,210,110,0.2)":"rgba(76,175,80,0.2)"} strokeCap="round">
+              {!interactionOn&&<BlurMask blur={7} style="solid" />}
+            </Path>
+          )}
+          {edgeBuckets.hasReady&&showEdgeGlow&&(
+            <Path path={edgeBuckets.ready} style="stroke" strokeWidth={interactionOn?(edgeVisual.readyW+3.2):(edgeVisual.readyW+2.8)} color={interactionOn?"rgba(255,184,76,0.18)":"rgba(255,173,64,0.16)"} strokeCap="round">
+              {!interactionOn&&<BlurMask blur={6} style="solid" />}
+            </Path>
+          )}
 
-        {edgeBuckets.hasMastered&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW} color={`rgba(76,175,80,${edgeVisual.masteredO})`} strokeCap="round" />
-        )}
-        {edgeBuckets.hasReady&&(
-          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW} color={`rgba(255,152,0,${edgeVisual.readyO})`} strokeCap="round">
-            {LOD.useDashedReady&&!bld&&<DashPathEffect intervals={[12,10]} />}
-          </Path>
-        )}
-        {edgeBuckets.hasLocked&&(
-          <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO})`:`rgba(97,88,79,${edgeVisual.lockedO})`} strokeCap="round" />
-        )}
+          {edgeBuckets.hasMastered&&(
+            <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW} color={`rgba(76,175,80,${edgeVisual.masteredO})`} strokeCap="round" />
+          )}
+          {edgeBuckets.hasReady&&(
+            <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW} color={`rgba(255,152,0,${edgeVisual.readyO})`} strokeCap="round">
+              {LOD.useDashedReady&&!bld&&<DashPathEffect intervals={[12,10]} />}
+            </Path>
+          )}
+          {edgeBuckets.hasLocked&&(
+            <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO})`:`rgba(97,88,79,${edgeVisual.lockedO})`} strokeCap="round" />
+          )}
 
-        {dragEdgeOverlay&&(
-          <Path path={dragEdgeOverlay} style="stroke" strokeWidth={edgeVisual.readyW+0.6} color="rgba(255,193,7,0.55)" strokeCap="round" />
-        )}
+          {canRenderAtlas&&staticNodes.length>0&&(
+            <Atlas image={atlasImage} sprites={atlasSprites} transforms={atlasTransforms} />
+          )}
 
-        {!interactionOn&&LOD.isNear&&edgeBuckets.readySegments.slice(0,20).map(seg=>{
-          const segT=((t.value + seg.seed) % 1);
-          const x=seg.x1 + (seg.x2-seg.x1)*segT;
-          const y=seg.y1 + (seg.y2-seg.y1)*segT;
-          return <Circle key={`spark_${seg.key}`} cx={x} cy={y} r={1.8} color="rgba(255,223,167,0.86)" />;
-        })}
+          {!canRenderAtlas&&staticNodes.map(n=>{
+            const {fill,stroke,sw,opacity}=nStyle(n);
+            const renderR=LOD.isFar?farNodeR:NODE_R;
+            const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
+            const status=nodeStatusMap[n.id]||'locked';
+            const isReady=status==='ready';
+            const isMastered=status==='start'||status==='mastered';
+            return (
+              <Group key={`fallback_${n.id}`}>
+                {!disableNodeGlow&&isMastered&&<Circle cx={n.x} cy={n.y} r={NODE_R*1.1} color="rgba(76,175,80,0.2)" />}
+                {!disableNodeGlow&&isReady&&<Circle cx={n.x} cy={n.y} r={NODE_R*1.05} color="rgba(255,152,0,0.2)" />}
+                <Circle cx={n.x} cy={n.y} r={renderR} color={fill} opacity={opacity} />
+                <Circle cx={n.x} cy={n.y} r={Math.max(1,renderR-2)} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
+              </Group>
+            );
+          })}
+        </Group>
+      </Canvas>
 
-        {atlasImage&&staticNodes.length>0&&(
-          <Atlas image={atlasImage} sprites={atlasSprites} transforms={atlasTransforms} />
-        )}
+      <Canvas pointerEvents="none" style={{position:'absolute',left:0,top:0,width:canvasSize.width,height:canvasSize.height}}>
+        <Group transform={dynamicTransform}>
+          {dragEdgeOverlay&&(
+            <Path path={dragEdgeOverlay} style="stroke" strokeWidth={edgeVisual.readyW+0.6} color="rgba(255,193,7,0.55)" strokeCap="round" />
+          )}
 
-        {showLabels&&staticNodes.map(n=>{
-          const lines=wrappedLabels[n.id]||[{text:n.name,dx:n.name.length*2.8}];
-          const lh=13;
-          const sy=n.y-(lines.length*lh)/2+lh*0.8;
-          const status=nodeStatusMap[n.id]||'locked';
-          const isReady=status==='ready';
-          const isMastered=status==='start'||status==='mastered';
-          return lines.map((ln,li)=>(
-            <SkiaText
-              key={`st_${n.id}_${li}`}
-              x={n.x-ln.dx}
-              y={sy+li*lh}
-              text={ln.text}
-              font={labelFont}
-              color={(isMastered||isReady)?C.textMain:C.textDim}
-            />
-          ));
-        })}
+          {!interactionOn&&LOD.isNear&&edgeBuckets.readySegments.slice(0,20).map(seg=>{
+            const segT=((t.value + seg.seed) % 1);
+            const x=seg.x1 + (seg.x2-seg.x1)*segT;
+            const y=seg.y1 + (seg.y2-seg.y1)*segT;
+            return <Circle key={`spark_${seg.key}`} cx={x} cy={y} r={1.8} color="rgba(255,223,167,0.86)" />;
+          })}
 
-        {dynamicNodes.map(n=>{
+          {showLabels&&staticNodes.map(n=>{
+            const lines=wrappedLabels[n.id]||[{text:n.name,dx:n.name.length*2.8}];
+            const lh=13;
+            const sy=n.y-(lines.length*lh)/2+lh*0.8;
+            const status=nodeStatusMap[n.id]||'locked';
+            const isReady=status==='ready';
+            const isMastered=status==='start'||status==='mastered';
+            return lines.map((ln,li)=>(
+              <SkiaText
+                key={`st_${n.id}_${li}`}
+                x={n.x-ln.dx}
+                y={sy+li*lh}
+                text={ln.text}
+                font={labelFont}
+                color={(isMastered||isReady)?C.textMain:C.textDim}
+              />
+            ));
+          })}
+
+          {dynamicNodes.map(n=>{
           const {fill,stroke,sw,opacity}=nStyle(n);
           const rx=dragPos.value.on&&dragPos.value.id===n.id?dragPos.value.x:n.x;
           const ry=dragPos.value.on&&dragPos.value.id===n.id?dragPos.value.y:n.y;
@@ -899,9 +939,10 @@ function SkiaTreeCanvas({
               ))}
             </Group>
           );
-        })}
-      </Group>
-    </Canvas>
+          })}
+        </Group>
+      </Canvas>
+    </View>
   );
 }
 
@@ -950,6 +991,9 @@ function TreeScreen(){
   const setLiveXform=(tx,ty,sc)=>{
     txN.current=tx;tyN.current=ty;scN.current=sc;
     txV.value=tx;tyV.value=ty;scV.value=sc;
+    if(!USE_REANIMATED_TRANSFORM){
+      setXform(prev=>(prev.tx===tx&&prev.ty===ty&&prev.sc===sc?prev:{tx,ty,sc}));
+    }
   };
   const commitLiveXform=()=>{
     const next={tx:txN.current,ty:tyN.current,sc:scN.current};
