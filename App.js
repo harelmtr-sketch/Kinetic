@@ -389,20 +389,21 @@ function SkiaTreeCanvas({
     c.drawRect(Skia.XYWHRect(0, 0, spriteSize, spriteSize), p);
 
     const image = surface.makeImageSnapshot();
-    const sprites = [Skia.XYWHRect(0, 0, spriteSize, spriteSize)];
+
+    const spriteRect = Skia.XYWHRect(0, 0, spriteSize, spriteSize);
+    const sprites = new Array(N);
     const transforms = new Array(N);
-    const indices = new Uint16Array(N);
 
     for (let i = 0; i < N; i++) {
       const x = (rand() - 0.5) * W;
       const y = (rand() - 0.5) * H;
       const s = 0.45 + rand() * 0.9;
 
+      sprites[i] = spriteRect;
       transforms[i] = Skia.RSXform(s, 0, x, y);
-      indices[i] = 0;
     }
 
-    return { image, sprites, transforms, indices };
+    return { image, sprites, transforms };
   }, []);
 
   const edgeBuckets = useMemo(()=>{
@@ -450,7 +451,6 @@ function SkiaTreeCanvas({
           image={dustAtlas.image}
           sprites={dustAtlas.sprites}
           transforms={dustAtlas.transforms}
-          indices={dustAtlas.indices}
         />
         {edgeBuckets.hasMastered&&LOD.isNear&&!isInteracting&&USE_GLOW&&(
           <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+2.2} color="rgba(76,175,80,0.17)" strokeCap="round" />
