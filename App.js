@@ -607,6 +607,26 @@ function SkiaTreeCanvas({
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
   const nodeAtlas = useMemo(() => buildNodeAtlas(), []);
   const stoneTexture = useMemo(() => buildStoneTexture(), []);
+  const iconPathCache = useMemo(() => {
+    const out = {};
+    for (const [k, svg] of Object.entries(ICON_PATHS)) {
+      const p = Skia.Path.MakeFromSVGString(svg);
+      if (p) out[k] = p;
+    }
+    return out;
+  }, []);
+  const nodePaints = useMemo(() => {
+    const make = (body, plate, rim, ring, halo) => ({ body, plate, rim, ring, halo0: halo[0], halo1: halo[1], halo2: halo[2] });
+    return {
+      locked: make('rgba(70,62,54,0.95)', 'rgba(96,86,76,0.85)', 'rgba(150,138,122,0.75)', 'rgba(150,138,122,0.35)', ['rgba(120,110,98,0.10)','rgba(90,82,72,0.06)','rgba(60,54,48,0.03)']),
+      ready: make('rgba(128,86,31,0.98)', 'rgba(162,116,48,0.90)', 'rgba(255,198,92,1)', 'rgba(255,198,92,0.55)', ['rgba(255,182,66,0.26)','rgba(255,157,52,0.15)','rgba(255,136,40,0.08)']),
+      mastered: make('rgba(32,100,68,0.98)', 'rgba(58,132,96,0.90)', 'rgba(125,241,186,1)', 'rgba(125,241,186,0.55)', ['rgba(90,234,164,0.26)','rgba(76,210,148,0.15)','rgba(54,170,116,0.08)']),
+      start: make('rgba(110,87,26,0.98)', 'rgba(157,124,42,0.92)', 'rgba(255,220,106,1)', 'rgba(255,220,106,0.55)', ['rgba(255,209,105,0.28)','rgba(255,184,90,0.16)','rgba(235,152,59,0.08)']),
+      selected: make('rgba(135,98,28,0.99)', 'rgba(182,139,52,0.94)', 'rgba(255,236,138,1)', 'rgba(255,236,138,0.62)', ['rgba(255,220,120,0.34)','rgba(255,196,98,0.20)','rgba(255,168,70,0.10)']),
+      connectTarget: make('rgba(126,72,21,0.99)', 'rgba(170,104,35,0.90)', 'rgba(255,182,86,1)', 'rgba(255,182,86,0.58)', ['rgba(255,180,88,0.32)','rgba(246,140,56,0.18)','rgba(222,116,38,0.10)']),
+    };
+  }, []);
+  const atlasOk = !!nodeAtlas?.tokenAtlasImage && !!nodeAtlas?.haloAtlasImage && !!nodeAtlas?.ringAtlasImage && !!nodeAtlas?.rectsByVariant;
 
   const dustAtlas = useMemo(() => {
     const W = 3600;
@@ -688,6 +708,7 @@ function SkiaTreeCanvas({
   },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
 
   const nodeScaleByLod = LOD.isFar ? 0.31 : LOD.isMid ? 0.36 : 0.42;
+  const centeredXform = (scale, cx, cy, spriteSize) => Skia.RSXform(scale, 0, cx - (spriteSize * scale) / 2, cy - (spriteSize * scale) / 2);
 
   const nodeSprites = useMemo(() => {
     const tokenSprites = [];
@@ -712,19 +733,19 @@ function SkiaTreeCanvas({
       const cellRect = nodeAtlas.rectsByVariant[variant] || nodeAtlas.rectsByVariant.locked;
 
       tokenSprites.push(cellRect);
-      tokenTransforms.push(Skia.RSXform(nodeScaleByLod, 0, rx, ry));
+      tokenTransforms.push(centeredXform(nodeScaleByLod, rx, ry, NODE_ATLAS_CELL));
 
       const isLit = status === 'start' || status === 'mastered' || status === 'ready' || variant === 'selected' || variant === 'connectTarget';
       if (isLit && !LOD.isFar) {
         const haloScale = nodeScaleByLod * (LOD.isNear ? 1.16 : 1.06);
         haloSprites.push(cellRect);
-        haloTransforms.push(Skia.RSXform(haloScale, 0, rx, ry));
+        haloTransforms.push(centeredXform(haloScale, rx, ry, NODE_ATLAS_CELL));
       }
 
       if (LOD.showOuterRing && (status === 'mastered' || status === 'start' || status === 'ready' || variant === 'connectTarget' || variant === 'selected')) {
         const ringScale = nodeScaleByLod * 1.24;
         ringSprites.push(cellRect);
-        ringTransforms.push(Skia.RSXform(ringScale, 0, rx, ry));
+        ringTransforms.push(centeredXform(ringScale, rx, ry, NODE_ATLAS_CELL));
       }
 
       if (LOD.isNear && !isInteracting) {
@@ -733,7 +754,7 @@ function SkiaTreeCanvas({
         if (iconRect) {
           const iconScale = 0.26;
           iconSprites.push(iconRect);
-          iconTransforms.push(Skia.RSXform(iconScale, 0, rx, ry));
+          iconTransforms.push(centeredXform(iconScale, rx, ry, ICON_CELL));
         }
       }
     }
@@ -753,7 +774,7 @@ function SkiaTreeCanvas({
       </Rect>
       <Image image={stoneTexture} x={0} y={0} width={canvasSize.width} height={canvasSize.height} opacity={0.52} fit="fill" />
       <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height}>
-        <RadialGradient c={vec(canvasSize.width*0.5, canvasSize.height*0.5)} r={Math.max(canvasSize.width, canvasSize.height)*0.8} colors={['rgba(0,0,0,0)','rgba(0,0,0,0.16)','rgba(0,0,0,0.58)']} />
+        <RadialGradient c={vec(canvasSize.width*0.5, canvasSize.height*0.45)} r={Math.max(canvasSize.width, canvasSize.height)*0.85} colors={['rgba(0,0,0,0)','rgba(0,0,0,0.22)','rgba(0,0,0,0.72)']} />
       </Rect>
 
       <Group transform={sceneTransform}>
@@ -784,22 +805,72 @@ function SkiaTreeCanvas({
           <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(110,95,80,${Math.min(0.6,edgeVisual.lockedO+0.15)})`:`rgba(94,84,75,${Math.min(0.55,edgeVisual.lockedO+0.12)})`} strokeCap="round" />
         )}
 
-        {!LOD.isFar && nodeSprites.haloSprites.length > 0 && (
-          <Group blendMode="screen">
-            <Atlas image={nodeAtlas.haloAtlasImage} sprites={nodeSprites.haloSprites} transforms={nodeSprites.haloTransforms} />
-          </Group>
-        )}
+        {atlasOk ? (
+          <>
+            {!LOD.isFar && nodeSprites.haloSprites.length > 0 && (
+              <Group blendMode="screen">
+                <Atlas image={nodeAtlas.haloAtlasImage} sprites={nodeSprites.haloSprites} transforms={nodeSprites.haloTransforms} />
+              </Group>
+            )}
 
-        <Atlas image={nodeAtlas.tokenAtlasImage} sprites={nodeSprites.tokenSprites} transforms={nodeSprites.tokenTransforms} />
+            <Atlas image={nodeAtlas.tokenAtlasImage} sprites={nodeSprites.tokenSprites} transforms={nodeSprites.tokenTransforms} />
 
-        {LOD.showOuterRing && nodeSprites.ringSprites.length > 0 && (
-          <Group blendMode="screen">
-            <Atlas image={nodeAtlas.ringAtlasImage} sprites={nodeSprites.ringSprites} transforms={nodeSprites.ringTransforms} />
-          </Group>
-        )}
+            {LOD.showOuterRing && nodeSprites.ringSprites.length > 0 && (
+              <Group blendMode="screen">
+                <Atlas image={nodeAtlas.ringAtlasImage} sprites={nodeSprites.ringSprites} transforms={nodeSprites.ringTransforms} />
+              </Group>
+            )}
 
-        {LOD.isNear && !isInteracting && nodeSprites.iconSprites.length > 0 && (
-          <Atlas image={nodeAtlas.iconAtlasImage} sprites={nodeSprites.iconSprites} transforms={nodeSprites.iconTransforms} />
+            {LOD.isNear && !isInteracting && nodeSprites.iconSprites.length > 0 && (
+              <Atlas image={nodeAtlas.iconAtlasImage} sprites={nodeSprites.iconSprites} transforms={nodeSprites.iconTransforms} />
+            )}
+          </>
+        ) : (
+          <>
+            {visibleNodes.map((n) => {
+              const status = nodeStatusMap[n.id] || 'locked';
+              const rx = dragVisual?.id===n.id ? dragVisual.x : n.x;
+              const ry = dragVisual?.id===n.id ? dragVisual.y : n.y;
+              const variant = bld && connA===n.id ? 'connectTarget' : selectedNodeId===n.id ? 'selected' : status;
+              const P = nodePaints[variant] || nodePaints.locked;
+              const r = LOD.isFar ? 20 : LOD.isMid ? 26 : 32;
+              const isLit = status==='start' || status==='mastered' || status==='ready' || variant==='selected' || variant==='connectTarget';
+              const iconKey = NODE_ICON_MAP[n.id] || 'star';
+              const iconPath = iconPathCache[iconKey];
+
+              return (
+                <Group key={n.id}>
+                  {isLit && !LOD.isFar && (
+                    <Group blendMode="screen">
+                      <Circle cx={rx} cy={ry} r={r*2.05} color={P.halo2} />
+                      <Circle cx={rx} cy={ry} r={r*1.65} color={P.halo1} />
+                      <Circle cx={rx} cy={ry} r={r*1.25} color={P.halo0} />
+                    </Group>
+                  )}
+
+                  {LOD.isNear && isLit && (
+                    <Group blendMode="screen">
+                      <Circle cx={rx} cy={ry} r={r*1.55} color={P.ring} />
+                    </Group>
+                  )}
+
+                  <Circle cx={rx} cy={ry} r={r*1.12} color={P.rim} />
+                  <Circle cx={rx} cy={ry} r={r*1.02} color={P.body} />
+                  <Circle cx={rx} cy={ry} r={r*0.78} color="rgba(255,255,255,0.12)" />
+                  <Circle cx={rx} cy={ry} r={r*0.72} color={P.plate} />
+                  <Circle cx={rx + r*0.18} cy={ry + r*0.22} r={r*0.62} color="rgba(0,0,0,0.18)" />
+                  <Circle cx={rx - r*0.35} cy={ry - r*0.38} r={r*0.18} color="rgba(255,255,255,0.16)" />
+
+                  {LOD.isNear && !isInteracting && iconPath && (
+                    <Group transform={[{ translateX: rx }, { translateY: ry }, { scale: r / 70 }, { translateX: -48 }, { translateY: -48 }]}> 
+                      <Path path={iconPath} color="rgba(0,0,0,0.55)" transform={[{ translateX: 2.2 }, { translateY: 2.6 }]} />
+                      <Path path={iconPath} color="rgba(249,246,236,0.98)" />
+                    </Group>
+                  )}
+                </Group>
+              );
+            })}
+          </>
         )}
 
         {selectedNode && LOD.isNear && (
