@@ -657,6 +657,14 @@ function SkiaTreeCanvas({
   const showLabels = LOD.isNear && visibleNodes.length<=90 && !interactionOn;
   const showEdgeGlow = visibleEdges.length<=180;
   const disableNodeGlow = visibleNodes.length>120 || LOD.isMid || LOD.isFar || interactionOn;
+  const dynamicNodeIds = useMemo(()=>{
+    const set = new Set();
+    if(dragPos.value.on && dragPos.value.id) set.add(dragPos.value.id);
+    if(selectedNodeId) set.add(selectedNodeId);
+    return set;
+  },[dragPos.value.id,dragPos.value.on,selectedNodeId]);
+  const staticNodes = useMemo(()=>visibleNodes.filter(n=>!dynamicNodeIds.has(n.id)),[dynamicNodeIds,visibleNodes]);
+  const dynamicNodes = useMemo(()=>visibleNodes.filter(n=>dynamicNodeIds.has(n.id)),[dynamicNodeIds,visibleNodes]);
 
   const sweepPath = useMemo(()=>makeStarPath(8),[]);
   const getNodePath = (id,status,renderR)=>{
@@ -728,7 +736,64 @@ function SkiaTreeCanvas({
           return <Circle key={`spark_${seg.key}`} cx={x} cy={y} r={1.8} color="rgba(255,223,167,0.86)" />;
         })}
 
-        {visibleNodes.map(n=>{
+        {staticNodes.map(n=>{
+          const {fill,stroke,sw,opacity}=nStyle(n);
+          const rx=n.x;
+          const ry=n.y;
+          const lines=wrappedLabels[n.id]||[{text:n.name,dx:n.name.length*2.8}];
+          const lh=13;
+          const sy=ry-(lines.length*lh)/2+lh*0.8;
+          const status=nodeStatusMap[n.id]||'locked';
+          const isReady=status==='ready';
+          const isMastered=status==='start'||status==='mastered';
+          const renderR=LOD.isFar?farNodeR:NODE_R;
+          const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
+          const nodePath = getNodePath(n.id, status, renderR);
+          const nodeShader = null;
+          const seedPhase = hashStringToFloat(n.id, 101);
+          const scalePulse = 0.96 + Math.sin((t.value + seedPhase) * Math.PI * 2) * 0.04;
+
+          return(
+            <Group key={n.id}>
+              {LOD.isMid&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.08)" />}
+              {LOD.isMid&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R} color="rgba(255,152,0,0.075)" />}
+              {!disableNodeGlow&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.1} color="rgba(76,175,80,0.2)" />}
+              {!disableNodeGlow&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R*1.05} color="rgba(255,152,0,0.2)" />}
+              {interactionOn&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.1)" />}
+              {interactionOn&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R} color="rgba(255,152,0,0.09)" />}
+
+              <Group transform={[{translateX:rx},{translateY:ry}]}> 
+                {nodeShader ? (
+                  <Path path={nodePath} style="fill" opacity={opacity}>
+                    <Paint shader={nodeShader} />
+                  </Path>
+                ) : (
+                  <Path path={nodePath} style="fill" color={fill} opacity={opacity} />
+                )}
+                {!fastMode&&(
+                  <Group transform={[{scale:0.92*scalePulse}]}> 
+                    <Path path={nodePath} style="fill" color="#000000" opacity={0.14} />
+                  </Group>
+                )}
+                <Path path={nodePath} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
+                {!LOD.isFar&&!interactionOn&&<Circle cx={-7} cy={-8} r={NODE_R*0.11} color="rgba(255,255,255,0.28)" />}
+              </Group>
+
+              {showLabels&&lines.map((ln,li)=>(
+                <SkiaText
+                  key={`${n.id}_${li}`}
+                  x={rx-ln.dx}
+                  y={sy+li*lh}
+                  text={ln.text}
+                  font={labelFont}
+                  color={(isMastered||isReady)?C.textMain:C.textDim}
+                />
+              ))}
+            </Group>
+          );
+        })}
+
+        {dynamicNodes.map(n=>{
           const {fill,stroke,sw,opacity}=nStyle(n);
           const rx=dragPos.value.on&&dragPos.value.id===n.id?dragPos.value.x:n.x;
           const ry=dragPos.value.on&&dragPos.value.id===n.id?dragPos.value.y:n.y;
@@ -747,9 +812,7 @@ function SkiaTreeCanvas({
           const scalePulse = 0.96 + Math.sin((t.value + seedPhase) * Math.PI * 2) * 0.04;
 
           return(
-            <Group key={n.id}>
-              {LOD.isMid&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.08)" />}
-              {LOD.isMid&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R} color="rgba(255,152,0,0.075)" />}
+            <Group key={`dyn_${n.id}`}>
               {!disableNodeGlow&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.1} color="rgba(76,175,80,0.2)" />}
               {!disableNodeGlow&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R*1.05} color="rgba(255,152,0,0.2)" />}
               {interactionOn&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R*1.02} color="rgba(76,175,80,0.1)" />}
@@ -784,7 +847,7 @@ function SkiaTreeCanvas({
 
               {showLabels&&lines.map((ln,li)=>(
                 <SkiaText
-                  key={`${n.id}_${li}`}
+                  key={`dyn_${n.id}_${li}`}
                   x={rx-ln.dx}
                   y={sy+li*lh}
                   text={ln.text}
