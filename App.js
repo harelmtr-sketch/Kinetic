@@ -365,6 +365,7 @@ const NODE_ATLAS_CELL = 256;
 const NODE_ATLAS_VARIANTS = ['locked','ready','mastered','start','selected','connectTarget'];
 const ICON_CELL = 128;
 const ICON_TARGET_SIZE = 70;
+const FORCE_FALLBACK_NODES = false;
 const NODE_ICON_MAP = {
   start: 'star',
   dead_hang: 'link',
@@ -593,7 +594,7 @@ function buildStoneTexture() {
 function SkiaTreeCanvas({
   tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
-  dragVisual, LOD, edgeVisual,
+  dragVisual, incidentEdgesByNode, LOD, edgeVisual,
   bld, connA, isInteracting,
   canvasSize, selectedNodeId,
 }){
@@ -626,41 +627,42 @@ function SkiaTreeCanvas({
       connectTarget: make('rgba(126,72,21,0.99)', 'rgba(170,104,35,0.90)', 'rgba(255,182,86,1)', 'rgba(255,182,86,0.58)', ['rgba(255,180,88,0.32)','rgba(246,140,56,0.18)','rgba(222,116,38,0.10)']),
     };
   }, []);
-  const atlasOk = !!nodeAtlas?.tokenAtlasImage && !!nodeAtlas?.haloAtlasImage && !!nodeAtlas?.ringAtlasImage && !!nodeAtlas?.rectsByVariant;
+  const atlasOk = !FORCE_FALLBACK_NODES && !!nodeAtlas?.tokenAtlasImage && !!nodeAtlas?.haloAtlasImage && !!nodeAtlas?.ringAtlasImage && !!nodeAtlas?.rectsByVariant;
 
-  const dustAtlas = useMemo(() => {
+  const dustAtlasSets = useMemo(() => {
     const W = 3600;
     const H = 3600;
-    const N = 900;
-
-    const rand = mulberry32(1337);
-
     const spriteSize = 8;
     const surface = Skia.Surface.MakeOffscreen(spriteSize, spriteSize);
     const c = surface.getCanvas();
     c.clear(Skia.Color('rgba(0,0,0,0)'));
-
     const p = Skia.Paint();
     p.setColor(Skia.Color('rgba(255,255,255,0.12)'));
     c.drawRect(Skia.XYWHRect(0, 0, spriteSize, spriteSize), p);
-
     const image = surface.makeImageSnapshot();
-
     const spriteRect = Skia.XYWHRect(0, 0, spriteSize, spriteSize);
-    const sprites = new Array(N);
-    const transforms = new Array(N);
 
-    for (let i = 0; i < N; i++) {
-      const x = (rand() - 0.5) * W;
-      const y = (rand() - 0.5) * H;
-      const s = 0.45 + rand() * 0.9;
+    const makeSet = (seed, count) => {
+      const rand = mulberry32(seed);
+      const sprites = new Array(count);
+      const transforms = new Array(count);
+      for (let i = 0; i < count; i++) {
+        const x = (rand() - 0.5) * W;
+        const y = (rand() - 0.5) * H;
+        const s = 0.45 + rand() * 0.9;
+        sprites[i] = spriteRect;
+        transforms[i] = Skia.RSXform(s, 0, x, y);
+      }
+      return { image, sprites, transforms };
+    };
 
-      sprites[i] = spriteRect;
-      transforms[i] = Skia.RSXform(s, 0, x, y);
-    }
-
-    return { image, sprites, transforms };
+    return {
+      near: makeSet(1337, 900),
+      mid: makeSet(1441, 500),
+      far: makeSet(1559, 250),
+    };
   }, []);
+  const dustAtlas = LOD.isFar ? dustAtlasSets.far : LOD.isMid ? dustAtlasSets.mid : dustAtlasSets.near;
 
   const edgeBuckets = useMemo(()=>{
     const branchBase = Skia.Path.Make();
@@ -673,11 +675,8 @@ function SkiaTreeCanvas({
       const fn=nodeMap.get(e.from);
       const tn=nodeMap.get(e.to);
       if(!fn||!tn) continue;
-      const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
-      const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
-
-      branchBase.moveTo(fromPos.x,fromPos.y);
-      branchBase.lineTo(toPos.x,toPos.y);
+      branchBase.moveTo(fn.x,fn.y);
+      branchBase.lineTo(tn.x,tn.y);
 
       let bucket=locked;
       if(!bld){
@@ -689,8 +688,8 @@ function SkiaTreeCanvas({
         const fromStart=fromState==='start';
         if(fromLit&&toLit){
           bucket=mastered;
-          masteredCore.moveTo(fromPos.x,fromPos.y);
-          masteredCore.lineTo(toPos.x,toPos.y);
+          masteredCore.moveTo(fn.x,fn.y);
+          masteredCore.lineTo(tn.x,tn.y);
           hasMastered=true;
         }else if((fromLit&&!toLit)||(toReady)||(fromStart&&toState==='locked')){
           bucket=ready;
@@ -701,14 +700,54 @@ function SkiaTreeCanvas({
       }else{
         hasLocked=true;
       }
+      bucket.moveTo(fn.x,fn.y);
+      bucket.lineTo(tn.x,tn.y);
+    }
+    return { branchBase, mastered, masteredCore, ready, locked, hasMastered, hasReady, hasLocked };
+  },[bld,nodeMap,nodeStatusMap,visibleEdges]);
+
+  const dragEdgeOverlay = useMemo(() => {
+    if (!dragVisual?.id) return null;
+    const overlay = { branchBase: Skia.Path.Make(), mastered: Skia.Path.Make(), masteredCore: Skia.Path.Make(), ready: Skia.Path.Make(), locked: Skia.Path.Make(), hasMastered: false, hasReady: false, hasLocked: false };
+    const incident = incidentEdgesByNode.get(dragVisual.id) || [];
+    for (const e of incident) {
+      const fn = nodeMap.get(e.from);
+      const tn = nodeMap.get(e.to);
+      if (!fn || !tn) continue;
+      const fromPos = e.from === dragVisual.id ? dragVisual : fn;
+      const toPos = e.to === dragVisual.id ? dragVisual : tn;
+      overlay.branchBase.moveTo(fromPos.x, fromPos.y);
+      overlay.branchBase.lineTo(toPos.x, toPos.y);
+      let bucket = overlay.locked;
+      if (!bld) {
+        const fromState=nodeStatusMap[fn.id] || 'locked';
+        const toState=nodeStatusMap[tn.id] || 'locked';
+        const fromLit=fromState==='start'||fromState==='mastered';
+        const toLit=toState==='start'||toState==='mastered';
+        const toReady=toState==='ready';
+        const fromStart=fromState==='start';
+        if(fromLit&&toLit){
+          bucket=overlay.mastered;
+          overlay.masteredCore.moveTo(fromPos.x,fromPos.y);
+          overlay.masteredCore.lineTo(toPos.x,toPos.y);
+          overlay.hasMastered=true;
+        }else if((fromLit&&!toLit)||(toReady)||(fromStart&&toState==='locked')){
+          bucket=overlay.ready;
+          overlay.hasReady=true;
+        }else{
+          overlay.hasLocked=true;
+        }
+      } else {
+        overlay.hasLocked=true;
+      }
       bucket.moveTo(fromPos.x,fromPos.y);
       bucket.lineTo(toPos.x,toPos.y);
     }
-    return { branchBase, mastered, masteredCore, ready, locked, hasMastered, hasReady, hasLocked };
-  },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
+    return overlay;
+  }, [bld, dragVisual, incidentEdgesByNode, nodeMap, nodeStatusMap]);
 
   const nodeScaleByLod = LOD.isFar ? 0.31 : LOD.isMid ? 0.36 : 0.42;
-  const centeredXform = (scale, cx, cy, spriteSize) => Skia.RSXform(scale, 0, cx - (spriteSize * scale) / 2, cy - (spriteSize * scale) / 2);
+  const xformAt = (scale, cx, cy) => Skia.RSXform(scale, 0, cx, cy);
 
   const nodeSprites = useMemo(() => {
     const tokenSprites = [];
@@ -733,19 +772,19 @@ function SkiaTreeCanvas({
       const cellRect = nodeAtlas.rectsByVariant[variant] || nodeAtlas.rectsByVariant.locked;
 
       tokenSprites.push(cellRect);
-      tokenTransforms.push(centeredXform(nodeScaleByLod, rx, ry, NODE_ATLAS_CELL));
+      tokenTransforms.push(xformAt(nodeScaleByLod, rx, ry));
 
       const isLit = status === 'start' || status === 'mastered' || status === 'ready' || variant === 'selected' || variant === 'connectTarget';
       if (isLit && !LOD.isFar) {
         const haloScale = nodeScaleByLod * (LOD.isNear ? 1.16 : 1.06);
         haloSprites.push(cellRect);
-        haloTransforms.push(centeredXform(haloScale, rx, ry, NODE_ATLAS_CELL));
+        haloTransforms.push(xformAt(haloScale, rx, ry));
       }
 
       if (LOD.showOuterRing && (status === 'mastered' || status === 'start' || status === 'ready' || variant === 'connectTarget' || variant === 'selected')) {
         const ringScale = nodeScaleByLod * 1.24;
         ringSprites.push(cellRect);
-        ringTransforms.push(centeredXform(ringScale, rx, ry, NODE_ATLAS_CELL));
+        ringTransforms.push(xformAt(ringScale, rx, ry));
       }
 
       if (LOD.isNear && !isInteracting) {
@@ -754,7 +793,7 @@ function SkiaTreeCanvas({
         if (iconRect) {
           const iconScale = 0.26;
           iconSprites.push(iconRect);
-          iconTransforms.push(centeredXform(iconScale, rx, ry, ICON_CELL));
+          iconTransforms.push(xformAt(iconScale, rx, ry));
         }
       }
     }
@@ -786,6 +825,12 @@ function SkiaTreeCanvas({
 
         <Path path={edgeBuckets.branchBase} style="stroke" strokeWidth={LOD.isFar?2.2:LOD.isMid?3.1:4.2} color="rgba(42,34,28,0.58)" strokeCap="round" />
         <Path path={edgeBuckets.branchBase} style="stroke" strokeWidth={LOD.isFar?0.9:1.2} color="rgba(20,17,14,0.45)" strokeCap="round" />
+        {dragEdgeOverlay && (
+          <>
+            <Path path={dragEdgeOverlay.branchBase} style="stroke" strokeWidth={LOD.isFar?2.2:LOD.isMid?3.1:4.2} color="rgba(42,34,28,0.58)" strokeCap="round" />
+            <Path path={dragEdgeOverlay.branchBase} style="stroke" strokeWidth={LOD.isFar?0.9:1.2} color="rgba(20,17,14,0.45)" strokeCap="round" />
+          </>
+        )}
 
         {edgeBuckets.hasMastered&&LOD.isNear&&!isInteracting&&USE_GLOW&&(
           <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+2.8} color="rgba(94,240,173,0.23)" strokeCap="round" />
@@ -803,6 +848,18 @@ function SkiaTreeCanvas({
         )}
         {edgeBuckets.hasLocked&&(
           <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(110,95,80,${Math.min(0.6,edgeVisual.lockedO+0.15)})`:`rgba(94,84,75,${Math.min(0.55,edgeVisual.lockedO+0.12)})`} strokeCap="round" />
+        )}
+        {dragEdgeOverlay?.hasMastered&&(
+          <Path path={dragEdgeOverlay.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+0.9} color={`rgba(78,224,158,${Math.min(0.95,edgeVisual.masteredO+0.08)})`} strokeCap="round" />
+        )}
+        {dragEdgeOverlay?.hasMastered&&(
+          <Path path={dragEdgeOverlay.masteredCore} style="stroke" strokeWidth={LOD.isFar?0.6:0.9} color="rgba(203,255,232,0.9)" strokeCap="round" />
+        )}
+        {dragEdgeOverlay?.hasReady&&(
+          <Path path={dragEdgeOverlay.ready} style="stroke" strokeWidth={edgeVisual.readyW+0.7} color={`rgba(255,183,77,${Math.min(0.9,edgeVisual.readyO+0.1)})`} strokeCap="round" />
+        )}
+        {dragEdgeOverlay?.hasLocked&&(
+          <Path path={dragEdgeOverlay.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(110,95,80,${Math.min(0.6,edgeVisual.lockedO+0.15)})`:`rgba(94,84,75,${Math.min(0.55,edgeVisual.lockedO+0.12)})`} strokeCap="round" />
         )}
 
         {atlasOk ? (
@@ -1273,6 +1330,17 @@ function TreeScreen(){
     visibleNodeIds.has(e.from)||visibleNodeIds.has(e.to)
   ),[tree.edges,visibleNodeIds]);
 
+  const incidentEdgesByNode = useMemo(() => {
+    const out = new Map();
+    for (const e of visibleEdges) {
+      if (!out.has(e.from)) out.set(e.from, []);
+      if (!out.has(e.to)) out.set(e.to, []);
+      out.get(e.from).push(e);
+      if (e.to !== e.from) out.get(e.to).push(e);
+    }
+    return out;
+  }, [visibleEdges]);
+
   const lodTier=useMemo(()=>{
     if(xform.sc<0.35) return 'far';
     if(xform.sc<0.75) return 'mid';
@@ -1392,6 +1460,7 @@ function TreeScreen(){
             tyV={tyV}
             scV={scV}
             dragVisual={dragVisual}
+            incidentEdgesByNode={incidentEdgesByNode}
             LOD={LOD}
             edgeVisual={edgeVisual}
             bld={bld}
