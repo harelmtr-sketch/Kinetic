@@ -39,6 +39,7 @@ const MAX_SC = 6;
 const DEV_PERF_LOG = false;
 const USE_GLOW = true;
 const GLOW_QUALITY = 'low'; // 'low' | 'high'
+const USE_REANIMATED_TRANSFORM = true;
 
 configureReanimatedLogger({
   level: 1,
@@ -532,7 +533,7 @@ function SkiaTreeCanvas({
   bld, connA, isInteractingV,
   selectedNodeId, selPulseV,
   canvasSize, nStyle,
-  incidentByNode,
+  incidentByNode, xform,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
   const shapeCacheRef = useRef(new Map());
@@ -546,24 +547,29 @@ function SkiaTreeCanvas({
     }
   },[txV,tyV,scV,selPulseV,dragIdV,dragXV,dragYV,draggingV]);
 
-  const sceneTransform = useDerivedValue(()=>{
+  const sceneTransform = useDerivedValue(() => {
     'worklet';
     return [
-    { translateX: txV?.value ?? 0 },
-    { translateY: tyV?.value ?? 0 },
-    { scale: scV?.value ?? 1 },
+      { translateX: txV.value },
+      { translateY: tyV.value },
+      { scale: scV.value },
     ];
-  },[txV,tyV,scV]);
+  }, []);
+  const sceneTransformFallback = useMemo(() => ([
+    { translateX: xform?.tx ?? 0 },
+    { translateY: xform?.ty ?? 0 },
+    { scale: xform?.sc ?? 1 },
+  ]), [xform?.sc, xform?.tx, xform?.ty]);
 
-  const dragPos = useDerivedValue(()=>{
+  const dragPos = useDerivedValue(() => {
     'worklet';
     return {
-    id: dragIdV?.value ?? '',
-    x: dragXV?.value ?? 0,
-    y: dragYV?.value ?? 0,
-    on: (draggingV?.value ?? 0) === 1,
+      id: dragIdV.value,
+      x: dragXV.value,
+      y: dragYV.value,
+      on: draggingV.value === 1,
     };
-  },[dragIdV,dragXV,dragYV,draggingV]);
+  }, []);
 
   const interactionOn = dragPos.value.on;
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
@@ -604,10 +610,22 @@ function SkiaTreeCanvas({
     };
   },[t]);
 
-  const safeSelPulse = useDerivedValue(()=>selPulseV?.value ?? 0,[selPulseV]);
-  const selectedRingOpacity = useDerivedValue(()=>0.15 + (safeSelPulse.value * 0.2),[safeSelPulse]);
-  const selectedRingRadius = useDerivedValue(()=>NODE_R + 8 + (safeSelPulse.value * 3),[safeSelPulse]);
-  const shimmer = useDerivedValue(() => t.value * Math.PI * 2, [t]);
+  const safeSelPulse = useDerivedValue(() => {
+    'worklet';
+    return selPulseV.value;
+  }, []);
+  const selectedRingOpacity = useDerivedValue(() => {
+    'worklet';
+    return 0.15 + (safeSelPulse.value * 0.2);
+  }, []);
+  const selectedRingRadius = useDerivedValue(() => {
+    'worklet';
+    return NODE_R + 8 + (safeSelPulse.value * 3);
+  }, []);
+  const shimmer = useDerivedValue(() => {
+    'worklet';
+    return t.value * Math.PI * 2;
+  }, []);
 
   const edgeSegments = useMemo(()=>visibleEdges.map(e=>({
     key:`${e.from}|${e.to}`,
@@ -759,7 +777,7 @@ function SkiaTreeCanvas({
         isInteracting={interactionOn}
       />
 
-      <Group transform={sceneTransform}>
+      <Group transform={USE_REANIMATED_TRANSFORM ? sceneTransform : sceneTransformFallback}>
         {edgeBuckets.hasMastered&&showEdgeGlow&&(
           <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={interactionOn?(edgeVisual.masteredW+3.8):(edgeVisual.masteredW+3.2)} color={interactionOn?"rgba(86,210,110,0.2)":"rgba(76,175,80,0.2)"} strokeCap="round">
             {!interactionOn&&<BlurMask blur={7} style="solid" />}
@@ -1434,6 +1452,7 @@ function TreeScreen(){
             canvasSize={canvasSize}
             nStyle={nStyle}
             incidentByNode={incidentByNode}
+            xform={xform}
           />
         )}
       </View>
@@ -1540,6 +1559,25 @@ function AppShell(){
 }
 
 export default function App(){
+  useEffect(()=>{
+    console.log('[versions]', {
+      reanimated: require('react-native-reanimated/package.json').version,
+      skia: require('@shopify/react-native-skia/package.json').version,
+    });
+    let loggedWorkletError=false;
+    const prevHandler=global.ErrorUtils?.getGlobalHandler?.();
+    if(global.ErrorUtils?.setGlobalHandler){
+      global.ErrorUtils.setGlobalHandler((error,isFatal)=>{
+        const msg=String(error?.message||error||'');
+        if(!loggedWorkletError&&msg.includes('[Worklets]')){
+          loggedWorkletError=true;
+          console.log('[worklets-error]',msg);
+        }
+        if(prevHandler) prevHandler(error,isFatal);
+      });
+    }
+  },[]);
+
   return (
     <SafeAreaProvider>
       <AppShell />
