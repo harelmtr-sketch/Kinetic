@@ -26,7 +26,6 @@ import {
   Skia,
   Text as SkiaText,
   matchFont,
-  rect,
 } from '@shopify/react-native-skia';
 import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
 
@@ -309,10 +308,17 @@ function NamePrompt({visible,onConfirm,onCancel}){
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={no}/>
         <View style={np.box}>
           <Text style={np.title}>NEW SKILL</Text>
-          <TextInput style={np.input} value={val} onChangeText={setVal}
-            placeholder="Skill name..." placeholderTextColor={C.textFaint}
-            autoFocus returnKeyType="done" onSubmitEditing={ok}
-            selectionColor={C.gold} style={[np.input,{color:C.textMain}]}/>
+          <TextInput
+            value={val}
+            onChangeText={setVal}
+            placeholder="Skill name..."
+            placeholderTextColor={C.textFaint}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={ok}
+            selectionColor={C.gold}
+            style={[np.input, { color: C.textMain }]}
+          />
           <View style={np.row}>
             <TouchableOpacity style={np.cancel} onPress={no}>
               <Text style={np.cancelT}>Cancel</Text>
@@ -383,7 +389,7 @@ function SkiaTreeCanvas({
     c.drawRect(Skia.XYWHRect(0, 0, spriteSize, spriteSize), p);
 
     const image = surface.makeImageSnapshot();
-    const sprites = [rect(0, 0, spriteSize, spriteSize)];
+    const sprites = [Skia.XYWHRect(0, 0, spriteSize, spriteSize)];
     const transforms = new Array(N);
     const indices = new Array(N);
 
@@ -392,7 +398,12 @@ function SkiaTreeCanvas({
       const y = (rand() - 0.5) * H;
       const s = 0.45 + rand() * 0.9;
 
-      transforms[i] = { x, y, scale: s, rotation: 0 };
+      transforms[i] = {
+        scos: s,
+        ssin: 0,
+        tx: x,
+        ty: y,
+      };
       indices[i] = 0;
     }
 
