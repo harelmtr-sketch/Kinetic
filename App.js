@@ -118,6 +118,80 @@ const toRGBA = (hex, alpha = 1) => {
   return `rgba(${r},${g},${b},${alpha})`;
 };
 
+function GlowText({
+  children,
+  style,
+  color = Colors.blue[300],
+  glowColor = 'rgba(96,165,250,0.75)',
+  outerGlowColor = 'rgba(59,130,246,0.35)',
+  align = 'auto',
+  numberOfLines,
+}) {
+  return (
+    <View style={[glowText.wrap, align !== 'auto' && { alignItems: align }]}>
+      <Text
+        numberOfLines={numberOfLines}
+        style={[
+          style,
+          glowText.layerBase,
+          {
+            color,
+            textShadowColor: outerGlowColor,
+            textShadowRadius: 16,
+            opacity: 0.45,
+          },
+        ]}
+      >
+        {children}
+      </Text>
+
+      <Text
+        numberOfLines={numberOfLines}
+        style={[
+          style,
+          glowText.layerBase,
+          {
+            color,
+            textShadowColor: glowColor,
+            textShadowRadius: 8,
+            opacity: 0.9,
+          },
+        ]}
+      >
+        {children}
+      </Text>
+
+      <Text
+        numberOfLines={numberOfLines}
+        style={[
+          style,
+          {
+            color,
+            textShadowColor: 'rgba(255,255,255,0.08)',
+            textShadowRadius: 2,
+            textShadowOffset: { width: 0, height: 0 },
+          },
+        ]}
+      >
+        {children}
+      </Text>
+    </View>
+  );
+}
+
+const glowText = StyleSheet.create({
+  wrap: {
+    position: 'relative',
+  },
+  layerBase: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+});
+
 const INIT = {
   nodes:[
     {id:'start',      name:'Start',          x:450,y:100, unlocked:true, isStart:true, branch:'neutral' },
@@ -247,7 +321,15 @@ function SkillCard({node,nodes,edges,info,onClose,onRecord}){
           </View>
 
           {/* Title */}
-          <Text style={cs.title}>{node.name.toUpperCase()}</Text>
+          <GlowText
+            style={cs.title}
+            color={Colors.text.primary}
+            glowColor="rgba(96,165,250,0.32)"
+            outerGlowColor="rgba(59,130,246,0.18)"
+            align="center"
+          >
+            {node.name.toUpperCase()}
+          </GlowText>
 
           {/* Divider */}
           <View style={cs.divRow}>
@@ -331,9 +413,14 @@ const cs = StyleSheet.create({
   divLine:     {flex:1,height:1,backgroundColor:C.stone},
   divDot:      {width:5,height:5,borderRadius:3,backgroundColor:C.goldDim,marginHorizontal:8},
 
-  title:       {textAlign:'center',fontSize:28,fontWeight:'800',color:C.textMain,
-                letterSpacing:5,paddingHorizontal:18,paddingVertical:8,
-                textShadowColor:C.gold+'40',textShadowRadius:12},
+  title: {
+    textAlign: 'center',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 5,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
 
   diffSection: {paddingHorizontal:18,paddingTop:10,paddingBottom:4},
   desc:       {color:C.textDim,fontSize:13,lineHeight:18,paddingHorizontal:18,paddingTop:4,paddingBottom:8,textAlign:'center'},
@@ -383,7 +470,15 @@ function NamePrompt({visible,onConfirm,onCancel}){
       <KeyboardAvoidingView style={np.kav} behavior={Platform.OS==='ios'?'padding':'height'}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={no}/>
         <View style={np.box}>
-          <Text style={np.title}>NEW SKILL</Text>
+          <GlowText
+            style={np.title}
+            color={Colors.blue[300]}
+            glowColor="rgba(96,165,250,0.65)"
+            outerGlowColor="rgba(59,130,246,0.3)"
+            align="center"
+          >
+            NEW SKILL
+          </GlowText>
           <TextInput
             value={val}
             onChangeText={setVal}
@@ -411,7 +506,13 @@ function NamePrompt({visible,onConfirm,onCancel}){
 const np = StyleSheet.create({
   kav:    {flex:1,backgroundColor:'rgba(0,0,0,0.82)',justifyContent:'flex-start',paddingTop:110,paddingHorizontal:30},
   box:    {backgroundColor:C.bgCard,borderRadius:14,padding:24,borderWidth:1,borderColor:C.stone},
-  title:  {color:C.textMain,fontSize:14,fontWeight:'800',letterSpacing:4,textAlign:'center',marginBottom:18},
+  title: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 4,
+    textAlign: 'center',
+    marginBottom: 18,
+  },
   input:  {backgroundColor:'#0f172a',borderRadius:10,padding:16,fontSize:17,borderWidth:1,borderColor:C.stone,marginBottom:16,color:C.textMain},
   row:    {flexDirection:'row',gap:10},
   cancel: {flex:1,backgroundColor:'#111827',borderRadius:10,paddingVertical:14,alignItems:'center',borderWidth:1,borderColor:C.stone},
@@ -509,8 +610,8 @@ function SkiaTreeCanvas({
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
       <Group transform={sceneTransform}>
-        <Circle cx={450} cy={420} r={860} color="rgba(19,32,52,0.1)" />
-        <Circle cx={450} cy={420} r={520} color="rgba(59,130,246,0.08)" />
+        <Circle cx={450} cy={380} r={720} color="rgba(16,28,44,0.06)" />
+        <Circle cx={450} cy={420} r={430} color="rgba(59,130,246,0.045)" />
         <Atlas
           image={dustAtlas.image}
           sprites={dustAtlas.sprites}
@@ -546,14 +647,31 @@ function SkiaTreeCanvas({
           const isMastered=status==='start'||status==='mastered';
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,visual.sw-0.5):visual.sw;
-          const baseAuraColor=status==='locked'?'rgba(100,116,139,0.14)':toRGBA(visual.stroke,0.2);
+          const baseAuraColor =
+            status === 'locked'
+              ? 'rgba(100,116,139,0.18)'
+              : toRGBA(visual.stroke, 0.26);
           return(
             <Group key={n.id}>
               {LOD.showOuterRing&&<Circle cx={rx} cy={ry} r={NODE_R+13} style="stroke" strokeWidth={1.15} color={visual.ring} />}
               {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edge} />}
 
-              {USE_GLOW&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.76:NODE_R*1.02} color={baseAuraColor} />}
-              {USE_GLOW&&isLit&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.86:NODE_R*1.14} color={visual.glowOuter} />}
+              {USE_GLOW && (
+                <Circle
+                  cx={rx}
+                  cy={ry}
+                  r={LOD.isFar ? NODE_R * 0.82 : NODE_R * 1.06}
+                  color={baseAuraColor}
+                />
+              )}
+              {USE_GLOW && isLit && (
+                <Circle
+                  cx={rx}
+                  cy={ry}
+                  r={LOD.isFar ? NODE_R * 0.92 : NODE_R * 1.18}
+                  color={visual.glowOuter}
+                />
+              )}
 
               {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
                 <Group>
@@ -578,7 +696,7 @@ function SkiaTreeCanvas({
                   y={sy+li*lh}
                   text={ln}
                   font={labelFont}
-                  color={isLit?Colors.text.primary:Colors.slate[400]}
+                  color={isLit ? '#F8FAFC' : '#B6C2D1'}
                 />
               ))}
             </Group>
@@ -1038,7 +1156,15 @@ function TreeScreen({ onTreeChange }){
     <View style={S.root}>
       {/* Top bar */}
       <View style={[S.bar,{paddingTop:insets.top+10}]}>
-        <Text style={S.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>KINETIC SKILL TREE</Text>
+        <GlowText
+          style={S.title}
+          color={Colors.blue[300]}
+          glowColor="rgba(96,165,250,0.72)"
+          outerGlowColor="rgba(59,130,246,0.38)"
+          numberOfLines={1}
+        >
+          KINETIC SKILL TREE
+        </GlowText>
         <View style={S.barRight}>
           {!bld&&(
             <TouchableOpacity style={S.resetBtn} onPress={()=>{
@@ -1237,7 +1363,14 @@ function SettingsScreen(){
 
   return (
     <ScrollView contentContainerStyle={tabs.content} style={tabs.page}>
-      <Text style={tabs.pageTitle}>Settings</Text>
+      <GlowText
+        style={tabs.pageTitle}
+        color={Colors.blue[300]}
+        glowColor="rgba(96,165,250,0.75)"
+        outerGlowColor="rgba(59,130,246,0.38)"
+      >
+        Settings
+      </GlowText>
       <View style={tabs.card}>
         <View style={tabs.settingRow}>
           <Text style={tabs.settingLabel}>Push Notifications</Text>
@@ -1297,8 +1430,12 @@ function AppShell(){
             }
             return (
               <TouchableOpacity key={item.key} style={tabs.navItem} onPress={() => setTab(item.key)}>
-                <View style={[tabs.navPill, active && tabs.navPillActive]}>
-                  <Ionicons name={item.icon} size={24} color={active ? '#FFFFFF' : '#6B7280'} />
+                <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                  {active && <View style={tabs.navPillGlowOuter} />}
+                  {active && <View style={tabs.navPillGlowInner} />}
+                  <View style={[tabs.navPill, active && tabs.navPillActive]}>
+                    <Ionicons name={item.icon} size={24} color={active ? '#FFFFFF' : '#6B7280'} />
+                  </View>
                 </View>
                 <Text style={[tabs.navLabel, active && tabs.navLabelActive]}>{item.key}</Text>
               </TouchableOpacity>
@@ -1345,16 +1482,35 @@ const tabs = StyleSheet.create({
     borderColor: 'rgba(59, 130, 246, 0.3)',
     shadowColor: '#60A5FA',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 7,
+  },
+  navPillGlowOuter: {
+    position: 'absolute',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(59,130,246,0.15)',
+  },
+  navPillGlowInner: {
+    position: 'absolute',
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: 'rgba(59,130,246,0.25)',
   },
   navLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
   navLabelActive: { color: '#FFFFFF' },
   navLocked: { color: '#6B7280' },
   page: { flex: 1, backgroundColor: Colors.background.primary },
   content: { padding: 16, gap: 14 },
-  pageTitle: { color: Colors.blue[300], fontSize: 26, fontWeight: '800', marginBottom: 4, letterSpacing: 1 },
+  pageTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    marginBottom: 4,
+    letterSpacing: 1,
+  },
   profileHeader: {
     backgroundColor: Colors.background.card,
     borderWidth: 1,
@@ -1426,8 +1582,13 @@ const S=StyleSheet.create({
             paddingHorizontal:14,paddingTop:10,paddingBottom:10,gap:10,
             backgroundColor:'#060A10',borderBottomWidth:1,borderColor:Colors.border.default},
   barRight:{flexDirection:'row',alignItems:'center',gap:8,flexShrink:1},
-  title:   {color:Colors.blue[300],fontSize:13,fontWeight:'800',letterSpacing:3,
-            textShadowColor:toRGBA(Colors.blue[400],0.7),textShadowRadius:8,flexShrink:1,paddingRight:8},
+  title: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 3,
+    flexShrink: 1,
+    paddingRight: 8,
+  },
   resetBtn:{paddingHorizontal:12,paddingVertical:8,borderRadius:8,
             backgroundColor:'#151922',borderWidth:1,borderColor:'rgba(239,68,68,0.6)',
             shadowColor:'#EF4444',shadowOpacity:0.22,shadowRadius:8,shadowOffset:{width:0,height:0}},
