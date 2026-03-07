@@ -1,6 +1,5 @@
 /**
- * Calisthenics Skill Tree
- * Dark stone / RPG aesthetic — inspired by the reference card design.
+ * Kinetic — premium dark fitness skill tree.
  */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -37,37 +36,100 @@ const DEV_PERF_LOG = false;
 const USE_GLOW = true;
 const GLOW_QUALITY = 'low'; // 'low' | 'high'
 
-// Colours — dark stone palette
+const Colors = {
+  black: '#000000',
+  white: '#FFFFFF',
+  background: {
+    primary: '#000000',
+    secondary: '#0F1115',
+    card: '#1E2128',
+    cardAlt: '#1A1D23',
+    gradient: {
+      dark1: '#0F1419',
+      dark2: '#161B28',
+      dark3: '#1A1F2E',
+      dark4: '#1E2433',
+    },
+  },
+  blue: { 300: '#93C5FD', 400: '#60A5FA', 500: '#3B82F6', 600: '#2563EB' },
+  green: { 400: '#4ADE80', 500: '#22C55E' },
+  yellow: { 300: '#FDE047', 400: '#FACC15', 500: '#EAB308' },
+  slate: { 300: '#CBD5E1', 400: '#94A3B8', 500: '#64748B', 700: '#334155', 800: '#1E293B', 900: '#0F172A' },
+  text: {
+    primary: '#FFFFFF',
+    secondary: '#E5E7EB',
+    tertiary: '#9CA3AF',
+    disabled: 'rgba(156, 163, 175, 0.5)',
+  },
+  border: {
+    default: 'rgba(60, 65, 75, 0.3)',
+    blue: 'rgba(59, 130, 246, 0.25)',
+    blueActive: 'rgba(59, 130, 246, 0.40)',
+    subtle: 'rgba(229, 231, 235, 0.1)',
+  },
+};
+
+const BRANCH_COLORS = {
+  neutral: { main: Colors.blue[400], glow: 'rgba(96,165,250,0.34)', edge: 'rgba(96,165,250,0.72)', ring: '#93C5FD' },
+  push: { main: Colors.green[500], glow: 'rgba(34,197,94,0.35)', edge: 'rgba(74,222,128,0.78)', ring: '#86EFAC' },
+  pull: { main: Colors.blue[500], glow: 'rgba(59,130,246,0.38)', edge: 'rgba(96,165,250,0.8)', ring: '#93C5FD' },
+  core: { main: Colors.yellow[400], glow: 'rgba(250,204,21,0.36)', edge: 'rgba(250,204,21,0.82)', ring: '#FDE047' },
+};
+
 const C = {
-  bg:        '#0e0c0a',   // near-black warm
-  bgCard:    '#181410',   // card background
-  bgDeep:    '#100e0c',
-  stone:     '#2a2420',   // panel border
-  stoneLt:   '#3a3028',
-  gold:      '#c8a84b',   // gold accent
-  goldDim:   '#6b5a28',
-  green:     '#4a9c6a',
-  greenGlow: '#2d6b47',
-  amber:     '#d4800a',
-  red:       '#c04040',
-  blue:      '#4070c0',
-  textMain:  '#e8d9b8',   // warm parchment white
-  textDim:   '#7a6a54',
-  textFaint: '#3d3428',
+  bg: Colors.background.primary,
+  bgCard: Colors.background.card,
+  bgDeep: Colors.background.cardAlt,
+  stone: Colors.slate[800],
+  stoneLt: Colors.slate[700],
+  gold: Colors.blue[400],
+  goldDim: Colors.blue[500],
+  green: Colors.green[500],
+  greenGlow: BRANCH_COLORS.push.glow,
+  amber: Colors.yellow[400],
+  red: '#EF4444',
+  blue: Colors.blue[500],
+  textMain: Colors.text.primary,
+  textDim: Colors.text.secondary,
+  textFaint: Colors.text.tertiary,
+};
+
+const BRANCH_MAP = {
+  dead_hang: 'pull',
+  active_hang: 'pull',
+  scap_pulls: 'pull',
+  neg_pullup: 'pull',
+  pullup: 'pull',
+  pushup: 'push',
+  diamond_pu: 'push',
+  pike_pu: 'push',
+  hspu: 'push',
+  start: 'neutral',
+};
+
+const resolveBranch = (node) => node.branch || BRANCH_MAP[node.id] || (node.isStart ? 'neutral' : 'core');
+const toRGBA = (hex, alpha = 1) => {
+  const m = hex.replace('#', '');
+  const n = m.length === 3 ? m.split('').map((c)=>c + c).join('') : m;
+  const int = parseInt(n, 16);
+  const r = (int >> 16) & 255;
+  const g = (int >> 8) & 255;
+  const b = int & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
 };
 
 const INIT = {
   nodes:[
-    {id:'start',      name:'Start',          x:450,y:100, unlocked:true, isStart:true },
-    {id:'dead_hang',  name:'Dead Hang',       x:250,y:280, unlocked:false,isStart:false},
-    {id:'pushup',     name:'Push-Up',         x:650,y:280, unlocked:false,isStart:false},
-    {id:'active_hang',name:'Active Hang',     x:250,y:460, unlocked:false,isStart:false},
-    {id:'diamond_pu', name:'Diamond Push-Up', x:650,y:460, unlocked:false,isStart:false},
-    {id:'scap_pulls', name:'Scapular Pulls',  x:120,y:640, unlocked:false,isStart:false},
-    {id:'neg_pullup', name:'Neg. Pull-Up',    x:380,y:640, unlocked:false,isStart:false},
-    {id:'pike_pu',    name:'Pike Push-Up',    x:650,y:640, unlocked:false,isStart:false},
-    {id:'pullup',     name:'Pull-Up',         x:250,y:820, unlocked:false,isStart:false},
-    {id:'hspu',       name:'HSPU',            x:650,y:820, unlocked:false,isStart:false},
+    {id:'start',      name:'Start',          x:450,y:100, unlocked:true, isStart:true, branch:'neutral' },
+    {id:'dead_hang',  name:'Dead Hang',       x:250,y:280, unlocked:false,isStart:false, branch:'pull'},
+    {id:'pushup',     name:'Push-Up',         x:650,y:280, unlocked:false,isStart:false, branch:'push'},
+    {id:'active_hang',name:'Active Hang',     x:250,y:460, unlocked:false,isStart:false, branch:'pull'},
+    {id:'diamond_pu', name:'Diamond Push-Up', x:650,y:460, unlocked:false,isStart:false, branch:'push'},
+    {id:'scap_pulls', name:'Scapular Pulls',  x:120,y:640, unlocked:false,isStart:false, branch:'pull'},
+    {id:'neg_pullup', name:'Neg. Pull-Up',    x:380,y:640, unlocked:false,isStart:false, branch:'pull'},
+    {id:'pike_pu',    name:'Pike Push-Up',    x:650,y:640, unlocked:false,isStart:false, branch:'push'},
+    {id:'pullup',     name:'Pull-Up',         x:250,y:820, unlocked:false,isStart:false, branch:'pull'},
+    {id:'hspu',       name:'HSPU',            x:650,y:820, unlocked:false,isStart:false, branch:'push'},
   ],
   edges:[
     {from:'start',to:'dead_hang'},{from:'start',to:'pushup'},
@@ -101,6 +163,17 @@ function segDist(px,py,ax,ay,bx,by){
   if(!l) return Math.hypot(px-ax,py-ay);
   const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l));
   return Math.hypot(px-ax-t*dx,py-ay-t*dy);
+}
+
+function normalizeTree(rawTree){
+  return {
+    ...INIT,
+    ...rawTree,
+    nodes: (rawTree?.nodes || INIT.nodes).map((n)=>(
+      { ...n, branch: resolveBranch(n) }
+    )),
+    info: { ...INIT.info, ...(rawTree?.info || {}) },
+  };
 }
 
 // ── Difficulty bar ────────────────────────────────────────────────────────────
@@ -406,69 +479,58 @@ function SkiaTreeCanvas({
     return { image, sprites, transforms };
   }, []);
 
-  const edgeBuckets = useMemo(()=>{
-    const mastered = Skia.Path.Make();
-    const ready = Skia.Path.Make();
-    const locked = Skia.Path.Make();
-    let hasMastered=false, hasReady=false, hasLocked=false;
-    for(const e of visibleEdges){
+  const edgeSegments = useMemo(()=>{
+    return visibleEdges.map((e, idx)=>{
       const fn=nodeMap.get(e.from);
       const tn=nodeMap.get(e.to);
-      if(!fn||!tn) continue;
+      if(!fn||!tn) return null;
       const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
       const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
-      let bucket=locked;
-      if(!bld){
-        const fromState=nodeStatusMap[fn.id] || 'locked';
-        const toState=nodeStatusMap[tn.id] || 'locked';
-        const fromLit=fromState==='start'||fromState==='mastered';
-        const toLit=toState==='start'||toState==='mastered';
-        const toReady=toState==='ready';
-        const fromStart=fromState==='start';
-        if(fromLit&&toLit){
-          bucket=mastered;
-          hasMastered=true;
-        }else if((fromLit&&!toLit)||(toReady)||(fromStart&&toState==='locked')){
-          bucket=ready;
-          hasReady=true;
-        }else{
-          hasLocked=true;
-        }
-      }else{
-        hasLocked=true;
-      }
-      bucket.moveTo(fromPos.x,fromPos.y);
-      bucket.lineTo(toPos.x,toPos.y);
-    }
-    return { mastered, ready, locked, hasMastered, hasReady, hasLocked };
+      const path = Skia.Path.Make();
+      path.moveTo(fromPos.x,fromPos.y);
+      path.lineTo(toPos.x,toPos.y);
+
+      const fromState=nodeStatusMap[fn.id] || 'locked';
+      const toState=nodeStatusMap[tn.id] || 'locked';
+      const fromLit=fromState==='start'||fromState==='mastered';
+      const toLit=toState==='start'||toState==='mastered';
+      const toReady=toState==='ready';
+      const status = bld ? 'locked' : (fromLit&&toLit ? 'mastered' : ((fromLit&&!toLit)||toReady ? 'ready' : 'locked'));
+      const branch = resolveBranch(tn);
+      const branchColor = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
+      return { id: `${e.from}_${e.to}_${idx}`, path, status, branchColor };
+    }).filter(Boolean);
   },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
 
   const farNodeR = NODE_R*0.34;
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
       <Group transform={sceneTransform}>
+        <Circle cx={450} cy={420} r={860} color="rgba(19,32,52,0.2)" />
+        <Circle cx={450} cy={420} r={520} color="rgba(59,130,246,0.05)" />
         <Atlas
           image={dustAtlas.image}
           sprites={dustAtlas.sprites}
           transforms={dustAtlas.transforms}
         />
-        {edgeBuckets.hasMastered&&LOD.isNear&&!isInteracting&&USE_GLOW&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+2.2} color="rgba(76,175,80,0.17)" strokeCap="round" />
-        )}
-        {edgeBuckets.hasMastered&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW} color={`rgba(76,175,80,${edgeVisual.masteredO})`} strokeCap="round" />
-        )}
-        {edgeBuckets.hasReady&&(
-          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW} color={`rgba(255,152,0,${edgeVisual.readyO})`} strokeCap="round">
-            {LOD.useDashedReady&&!bld&&<DashPathEffect intervals={[12,10]} />}
-          </Path>
-        )}
-        {edgeBuckets.hasLocked&&(
-          <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO})`:`rgba(97,88,79,${edgeVisual.lockedO})`} strokeCap="round" />
-        )}
+        {edgeSegments.map((edge)=>{
+          const w = edge.status==='mastered' ? edgeVisual.masteredW : edge.status==='ready' ? edgeVisual.readyW : edgeVisual.lockedW;
+          const o = edge.status==='mastered' ? edgeVisual.masteredO : edge.status==='ready' ? edgeVisual.readyO : edgeVisual.lockedO;
+          const color = edge.status==='locked' ? `rgba(100,116,139,${o})` : toRGBA(edge.branchColor.main, o);
+          return (
+            <Group key={edge.id}>
+              {LOD.isNear && !isInteracting && edge.status!=='locked' && (
+                <Path path={edge.path} style="stroke" strokeWidth={w+3} color={edge.branchColor.glow} strokeCap="round" />
+              )}
+              <Path path={edge.path} style="stroke" strokeWidth={w} color={color} strokeCap="round">
+                {LOD.useDashedReady && edge.status==='ready' && !bld && <DashPathEffect intervals={[12,10]} />}
+              </Path>
+            </Group>
+          );
+        })}
 
         {visibleNodes.map(n=>{
-          const {fill,stroke,sw,opacity}=nStyle(n);
+          const visual=nStyle(n);
           const rx=dragVisual?.id===n.id?dragVisual.x:n.x;
           const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
           const lines=wrappedLabels[n.id]||[n.name];
@@ -479,28 +541,31 @@ function SkiaTreeCanvas({
           const isReady=status==='ready';
           const isMastered=status==='start'||status==='mastered';
           const renderR=LOD.isFar?farNodeR:NODE_R;
-          const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
+          const nodeStrokeWidth=LOD.isFar?Math.max(0.8,visual.sw-0.5):visual.sw;
           const showCheapHalo=USE_GLOW&&isLit;
-          const haloColor=isReady?'rgba(255,152,0,0.18)':'rgba(76,175,80,0.17)';
+          const haloColor=visual.glowOuter;
           return(
             <Group key={n.id}>
-              {LOD.showOuterRing&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.2} color="rgba(76,175,80,0.34)" />}
-              {LOD.showOuterRing&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.1} color="rgba(255,193,7,0.44)" />}
-              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.8} color="rgba(212,128,10,0.68)" />}
+              {LOD.showOuterRing&&<Circle cx={rx} cy={ry} r={NODE_R+13} style="stroke" strokeWidth={1.15} color={visual.ring} />}
+              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edge} />}
 
-              {showCheapHalo&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.62:NODE_R*0.9} color={haloColor} />}
+              {showCheapHalo&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.72:NODE_R*1.1} color={haloColor} />}
 
               {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
-                <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={isReady?'rgba(255,152,0,0.16)':'rgba(76,175,80,0.14)'}>
-                  <Blur blur={GLOW_QUALITY==='high'?16:10} />
-                </Circle>
+                <Group>
+                  <Circle cx={rx} cy={ry} r={NODE_R*1.12} color={visual.glowOuter}><Blur blur={GLOW_QUALITY==='high'?20:14} /></Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={visual.glowMid}><Blur blur={GLOW_QUALITY==='high'?14:9} /></Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R*0.8} color={visual.glowInner}><Blur blur={6} /></Circle>
+                </Group>
               )}
 
-              <Circle cx={rx} cy={ry} r={renderR} color={fill} opacity={opacity} />
-              <Circle cx={rx} cy={ry} r={renderR} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
-
-              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-8} style="stroke" strokeWidth={0.5} color={stroke} opacity={0.34} />}
-              {!LOD.isFar&&<Circle cx={rx-8} cy={ry-8} r={NODE_R*0.12} color="rgba(255,255,255,0.22)" />}
+              <Circle cx={rx} cy={ry} r={renderR+2} color={visual.outerRim} />
+              <Circle cx={rx} cy={ry} r={renderR} color={visual.fill} opacity={visual.opacity} />
+              <Circle cx={rx} cy={ry} r={renderR-4} color={visual.innerFill} opacity={0.9} />
+              <Circle cx={rx} cy={ry} r={renderR-6} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
+              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-12} style="stroke" strokeWidth={1} color={visual.ring} opacity={0.65} />}
+              {!LOD.isFar&&<Circle cx={rx-10} cy={ry-10} r={NODE_R*0.14} color="rgba(255,255,255,0.25)" />}
+              {!LOD.isFar&&<Circle cx={rx+8} cy={ry+10} r={NODE_R*0.16} color="rgba(0,0,0,0.24)" />}
 
               {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>(
                 <SkiaText
@@ -509,7 +574,7 @@ function SkiaTreeCanvas({
                   y={sy+li*lh}
                   text={ln}
                   font={labelFont}
-                  color={isLit?C.textMain:C.textDim}
+                  color={isLit?Colors.text.primary:Colors.slate[400]}
                 />
               ))}
             </Group>
@@ -521,10 +586,10 @@ function SkiaTreeCanvas({
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────────
-function TreeScreen(){
+function TreeScreen({ onTreeChange }){
   const insets = useSafeAreaInsets();
-  const [tree,_setTree]=useState(INIT);
-  const tR=useRef(INIT);
+  const [tree,_setTree]=useState(normalizeTree(INIT));
+  const tR=useRef(normalizeTree(INIT));
   const setTree=t=>{tR.current=t;_setTree(t);};
   const hist=useRef([INIT]),hi=useRef(0);
   const [canUndo,setCU]=useState(false),[canRedo,setCR]=useState(false);
@@ -535,13 +600,17 @@ function TreeScreen(){
       try{
         const saved=JSON.parse(raw);
         if(saved?.nodes&&saved?.edges){
-          const t={...INIT,...saved,info:{...INIT.info,...(saved.info||{})}};
+          const t=normalizeTree(saved);
           hist.current=[t];hi.current=0;
           setTree(t);setCU(false);setCR(false);
         }
       }catch(e){}
     });
   },[]);
+
+  useEffect(()=>{
+    onTreeChange?.(tree);
+  },[onTreeChange, tree]);
 
   const commit=t=>{
     const h=hist.current.slice(0,hi.current+1);h.push(t);
@@ -785,7 +854,7 @@ function TreeScreen(){
     const id=name.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')+'_'+Date.now();
     commit({
       ...tR.current,
-      nodes:[...tR.current.nodes,{id,name,x:pendingPos.current.x,y:pendingPos.current.y,unlocked:false,isStart:false}],
+      nodes:[...tR.current.nodes,{id,name,x:pendingPos.current.x,y:pendingPos.current.y,unlocked:false,isStart:false,branch:'core'}],
       info:{...tR.current.info,[id]:{desc:'No description yet.',str:5,bal:5,tec:5}},
     });
     showPrompt(false);
@@ -807,9 +876,9 @@ function TreeScreen(){
       const res=await DocumentPicker.getDocumentAsync({type:'application/json',copyToCacheDirectory:true});
       if(res.canceled) return;
       const raw=await FileSystem.readAsStringAsync(res.assets[0].uri,{encoding:'utf8'});
-      const loaded=JSON.parse(raw);
+      const loaded=normalizeTree(JSON.parse(raw));
       if(!loaded?.nodes||!loaded?.edges){Alert.alert('Invalid file','Not a valid skill tree JSON.');return;}
-      const t={...INIT,...loaded,info:{...INIT.info,...(loaded.info||{})}};
+      const t=normalizeTree(loaded);
       Alert.alert('Import Tree','Replace current tree with imported one?',[
         {text:'Cancel',style:'cancel'},
         {text:'Import',onPress:()=>{
@@ -855,11 +924,29 @@ function TreeScreen(){
 
   // ── SVG node/edge styling ──────────────────────────────────────────────────
   const nStyle=n=>{
-    if(bld&&connA===n.id) return{fill:'#2a1a00',stroke:C.amber,sw:2.5,opacity:1};
+    const branch = resolveBranch(n);
+    const bc = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
     const status=nodeStatusMap[n.id] || 'locked';
-    if(status==='start'||status==='mastered') return{fill:'#d9efe0',stroke:'#4CAF50',sw:2.2,opacity:0.95};
-    if(status==='ready') return{fill:'#f1e4cf',stroke:'#FFC107',sw:2.1,opacity:0.95};
-    return{fill:'#cfcfcf',stroke:'#7b7266',sw:1.2,opacity:0.78};
+    if(bld&&connA===n.id) return{
+      fill:'#111827', innerFill:'#0B1220', outerRim:'#1E293B', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.8),
+      glowInner:toRGBA(Colors.blue[300],0.3), glowMid:toRGBA(Colors.blue[400],0.2), glowOuter:toRGBA(Colors.blue[500],0.16), sw:2.5, opacity:1,
+    };
+    if(status==='start') return {
+      fill:'#16243A', innerFill:'#101A2A', outerRim:'#26364D', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.7),
+      glowInner:toRGBA(Colors.blue[300],0.36), glowMid:toRGBA(Colors.blue[400],0.24), glowOuter:toRGBA(Colors.blue[500],0.19), sw:2.4, opacity:1,
+    };
+    if(status==='mastered') return {
+      fill:'#131A26', innerFill:'#0D131D', outerRim:'#263140', stroke:bc.main, ring:toRGBA(bc.ring,0.8),
+      glowInner:toRGBA(bc.ring,0.32), glowMid:toRGBA(bc.main,0.24), glowOuter:toRGBA(bc.main,0.17), sw:2.3, opacity:0.98,
+    };
+    if(status==='ready') return {
+      fill:'#171E2A', innerFill:'#101620', outerRim:'#2A3546', stroke:bc.main, ring:toRGBA(bc.ring,0.78),
+      glowInner:toRGBA(bc.ring,0.28), glowMid:toRGBA(bc.main,0.2), glowOuter:toRGBA(bc.main,0.14), sw:2.1, opacity:0.95,
+    };
+    return {
+      fill:'#0E141D', innerFill:'#090E15', outerRim:'#1F2937', stroke:'#334155', ring:'rgba(71,85,105,0.45)',
+      glowInner:'rgba(71,85,105,0.12)', glowMid:'rgba(71,85,105,0.09)', glowOuter:'rgba(71,85,105,0.06)', sw:1.5, opacity:0.88,
+    };
   };
 
   const wrap=name=>{
@@ -944,7 +1031,7 @@ function TreeScreen(){
     <View style={S.root}>
       {/* Top bar */}
       <View style={[S.bar,{paddingTop:insets.top+10}]}>
-        <Text style={S.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>CALISTHENICS</Text>
+        <Text style={S.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>KINETIC SKILL TREE</Text>
         <View style={S.barRight}>
           {!bld&&(
             <TouchableOpacity style={S.resetBtn} onPress={()=>{
@@ -1033,9 +1120,10 @@ function TreeScreen(){
       {!bld&&(
         <View style={S.legend}>
           {[
-            ['#4CAF50','Mastered'],
-            ['#FFC107','Ready'],
-            ['#3a3028','Locked'],
+            [BRANCH_COLORS.push.main,'Push'],
+            [BRANCH_COLORS.pull.main,'Pull'],
+            [BRANCH_COLORS.core.main,'Core'],
+            ['#334155','Locked'],
           ].map(([c,l])=>(
             <View key={l} style={S.lr}>
               <View style={[S.dot,{backgroundColor:c}]}/>
@@ -1056,18 +1144,80 @@ function TreeScreen(){
 
 
 
-function ProfileScreen(){
+function getTreeStats(tree){
+  const nodes = tree?.nodes || [];
+  const unlocked = nodes.filter((n)=>n.unlocked || n.isStart);
+  const byBranch = ['push','pull','core'].reduce((acc, b)=>{
+    const branchNodes = nodes.filter((n)=>resolveBranch(n)===b);
+    const unlockedCount = branchNodes.filter((n)=>n.unlocked).length;
+    acc[b] = { total: branchNodes.length, unlocked: unlockedCount, pct: branchNodes.length ? Math.round((unlockedCount / branchNodes.length) * 100) : 0 };
+    return acc;
+  }, {});
+  const hardestBranch = ['push','pull','core'].sort((a,b)=>byBranch[b].pct - byBranch[a].pct)[0] || 'push';
+  const completionPct = nodes.length ? Math.round((unlocked.length / nodes.length) * 100) : 0;
+  return { total: nodes.length, unlocked: unlocked.length, completionPct, byBranch, hardestBranch };
+}
+
+function StatChip({ label, value, accent }){
+  return (
+    <View style={[tabs.statCard, { borderColor: toRGBA(accent, 0.38) }]}>
+      <Text style={tabs.statValue}>{value}</Text>
+      <Text style={tabs.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function ProfileScreen({ tree }){
+  const stats = useMemo(()=>getTreeStats(tree || INIT),[tree]);
+  const hardestColor = BRANCH_COLORS[stats.hardestBranch]?.main || Colors.blue[400];
   return (
     <ScrollView contentContainerStyle={tabs.content} style={tabs.page}>
-      <Text style={tabs.pageTitle}>Profile</Text>
-      <View style={tabs.card}>
-        <Text style={tabs.cardTitle}>Athlete</Text>
-        <Text style={tabs.cardBody}>Level 3 Explorer</Text>
+      <View style={tabs.profileHeader}>
+        <View style={tabs.avatarOrb}><Ionicons name="fitness" size={22} color={Colors.blue[300]} /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={tabs.profileName}>Kinetic Athlete</Text>
+          <Text style={tabs.profileSub}>Level {Math.max(1, Math.floor(stats.unlocked / 2))} · Build momentum daily</Text>
+        </View>
+        <TouchableOpacity style={tabs.headerAction}><Ionicons name="settings-outline" size={18} color={Colors.text.secondary} /></TouchableOpacity>
       </View>
+
+      <View style={tabs.statGrid}>
+        <StatChip label="Total Skills" value={stats.total} accent={Colors.blue[400]} />
+        <StatChip label="Unlocked" value={stats.unlocked} accent={Colors.green[500]} />
+        <StatChip label="Completion" value={`${stats.completionPct}%`} accent={Colors.yellow[400]} />
+        <StatChip label="Hardest Branch" value={stats.hardestBranch.toUpperCase()} accent={hardestColor} />
+      </View>
+
       <View style={tabs.card}>
-        <Text style={tabs.cardTitle}>Stats</Text>
-        <Text style={tabs.cardBody}>Completed Skills: 12</Text>
-        <Text style={tabs.cardBody}>Current Streak: 5 days</Text>
+        <Text style={tabs.cardTitle}>Tree Progress</Text>
+        {['push','pull','core'].map((branch)=>{
+          const b = stats.byBranch[branch];
+          const color = BRANCH_COLORS[branch].main;
+          return (
+            <View key={branch} style={tabs.progressRow}>
+              <Text style={[tabs.progressLabel, { color }]}>{branch.toUpperCase()}</Text>
+              <View style={tabs.progressTrack}><View style={[tabs.progressFill, { width: `${b.pct}%`, backgroundColor: color }]} /></View>
+              <Text style={tabs.progressMeta}>{b.unlocked}/{b.total}</Text>
+            </View>
+          );
+        })}
+      </View>
+
+      <View style={tabs.card}>
+        <Text style={tabs.cardTitle}>Highlights</Text>
+        <Text style={tabs.cardBody}>• Current streak: 5 days</Text>
+        <Text style={tabs.cardBody}>• Favorite branch: {stats.hardestBranch.toUpperCase()}</Text>
+        <Text style={tabs.cardBody}>• Last milestone: {stats.completionPct >= 50 ? 'Half Tree Cleared' : 'First Chain Started'}</Text>
+      </View>
+
+      <View style={tabs.card}>
+        <Text style={tabs.cardTitle}>Actions</Text>
+        {['Edit Profile', 'Preferences', 'Export Progress', 'Tree Settings'].map((row)=>(
+          <TouchableOpacity key={row} style={tabs.actionRow}>
+            <Text style={tabs.settingLabel}>{row}</Text>
+            <Ionicons name="chevron-forward" size={16} color={Colors.slate[400]} />
+          </TouchableOpacity>
+        ))}
       </View>
     </ScrollView>
   );
@@ -1083,11 +1233,19 @@ function SettingsScreen(){
       <View style={tabs.card}>
         <View style={tabs.settingRow}>
           <Text style={tabs.settingLabel}>Push Notifications</Text>
-          <Switch value={notifications} onValueChange={setNotifications} trackColor={{false:'#3a3028', true:'#8a6a20'}} thumbColor={notifications ? '#FFC107' : '#8b7a63'} />
+          <Switch value={notifications} onValueChange={setNotifications} trackColor={{false:'#334155', true:'#3B82F6'}} thumbColor={notifications ? '#93C5FD' : '#CBD5E1'} />
         </View>
         <View style={tabs.settingRow}>
           <Text style={tabs.settingLabel}>Dark Theme</Text>
-          <Switch value={darkMode} onValueChange={setDarkMode} trackColor={{false:'#3a3028', true:'#2d6b47'}} thumbColor={darkMode ? '#4CAF50' : '#8b7a63'} />
+          <Switch value={darkMode} onValueChange={setDarkMode} trackColor={{false:'#334155', true:'#16A34A'}} thumbColor={darkMode ? '#86EFAC' : '#CBD5E1'} />
+        </View>
+        <View style={tabs.settingRow}>
+          <Text style={tabs.settingLabel}>Haptics</Text>
+          <Ionicons name="phone-portrait-outline" size={17} color={Colors.slate[300]} />
+        </View>
+        <View style={tabs.settingRow}>
+          <Text style={tabs.settingLabel}>Data Sync</Text>
+          <Text style={tabs.cardBody}>Manual</Text>
         </View>
       </View>
     </ScrollView>
@@ -1096,12 +1254,14 @@ function SettingsScreen(){
 
 function AppShell(){
   const [tab, setTab] = useState('Tree');
+  const [treeSnapshot, setTreeSnapshot] = useState(normalizeTree(INIT));
   const insets = useSafeAreaInsets();
 
   const tabsConfig = [
     { key: 'Tree', icon: 'git-network-outline' },
     { key: 'Profile', icon: 'person-outline' },
     { key: 'Settings', icon: 'settings-outline' },
+    { key: 'Daily', icon: 'lock-closed-outline', locked: true },
   ];
 
   return (
@@ -1109,17 +1269,25 @@ function AppShell(){
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
       <View style={tabs.root}>
         <View style={tabs.contentWrap}>
-          {tab === 'Tree' && <TreeScreen />}
-          {tab === 'Profile' && <ProfileScreen />}
+          {tab === 'Tree' && <TreeScreen onTreeChange={setTreeSnapshot} />}
+          {tab === 'Profile' && <ProfileScreen tree={treeSnapshot} />}
           {tab === 'Settings' && <SettingsScreen />}
         </View>
 
-        <View style={[tabs.navBar, { paddingBottom: insets.bottom }]}>
+        <View style={[tabs.navBar, { paddingBottom: insets.bottom }]}> 
           {tabsConfig.map((item) => {
             const active = tab === item.key;
+            if (item.locked) {
+              return (
+                <View key={item.key} style={[tabs.navItem, tabs.navItemLocked]}>
+                  <Ionicons name={item.icon} size={20} color={Colors.text.disabled} />
+                  <Text style={[tabs.navLabel, tabs.navLocked]}>{item.key}</Text>
+                </View>
+              );
+            }
             return (
               <TouchableOpacity key={item.key} style={tabs.navItem} onPress={() => setTab(item.key)}>
-                <Ionicons name={item.icon} size={20} color={active ? '#FFC107' : C.textDim} />
+                <Ionicons name={item.icon} size={20} color={active ? Colors.blue[300] : Colors.slate[400]} />
                 <Text style={[tabs.navLabel, active && tabs.navLabelActive]}>{item.key}</Text>
               </TouchableOpacity>
             );
@@ -1139,79 +1307,128 @@ export default function App(){
 }
 
 const tabs = StyleSheet.create({
-  safeRoot: { flex: 1, backgroundColor: C.bg },
-  root: { flex: 1, backgroundColor: C.bg },
+  safeRoot: { flex: 1, backgroundColor: Colors.background.primary },
+  root: { flex: 1, backgroundColor: Colors.background.primary },
   contentWrap: { flex: 1 },
   navBar: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderColor: C.stone,
-    backgroundColor: C.bg,
+    borderColor: Colors.border.default,
+    backgroundColor: '#0B0F16',
     paddingTop: 10,
   },
   navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
-  navLabel: { color: C.textDim, fontSize: 12, fontWeight: '600' },
-  navLabelActive: { color: '#FFC107' },
-  page: { flex: 1, backgroundColor: C.bg },
+  navItemLocked: { opacity: 0.55 },
+  navLabel: { color: Colors.slate[400], fontSize: 12, fontWeight: '600' },
+  navLabelActive: { color: Colors.blue[300] },
+  navLocked: { color: Colors.text.disabled },
+  page: { flex: 1, backgroundColor: Colors.background.primary },
   content: { padding: 16, gap: 14 },
-  pageTitle: { color: C.gold, fontSize: 26, fontWeight: '800', marginBottom: 4, letterSpacing: 1 },
-  card: {
-    backgroundColor: C.bgDeep,
+  pageTitle: { color: Colors.blue[300], fontSize: 26, fontWeight: '800', marginBottom: 4, letterSpacing: 1 },
+  profileHeader: {
+    backgroundColor: Colors.background.card,
     borderWidth: 1,
-    borderColor: C.stone,
-    borderRadius: 12,
+    borderColor: Colors.border.blue,
+    borderRadius: 18,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  avatarOrb: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#101A2B',
+    borderColor: Colors.border.blueActive,
+    borderWidth: 1,
+  },
+  profileName: { color: Colors.text.primary, fontSize: 17, fontWeight: '800' },
+  profileSub: { color: Colors.text.tertiary, marginTop: 2 },
+  headerAction: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#131A25' },
+  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  statCard: {
+    width: '48%',
+    backgroundColor: Colors.background.cardAlt,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
+  statValue: { color: Colors.text.primary, fontSize: 19, fontWeight: '800' },
+  statLabel: { color: Colors.text.tertiary, fontSize: 12, marginTop: 4 },
+  card: {
+    backgroundColor: Colors.background.card,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: 14,
     padding: 14,
     gap: 8,
   },
-  cardTitle: { color: C.textMain, fontSize: 18, fontWeight: '700' },
-  cardBody: { color: C.textDim, fontSize: 15 },
+  cardTitle: { color: Colors.text.primary, fontSize: 18, fontWeight: '700' },
+  cardBody: { color: Colors.text.tertiary, fontSize: 15 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  progressLabel: { width: 48, fontSize: 12, fontWeight: '700' },
+  progressTrack: { flex: 1, height: 8, borderRadius: 999, backgroundColor: '#111827', overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 999 },
+  progressMeta: { color: Colors.slate[400], width: 40, fontSize: 12, textAlign: 'right' },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: 8,
   },
-  settingLabel: { color: C.textMain, fontSize: 15 },
+  settingLabel: { color: Colors.text.secondary, fontSize: 15 },
 });
 const S=StyleSheet.create({
-  root:    {flex:1,backgroundColor:C.bg},
+  root:    {flex:1,backgroundColor:Colors.background.primary},
   bar:     {flexDirection:'row',justifyContent:'space-between',alignItems:'center',
             paddingHorizontal:14,paddingTop:10,paddingBottom:10,gap:10,
-            backgroundColor:C.bg,borderBottomWidth:1,borderColor:C.stone},
+            backgroundColor:'#060A10',borderBottomWidth:1,borderColor:Colors.border.default},
   barRight:{flexDirection:'row',alignItems:'center',gap:8,flexShrink:1},
-  title:   {color:C.gold,fontSize:13,fontWeight:'800',letterSpacing:3,
-            textShadowColor:C.gold,textShadowRadius:8,flexShrink:1,paddingRight:8},
+  title:   {color:Colors.blue[300],fontSize:13,fontWeight:'800',letterSpacing:3,
+            textShadowColor:toRGBA(Colors.blue[400],0.7),textShadowRadius:8,flexShrink:1,paddingRight:8},
   resetBtn:{paddingHorizontal:12,paddingVertical:8,borderRadius:6,
-            backgroundColor:C.bgDeep,borderWidth:1,borderColor:'#6a2020'},
-  resetT:  {color:'#a04040',fontSize:11,fontWeight:'800',letterSpacing:1.5},
+            backgroundColor:'#180C12',borderWidth:1,borderColor:'#7f1d1d'},
+  resetT:  {color:'#f87171',fontSize:11,fontWeight:'800',letterSpacing:1.5},
   modeBtn: {paddingHorizontal:12,paddingVertical:8,borderRadius:6,
-            backgroundColor:C.bgDeep,borderWidth:1,borderColor:C.stone},
-  modeOn:  {backgroundColor:'#0a1a0e',borderColor:C.green},
-  modeT:   {color:C.textDim,fontSize:11,fontWeight:'800',letterSpacing:1.5},
-  modeTOn: {color:C.green},
+            backgroundColor:Colors.background.cardAlt,borderWidth:1,borderColor:Colors.border.default},
+  modeOn:  {backgroundColor:'#0b1a18',borderColor:Colors.green[500]},
+  modeT:   {color:Colors.text.tertiary,fontSize:11,fontWeight:'800',letterSpacing:1.5},
+  modeTOn: {color:Colors.green[400]},
   toolbar: {flexDirection:'row',justifyContent:'space-between',alignItems:'center',
             paddingHorizontal:10,paddingVertical:10,rowGap:8,
-            backgroundColor:C.bgDeep,borderBottomWidth:1,borderColor:C.stone,flexWrap:'wrap'},
+            backgroundColor:Colors.background.secondary,borderBottomWidth:1,borderColor:Colors.border.default,flexWrap:'wrap'},
   tg:      {flexDirection:'row',gap:7,flexWrap:'wrap'},
   tBtn:    {paddingHorizontal:11,paddingVertical:8,borderRadius:6,
-            backgroundColor:C.bg,borderWidth:1,borderColor:C.stone},
-  tOn:     {backgroundColor:'#1a1208',borderColor:C.goldDim},
-  tT:      {color:C.textDim,fontSize:12,fontWeight:'600'},
-  tTOn:    {color:C.gold},
+            backgroundColor:Colors.background.primary,borderWidth:1,borderColor:Colors.border.default},
+  tOn:     {backgroundColor:'#122235',borderColor:Colors.border.blueActive},
+  tT:      {color:Colors.text.tertiary,fontSize:12,fontWeight:'600'},
+  tTOn:    {color:Colors.blue[300]},
   uBtn:    {paddingHorizontal:11,paddingVertical:8,borderRadius:6,
-            backgroundColor:C.bg,borderWidth:1,borderColor:C.stone},
+            backgroundColor:Colors.background.primary,borderWidth:1,borderColor:Colors.border.default},
   dim:     {opacity:0.2},
-  uT:      {color:C.textDim,fontSize:12,fontWeight:'600'},
-  ioRow:   {flexDirection:'row',gap:10,paddingHorizontal:14,paddingVertical:8,backgroundColor:C.bg},
-  ioBtn:   {flex:1,backgroundColor:C.bgDeep,borderRadius:6,paddingVertical:10,
-            alignItems:'center',borderWidth:1,borderColor:C.stone},
-  ioT:     {color:C.textDim,fontSize:12,fontWeight:'800',letterSpacing:2},
-  hintRow: {paddingHorizontal:16,paddingVertical:6,backgroundColor:C.bg},
-  hintT:   {color:C.textFaint,fontSize:11,textAlign:'center',letterSpacing:0.5},
-  canvas:  {flex:1,backgroundColor:'#131110',overflow:'hidden'},
+  uT:      {color:Colors.text.tertiary,fontSize:12,fontWeight:'600'},
+  ioRow:   {flexDirection:'row',gap:10,paddingHorizontal:14,paddingVertical:8,backgroundColor:Colors.background.primary},
+  ioBtn:   {flex:1,backgroundColor:Colors.background.cardAlt,borderRadius:6,paddingVertical:10,
+            alignItems:'center',borderWidth:1,borderColor:Colors.border.default},
+  ioT:     {color:Colors.text.secondary,fontSize:12,fontWeight:'800',letterSpacing:2},
+  hintRow: {paddingHorizontal:16,paddingVertical:6,backgroundColor:Colors.background.primary},
+  hintT:   {color:Colors.text.tertiary,fontSize:11,textAlign:'center',letterSpacing:0.5},
+  canvas:  {flex:1,backgroundColor:'#05080F',overflow:'hidden'},
   legend:  {flexDirection:'row',justifyContent:'center',gap:28,paddingVertical:12,
-            backgroundColor:C.bg,borderTopWidth:1,borderColor:C.stone},
+            backgroundColor:'#060A10',borderTopWidth:1,borderColor:Colors.border.default},
   lr:      {flexDirection:'row',alignItems:'center',gap:7},
   dot:     {width:8,height:8,borderRadius:4},
-  lt:      {color:C.textDim,fontSize:11,letterSpacing:1},
+  lt:      {color:Colors.text.secondary,fontSize:11,letterSpacing:1},
 });
