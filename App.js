@@ -1,6 +1,5 @@
 /**
- * Calisthenics Skill Tree
- * Dark stone / RPG aesthetic — inspired by the reference card design.
+ * Kinetic — premium dark fitness skill tree.
  */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -37,37 +36,174 @@ const DEV_PERF_LOG = false;
 const USE_GLOW = true;
 const GLOW_QUALITY = 'low'; // 'low' | 'high'
 
-// Colours — dark stone palette
-const C = {
-  bg:        '#0e0c0a',   // near-black warm
-  bgCard:    '#181410',   // card background
-  bgDeep:    '#100e0c',
-  stone:     '#2a2420',   // panel border
-  stoneLt:   '#3a3028',
-  gold:      '#c8a84b',   // gold accent
-  goldDim:   '#6b5a28',
-  green:     '#4a9c6a',
-  greenGlow: '#2d6b47',
-  amber:     '#d4800a',
-  red:       '#c04040',
-  blue:      '#4070c0',
-  textMain:  '#e8d9b8',   // warm parchment white
-  textDim:   '#7a6a54',
-  textFaint: '#3d3428',
+const Colors = {
+  black: '#000000',
+  white: '#FFFFFF',
+  background: {
+    primary: '#000000',
+    secondary: '#0F1115',
+    card: '#1E2128',
+    cardAlt: '#1A1D23',
+    gradient: {
+      dark1: '#0F1419',
+      dark2: '#161B28',
+      dark3: '#1A1F2E',
+      dark4: '#1E2433',
+    },
+  },
+  blue: { 300: '#93C5FD', 400: '#60A5FA', 500: '#3B82F6', 600: '#2563EB' },
+  green: { 400: '#4ADE80', 500: '#22C55E' },
+  yellow: { 300: '#FDE047', 400: '#FACC15', 500: '#EAB308' },
+  slate: { 300: '#CBD5E1', 400: '#94A3B8', 500: '#64748B', 700: '#334155', 800: '#1E293B', 900: '#0F172A' },
+  text: {
+    primary: '#FFFFFF',
+    secondary: '#E5E7EB',
+    tertiary: '#9CA3AF',
+    disabled: 'rgba(156, 163, 175, 0.5)',
+  },
+  border: {
+    default: 'rgba(60, 65, 75, 0.3)',
+    blue: 'rgba(59, 130, 246, 0.25)',
+    blueActive: 'rgba(59, 130, 246, 0.40)',
+    subtle: 'rgba(229, 231, 235, 0.1)',
+  },
 };
+
+const BRANCH_COLORS = {
+  neutral: { main: '#60A5FA', glow: 'rgba(96,165,250,0.5)', edge: 'rgba(96,165,250,0.86)', ring: '#BFDBFE' },
+  push: { main: '#22C55E', glow: 'rgba(34,197,94,0.55)', edge: 'rgba(74,222,128,0.9)', ring: '#BBF7D0' },
+  pull: { main: '#4F46E5', glow: 'rgba(99,102,241,0.58)', edge: 'rgba(129,140,248,0.92)', ring: '#C7D2FE' },
+  core: { main: '#FACC15', glow: 'rgba(250,204,21,0.56)', edge: 'rgba(253,224,71,0.94)', ring: '#FEF08A' },
+};
+
+const C = {
+  bg: Colors.background.primary,
+  bgCard: Colors.background.card,
+  bgDeep: Colors.background.cardAlt,
+  stone: Colors.slate[800],
+  stoneLt: Colors.slate[700],
+  gold: Colors.blue[400],
+  goldDim: Colors.blue[500],
+  green: Colors.green[500],
+  greenGlow: BRANCH_COLORS.push.glow,
+  amber: Colors.yellow[400],
+  red: '#EF4444',
+  blue: Colors.blue[500],
+  textMain: Colors.text.primary,
+  textDim: Colors.text.secondary,
+  textFaint: Colors.text.tertiary,
+};
+
+const BRANCH_MAP = {
+  dead_hang: 'pull',
+  active_hang: 'pull',
+  scap_pulls: 'pull',
+  neg_pullup: 'pull',
+  pullup: 'pull',
+  pushup: 'push',
+  diamond_pu: 'push',
+  pike_pu: 'push',
+  hspu: 'push',
+  start: 'neutral',
+};
+
+const resolveBranch = (node) => node.branch || BRANCH_MAP[node.id] || (node.isStart ? 'neutral' : 'core');
+const toRGBA = (hex, alpha = 1) => {
+  const m = hex.replace('#', '');
+  const n = m.length === 3 ? m.split('').map((c)=>c + c).join('') : m;
+  const int = parseInt(n, 16);
+  const r = (int >> 16) & 255;
+  const g = (int >> 8) & 255;
+  const b = int & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
+function GlowText({
+  children,
+  style,
+  color = Colors.blue[300],
+  glowColor = 'rgba(96,165,250,0.75)',
+  outerGlowColor = 'rgba(59,130,246,0.35)',
+  align = 'auto',
+  numberOfLines,
+}) {
+  return (
+    <View style={[glowText.wrap, align !== 'auto' && { alignItems: align }]}>
+      <Text
+        numberOfLines={numberOfLines}
+        style={[
+          style,
+          glowText.layerBase,
+          {
+            color,
+            textShadowColor: outerGlowColor,
+            textShadowRadius: 16,
+            opacity: 0.45,
+          },
+        ]}
+      >
+        {children}
+      </Text>
+
+      <Text
+        numberOfLines={numberOfLines}
+        style={[
+          style,
+          glowText.layerBase,
+          {
+            color,
+            textShadowColor: glowColor,
+            textShadowRadius: 8,
+            opacity: 0.9,
+          },
+        ]}
+      >
+        {children}
+      </Text>
+
+      <Text
+        numberOfLines={numberOfLines}
+        style={[
+          style,
+          {
+            color,
+            textShadowColor: 'rgba(255,255,255,0.08)',
+            textShadowRadius: 2,
+            textShadowOffset: { width: 0, height: 0 },
+          },
+        ]}
+      >
+        {children}
+      </Text>
+    </View>
+  );
+}
+
+const glowText = StyleSheet.create({
+  wrap: {
+    position: 'relative',
+  },
+  layerBase: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+});
 
 const INIT = {
   nodes:[
-    {id:'start',      name:'Start',          x:450,y:100, unlocked:true, isStart:true },
-    {id:'dead_hang',  name:'Dead Hang',       x:250,y:280, unlocked:false,isStart:false},
-    {id:'pushup',     name:'Push-Up',         x:650,y:280, unlocked:false,isStart:false},
-    {id:'active_hang',name:'Active Hang',     x:250,y:460, unlocked:false,isStart:false},
-    {id:'diamond_pu', name:'Diamond Push-Up', x:650,y:460, unlocked:false,isStart:false},
-    {id:'scap_pulls', name:'Scapular Pulls',  x:120,y:640, unlocked:false,isStart:false},
-    {id:'neg_pullup', name:'Neg. Pull-Up',    x:380,y:640, unlocked:false,isStart:false},
-    {id:'pike_pu',    name:'Pike Push-Up',    x:650,y:640, unlocked:false,isStart:false},
-    {id:'pullup',     name:'Pull-Up',         x:250,y:820, unlocked:false,isStart:false},
-    {id:'hspu',       name:'HSPU',            x:650,y:820, unlocked:false,isStart:false},
+    {id:'start',      name:'Start',          x:450,y:104, unlocked:true, isStart:true, branch:'neutral' },
+    {id:'dead_hang',  name:'Dead Hang',       x:255,y:252, unlocked:false,isStart:false, branch:'pull'},
+    {id:'pushup',     name:'Push-Up',         x:650,y:244, unlocked:false,isStart:false, branch:'push'},
+    {id:'active_hang',name:'Active Hang',     x:220,y:430, unlocked:false,isStart:false, branch:'pull'},
+    {id:'diamond_pu', name:'Diamond Push-Up', x:700,y:436, unlocked:false,isStart:false, branch:'push'},
+    {id:'scap_pulls', name:'Scapular Pulls',  x:110,y:618, unlocked:false,isStart:false, branch:'pull'},
+    {id:'neg_pullup', name:'Neg. Pull-Up',    x:395,y:620, unlocked:false,isStart:false, branch:'pull'},
+    {id:'pike_pu',    name:'Pike Push-Up',    x:630,y:624, unlocked:false,isStart:false, branch:'push'},
+    {id:'pullup',     name:'Pull-Up',         x:235,y:818, unlocked:false,isStart:false, branch:'pull'},
+    {id:'hspu',       name:'HSPU',            x:675,y:836, unlocked:false,isStart:false, branch:'push'},
   ],
   edges:[
     {from:'start',to:'dead_hang'},{from:'start',to:'pushup'},
@@ -103,6 +239,17 @@ function segDist(px,py,ax,ay,bx,by){
   return Math.hypot(px-ax-t*dx,py-ay-t*dy);
 }
 
+function normalizeTree(rawTree){
+  return {
+    ...INIT,
+    ...rawTree,
+    nodes: (rawTree?.nodes || INIT.nodes).map((n)=>(
+      { ...n, branch: resolveBranch(n) }
+    )),
+    info: { ...INIT.info, ...(rawTree?.info || {}) },
+  };
+}
+
 // ── Difficulty bar ────────────────────────────────────────────────────────────
 function DiffBar({label, value, color, glowColor}){
   const segments = 10;
@@ -129,13 +276,13 @@ const db = StyleSheet.create({
   label:    {color:C.textMain,fontSize:15,width:90,fontWeight:'500',letterSpacing:0.5},
   bars:     {flex:1,flexDirection:'row',gap:3},
   seg:      {flex:1,height:14,borderRadius:3},
-  segEmpty: {flex:1,height:14,borderRadius:3,backgroundColor:'#2a2218',borderWidth:1,borderColor:'#3a3020'},
+  segEmpty: {flex:1,height:14,borderRadius:3,backgroundColor:'#111827',borderWidth:1,borderColor:'#1f2937'},
   num:      {width:24,textAlign:'right',fontSize:15,fontWeight:'700',marginLeft:8},
 });
 
 // ── Skill Card ────────────────────────────────────────────────────────────────
-function SkillCard({node,nodes,edges,onClose,onRecord}){
-  const info = INIT.info[node.id] || {desc:'',str:5,bal:5,tec:5};
+function SkillCard({node,nodes,edges,info,onClose,onRecord}){
+  const skillInfo = info || {desc:'',str:5,bal:5,tec:5};
   const unlockable = !node.isStart && canUnlock(node.id,nodes,edges);
   const prereqs = edges.filter(e=>e.to===node.id).map(e=>nodes.find(n=>n.id===e.from)).filter(Boolean);
   const unmetPrereqs = prereqs.filter(p=>!p.unlocked);
@@ -153,6 +300,7 @@ function SkillCard({node,nodes,edges,onClose,onRecord}){
 
         {/* Card — 6:9 ratio feel, max width constrained */}
         <View style={cs.card}>
+          <View style={cs.handle} />
 
           {/* Top row: status badge + X */}
           <View style={cs.topRow}>
@@ -166,6 +314,10 @@ function SkillCard({node,nodes,edges,onClose,onRecord}){
             </TouchableOpacity>
           </View>
 
+          <GlowText style={cs.kicker} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.65)" outerGlowColor="rgba(59,130,246,0.25)" align="center">
+            SKILL DETAIL
+          </GlowText>
+
           {/* Decorative top line */}
           <View style={cs.divRow}>
             <View style={cs.divLine}/>
@@ -174,7 +326,15 @@ function SkillCard({node,nodes,edges,onClose,onRecord}){
           </View>
 
           {/* Title */}
-          <Text style={cs.title}>{node.name.toUpperCase()}</Text>
+          <GlowText
+            style={cs.title}
+            color={Colors.text.primary}
+            glowColor="rgba(96,165,250,0.32)"
+            outerGlowColor="rgba(59,130,246,0.18)"
+            align="center"
+          >
+            {node.name.toUpperCase()}
+          </GlowText>
 
           {/* Divider */}
           <View style={cs.divRow}>
@@ -183,20 +343,17 @@ function SkillCard({node,nodes,edges,onClose,onRecord}){
             <View style={cs.divLine}/>
           </View>
 
+          {!!skillInfo.desc && <Text style={cs.desc}>{skillInfo.desc}</Text>}
+
           {/* Difficulty section */}
           {!node.isStart && (
             <View style={cs.diffSection}>
-              <Text style={cs.sectionLabel}>DIFFICULTY</Text>
-              <DiffBar label="Strength"  value={info.str} color="#c04040" glowColor="#ff2020"/>
-              <DiffBar label="Balance"   value={info.bal} color="#3a70d0" glowColor="#2060ff"/>
-              <DiffBar label="Technique" value={info.tec} color="#b09020" glowColor="#ffd030"/>
-            </View>
-          )}
-
-          {/* Symbol placeholder */}
-          {!node.isStart && (
-            <View style={cs.symbolRow}>
-              <View style={cs.symbolCircle}/>
+              <GlowText style={cs.sectionLabel} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.5)" outerGlowColor="rgba(79,70,229,0.25)" align="center">
+                DIFFICULTY
+              </GlowText>
+              <DiffBar label="Strength"  value={skillInfo.str} color="#c04040" glowColor="#ff2020"/>
+              <DiffBar label="Balance"   value={skillInfo.bal} color="#3a70d0" glowColor="#2060ff"/>
+              <DiffBar label="Technique" value={skillInfo.tec} color="#b09020" glowColor="#ffd030"/>
             </View>
           )}
 
@@ -209,7 +366,9 @@ function SkillCard({node,nodes,edges,onClose,onRecord}){
           {/* Prerequisites if not met */}
           {unmetPrereqs.length > 0 && (
             <View style={cs.prereqBox}>
-              <Text style={cs.prereqTitle}>PREREQUISITES NEEDED</Text>
+              <GlowText style={cs.prereqTitle} color="#FCA5A5" glowColor="rgba(248,113,113,0.55)" outerGlowColor="rgba(239,68,68,0.28)">
+                PREREQUISITES NEEDED
+              </GlowText>
               {unmetPrereqs.map(p=>(
                 <Text key={p.id} style={cs.prereqItem}>· {p.name}</Text>
               ))}
@@ -242,57 +401,63 @@ function SkillCard({node,nodes,edges,onClose,onRecord}){
 }
 
 const cs = StyleSheet.create({
-  overlay:     {flex:1,backgroundColor:'rgba(0,0,0,0.88)',alignItems:'center',justifyContent:'center',padding:20},
-  card:        {backgroundColor:C.bgCard,borderRadius:16,width:'100%',maxWidth:380,borderWidth:1,borderColor:C.stone,
-                shadowColor:'#000',shadowOffset:{width:0,height:24},shadowOpacity:0.9,shadowRadius:40,elevation:40,
-                overflow:'hidden'},
+  overlay:     {flex:1,backgroundColor:'rgba(0,0,0,0.76)',justifyContent:'flex-end',paddingHorizontal:14,paddingBottom:8},
+  card:        {backgroundColor:C.bgCard,borderTopLeftRadius:24,borderTopRightRadius:24,borderBottomLeftRadius:18,borderBottomRightRadius:18,
+                width:'100%',maxWidth:520,alignSelf:'center',borderWidth:1,borderColor:C.stone,
+                shadowColor:'#000',shadowOffset:{width:0,height:16},shadowOpacity:0.65,shadowRadius:28,elevation:24,
+                overflow:'hidden',paddingBottom:8},
+  handle:      {alignSelf:'center',width:56,height:5,borderRadius:999,backgroundColor:'rgba(148,163,184,0.42)',marginTop:10,marginBottom:4},
   topRow:      {flexDirection:'row',justifyContent:'space-between',alignItems:'center',paddingHorizontal:18,paddingTop:16,paddingBottom:8},
-  statusBadge: {borderWidth:1,borderRadius:4,paddingHorizontal:10,paddingVertical:4},
+  statusBadge: {borderWidth:1,borderRadius:6,paddingHorizontal:10,paddingVertical:4,backgroundColor:'rgba(2,6,23,0.55)'},
   statusT:     {fontSize:10,fontWeight:'800',letterSpacing:2.5},
   xBtn:        {width:30,height:30,alignItems:'center',justifyContent:'center'},
   xT:          {color:C.textDim,fontSize:16,fontWeight:'300'},
+  kicker:      {fontSize:10,fontWeight:'800',letterSpacing:3.2,textAlign:'center',marginBottom:4},
 
   divRow:      {flexDirection:'row',alignItems:'center',marginHorizontal:18,marginVertical:6},
   divLine:     {flex:1,height:1,backgroundColor:C.stone},
   divDot:      {width:5,height:5,borderRadius:3,backgroundColor:C.goldDim,marginHorizontal:8},
 
-  title:       {textAlign:'center',fontSize:28,fontWeight:'800',color:C.textMain,
-                letterSpacing:5,paddingHorizontal:18,paddingVertical:8,
-                textShadowColor:C.gold+'40',textShadowRadius:12},
+  title: {
+    textAlign: 'center',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 5,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
 
   diffSection: {paddingHorizontal:18,paddingTop:10,paddingBottom:4},
-  sectionLabel:{color:C.textDim,fontSize:10,fontWeight:'800',letterSpacing:3,textAlign:'center',marginBottom:14},
+  desc:       {color:C.textDim,fontSize:13,lineHeight:18,paddingHorizontal:18,paddingTop:4,paddingBottom:8,textAlign:'center'},
+  sectionLabel:{fontSize:10,fontWeight:'800',letterSpacing:3,textAlign:'center',marginBottom:14},
 
-  symbolRow:   {alignItems:'center',paddingVertical:10},
-  symbolCircle:{width:36,height:36,borderRadius:18,borderWidth:1.5,borderColor:C.stoneLt,backgroundColor:'#1a1612'},
+  mediaBg:     {marginHorizontal:18,marginVertical:10,height:160,backgroundColor:'#0d1524',
+                borderRadius:12,borderWidth:1,borderColor:toRGBA(Colors.blue[400],0.36),
+                alignItems:'center',justifyContent:'center',shadowColor:Colors.blue[500],shadowOpacity:0.18,shadowRadius:10,shadowOffset:{width:0,height:0}},
+  mediaLabel:  {color:Colors.blue[300],fontSize:11,fontWeight:'700',letterSpacing:2,marginBottom:4},
+  mediaHint:   {color:C.textDim,fontSize:10},
 
-  mediaBg:     {marginHorizontal:18,marginVertical:10,height:160,backgroundColor:'#1a1510',
-                borderRadius:10,borderWidth:1,borderColor:C.stone,
-                alignItems:'center',justifyContent:'center'},
-  mediaLabel:  {color:C.textFaint,fontSize:11,fontWeight:'700',letterSpacing:2,marginBottom:4},
-  mediaHint:   {color:C.textFaint,fontSize:10},
+  prereqBox:   {marginHorizontal:18,marginBottom:8,padding:12,backgroundColor:'#131923',
+                borderRadius:8,borderWidth:1,borderColor:'#7f1d1d'},
+  prereqTitle: {fontSize:9,fontWeight:'800',letterSpacing:2.5,marginBottom:6},
+  prereqItem:  {color:'#fca5a5',fontSize:13,marginBottom:3},
 
-  prereqBox:   {marginHorizontal:18,marginBottom:8,padding:12,backgroundColor:'#1e0e0e',
-                borderRadius:8,borderWidth:1,borderColor:'#6b2020'},
-  prereqTitle: {color:'#c04040',fontSize:9,fontWeight:'800',letterSpacing:2.5,marginBottom:6},
-  prereqItem:  {color:'#a06060',fontSize:13,marginBottom:3},
-
-  attemptBtn:  {margin:18,marginTop:10,backgroundColor:'#1a1510',borderRadius:10,paddingVertical:18,
+  attemptBtn:  {margin:18,marginTop:10,backgroundColor:'#111827',borderRadius:10,paddingVertical:18,
                 alignItems:'center',borderWidth:1.5,borderColor:C.gold,
                 shadowColor:C.gold,shadowOpacity:0.3,shadowRadius:12,shadowOffset:{width:0,height:0}},
   attemptBtnT: {color:C.gold,fontSize:17,fontWeight:'800',letterSpacing:5,
                 textShadowColor:C.gold,textShadowRadius:10},
 
-  lockedBtn:   {margin:18,marginTop:10,backgroundColor:'#160e0e',borderRadius:10,paddingVertical:18,
-                alignItems:'center',borderWidth:1,borderColor:'#4a2020'},
-  lockedBtnT:  {color:'#6a3030',fontSize:13,fontWeight:'700',letterSpacing:2},
+  lockedBtn:   {margin:18,marginTop:10,backgroundColor:'#131923',borderRadius:10,paddingVertical:18,
+                alignItems:'center',borderWidth:1,borderColor:'rgba(239,68,68,0.35)'},
+  lockedBtnT:  {color:'#fca5a5',fontSize:13,fontWeight:'700',letterSpacing:2},
 
-  masteredBtn: {margin:18,marginTop:10,backgroundColor:'#0a1810',borderRadius:10,paddingVertical:18,
+  masteredBtn: {margin:18,marginTop:10,backgroundColor:'#131b22',borderRadius:10,paddingVertical:18,
                 alignItems:'center',borderWidth:1.5,borderColor:C.green,
-                shadowColor:C.green,shadowOpacity:0.3,shadowRadius:12,shadowOffset:{width:0,height:0}},
+                shadowColor:C.green,shadowOpacity:0.28,shadowRadius:12,shadowOffset:{width:0,height:0}},
   masteredBtnT:{color:C.green,fontSize:17,fontWeight:'800',letterSpacing:5},
 
-  originBtn:   {margin:18,marginTop:10,backgroundColor:'#161208',borderRadius:10,paddingVertical:18,
+  originBtn:   {margin:18,marginTop:10,backgroundColor:'#111827',borderRadius:10,paddingVertical:18,
                 alignItems:'center',borderWidth:1,borderColor:C.goldDim},
   originBtnT:  {color:C.goldDim,fontSize:14,fontWeight:'700',letterSpacing:4},
 });
@@ -307,7 +472,15 @@ function NamePrompt({visible,onConfirm,onCancel}){
       <KeyboardAvoidingView style={np.kav} behavior={Platform.OS==='ios'?'padding':'height'}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={no}/>
         <View style={np.box}>
-          <Text style={np.title}>NEW SKILL</Text>
+          <GlowText
+            style={np.title}
+            color={Colors.blue[300]}
+            glowColor="rgba(96,165,250,0.65)"
+            outerGlowColor="rgba(59,130,246,0.3)"
+            align="center"
+          >
+            NEW SKILL
+          </GlowText>
           <TextInput
             value={val}
             onChangeText={setVal}
@@ -335,12 +508,18 @@ function NamePrompt({visible,onConfirm,onCancel}){
 const np = StyleSheet.create({
   kav:    {flex:1,backgroundColor:'rgba(0,0,0,0.82)',justifyContent:'flex-start',paddingTop:110,paddingHorizontal:30},
   box:    {backgroundColor:C.bgCard,borderRadius:14,padding:24,borderWidth:1,borderColor:C.stone},
-  title:  {color:C.textMain,fontSize:14,fontWeight:'800',letterSpacing:4,textAlign:'center',marginBottom:18},
-  input:  {backgroundColor:'#100e0c',borderRadius:10,padding:16,fontSize:17,borderWidth:1,borderColor:C.stone,marginBottom:16,color:C.textMain},
+  title: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 4,
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  input:  {backgroundColor:'#0f172a',borderRadius:10,padding:16,fontSize:17,borderWidth:1,borderColor:C.stone,marginBottom:16,color:C.textMain},
   row:    {flexDirection:'row',gap:10},
-  cancel: {flex:1,backgroundColor:'#1a1410',borderRadius:10,paddingVertical:14,alignItems:'center',borderWidth:1,borderColor:C.stone},
+  cancel: {flex:1,backgroundColor:'#111827',borderRadius:10,paddingVertical:14,alignItems:'center',borderWidth:1,borderColor:C.stone},
   cancelT:{color:C.textDim,fontWeight:'600'},
-  add:    {flex:1,backgroundColor:'#1a1510',borderRadius:10,paddingVertical:14,alignItems:'center',borderWidth:1,borderColor:C.gold},
+  add:    {flex:1,backgroundColor:'#111827',borderRadius:10,paddingVertical:14,alignItems:'center',borderWidth:1,borderColor:C.gold},
   off:    {opacity:0.3},
   addT:   {color:C.gold,fontWeight:'800',letterSpacing:2},
 });
@@ -406,41 +585,33 @@ function SkiaTreeCanvas({
     return { image, sprites, transforms };
   }, []);
 
-  const edgeBuckets = useMemo(()=>{
-    const mastered = Skia.Path.Make();
-    const ready = Skia.Path.Make();
-    const locked = Skia.Path.Make();
-    let hasMastered=false, hasReady=false, hasLocked=false;
-    for(const e of visibleEdges){
+  const edgeSegments = useMemo(()=>{
+    return visibleEdges.map((e, idx)=>{
       const fn=nodeMap.get(e.from);
       const tn=nodeMap.get(e.to);
-      if(!fn||!tn) continue;
+      if(!fn||!tn) return null;
       const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
       const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
-      let bucket=locked;
-      if(!bld){
-        const fromState=nodeStatusMap[fn.id] || 'locked';
-        const toState=nodeStatusMap[tn.id] || 'locked';
-        const fromLit=fromState==='start'||fromState==='mastered';
-        const toLit=toState==='start'||toState==='mastered';
-        const toReady=toState==='ready';
-        const fromStart=fromState==='start';
-        if(fromLit&&toLit){
-          bucket=mastered;
-          hasMastered=true;
-        }else if((fromLit&&!toLit)||(toReady)||(fromStart&&toState==='locked')){
-          bucket=ready;
-          hasReady=true;
-        }else{
-          hasLocked=true;
-        }
-      }else{
-        hasLocked=true;
-      }
-      bucket.moveTo(fromPos.x,fromPos.y);
-      bucket.lineTo(toPos.x,toPos.y);
-    }
-    return { mastered, ready, locked, hasMastered, hasReady, hasLocked };
+      const path = Skia.Path.Make();
+      const dx = toPos.x - fromPos.x;
+      const dy = toPos.y - fromPos.y;
+      const mx = (fromPos.x + toPos.x) / 2;
+      const my = (fromPos.y + toPos.y) / 2;
+      const bendX = mx + (Math.abs(dy) > Math.abs(dx) ? (dx > 0 ? 24 : -24) : 0);
+      const bendY = my - Math.min(44, Math.max(14, Math.abs(dx) * 0.09));
+      path.moveTo(fromPos.x,fromPos.y);
+      path.quadTo(bendX, bendY, toPos.x, toPos.y);
+
+      const fromState=nodeStatusMap[fn.id] || 'locked';
+      const toState=nodeStatusMap[tn.id] || 'locked';
+      const fromLit=fromState==='start'||fromState==='mastered';
+      const toLit=toState==='start'||toState==='mastered';
+      const toReady=toState==='ready';
+      const status = bld ? 'locked' : (fromLit&&toLit ? 'mastered' : ((fromLit&&!toLit)||toReady ? 'ready' : 'locked'));
+      const branch = resolveBranch(tn);
+      const branchColor = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
+      return { id: `${e.from}_${e.to}_${idx}`, path, status, branchColor };
+    }).filter(Boolean);
   },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
 
   const farNodeR = NODE_R*0.34;
@@ -452,66 +623,97 @@ function SkiaTreeCanvas({
           sprites={dustAtlas.sprites}
           transforms={dustAtlas.transforms}
         />
-        {edgeBuckets.hasMastered&&LOD.isNear&&!isInteracting&&USE_GLOW&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW+2.2} color="rgba(76,175,80,0.17)" strokeCap="round" />
-        )}
-        {edgeBuckets.hasMastered&&(
-          <Path path={edgeBuckets.mastered} style="stroke" strokeWidth={edgeVisual.masteredW} color={`rgba(76,175,80,${edgeVisual.masteredO})`} strokeCap="round" />
-        )}
-        {edgeBuckets.hasReady&&(
-          <Path path={edgeBuckets.ready} style="stroke" strokeWidth={edgeVisual.readyW} color={`rgba(255,152,0,${edgeVisual.readyO})`} strokeCap="round">
-            {LOD.useDashedReady&&!bld&&<DashPathEffect intervals={[12,10]} />}
-          </Path>
-        )}
-        {edgeBuckets.hasLocked&&(
-          <Path path={edgeBuckets.locked} style="stroke" strokeWidth={edgeVisual.lockedW} color={bld?`rgba(91,82,72,${edgeVisual.lockedO})`:`rgba(97,88,79,${edgeVisual.lockedO})`} strokeCap="round" />
-        )}
+        {edgeSegments.map((edge)=>{
+          const w = edge.status==='mastered' ? edgeVisual.masteredW : edge.status==='ready' ? edgeVisual.readyW : edgeVisual.lockedW;
+          const o = edge.status==='mastered' ? edgeVisual.masteredO : edge.status==='ready' ? edgeVisual.readyO : edgeVisual.lockedO;
+          const boostedO = Math.min(0.95, o + (edge.status==='locked' ? 0.06 : 0.12));
+          const color = edge.status==='locked' ? `rgba(100,116,139,${boostedO})` : toRGBA(edge.branchColor.main, boostedO);
+          return (
+            <Group key={edge.id}>
+              {LOD.isNear && !isInteracting && edge.status!=='locked' && (
+                <Path path={edge.path} style="stroke" strokeWidth={w+4.8} color={toRGBA(edge.branchColor.main, edge.status==='mastered'?0.36:0.29)} strokeCap="round" />
+              )}
+              {edge.status==='mastered' && (
+                <Path path={edge.path} style="stroke" strokeWidth={w+2} color={toRGBA(edge.branchColor.main,0.44)} strokeCap="round" />
+              )}
+              <Path path={edge.path} style="stroke" strokeWidth={w} color={color} strokeCap="round">
+                {LOD.useDashedReady && edge.status==='ready' && !bld && <DashPathEffect intervals={[12,10]} />}
+              </Path>
+            </Group>
+          );
+        })}
 
         {visibleNodes.map(n=>{
-          const {fill,stroke,sw,opacity}=nStyle(n);
+          const visual=nStyle(n);
           const rx=dragVisual?.id===n.id?dragVisual.x:n.x;
           const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
           const lines=wrappedLabels[n.id]||[n.name];
           const lh=13;
-          const sy=ry-(lines.length*lh)/2+lh*0.8;
+          const sy=ry+NODE_R+14;
           const status=nodeStatusMap[n.id]||'locked';
           const isLit=status==='start'||status==='mastered'||status==='ready';
           const isReady=status==='ready';
           const isMastered=status==='start'||status==='mastered';
           const renderR=LOD.isFar?farNodeR:NODE_R;
-          const nodeStrokeWidth=LOD.isFar?Math.max(0.8,sw-0.5):sw;
-          const showCheapHalo=USE_GLOW&&isLit;
-          const haloColor=isReady?'rgba(255,152,0,0.18)':'rgba(76,175,80,0.17)';
+          const nodeStrokeWidth=LOD.isFar?Math.max(0.8,visual.sw-0.5):visual.sw;
+          const baseAuraColor =
+            status === 'locked'
+              ? 'rgba(100,116,139,0.18)'
+              : toRGBA(visual.stroke, 0.26);
           return(
             <Group key={n.id}>
-              {LOD.showOuterRing&&isMastered&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.2} color="rgba(76,175,80,0.34)" />}
-              {LOD.showOuterRing&&isReady&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.1} color="rgba(255,193,7,0.44)" />}
-              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+12} style="stroke" strokeWidth={1.8} color="rgba(212,128,10,0.68)" />}
+              {LOD.showOuterRing&&<Circle cx={rx} cy={ry} r={NODE_R+13} style="stroke" strokeWidth={1.15} color={visual.ring} />}
+              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edge} />}
 
-              {showCheapHalo&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.62:NODE_R*0.9} color={haloColor} />}
-
-              {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
-                <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={isReady?'rgba(255,152,0,0.16)':'rgba(76,175,80,0.14)'}>
-                  <Blur blur={GLOW_QUALITY==='high'?16:10} />
-                </Circle>
+              {USE_GLOW && (
+                <Circle
+                  cx={rx}
+                  cy={ry}
+                  r={LOD.isFar ? NODE_R * 0.82 : NODE_R * 1.06}
+                  color={baseAuraColor}
+                />
+              )}
+              {USE_GLOW && isLit && (
+                <Circle
+                  cx={rx}
+                  cy={ry}
+                  r={LOD.isFar ? NODE_R * 0.92 : NODE_R * 1.18}
+                  color={toRGBA(visual.stroke, isReady ? 0.22 : 0.18)}
+                />
               )}
 
-              <Circle cx={rx} cy={ry} r={renderR} color={fill} opacity={opacity} />
-              <Circle cx={rx} cy={ry} r={renderR} style="stroke" strokeWidth={nodeStrokeWidth} color={stroke} opacity={opacity} />
+              {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
+                <Group>
+                  <Circle cx={rx} cy={ry} r={NODE_R*1.12} color={visual.glowOuter}><Blur blur={GLOW_QUALITY==='high'?20:14} /></Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={visual.glowMid}><Blur blur={GLOW_QUALITY==='high'?14:9} /></Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R*0.8} color={visual.glowInner}><Blur blur={6} /></Circle>
+                </Group>
+              )}
 
-              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-8} style="stroke" strokeWidth={0.5} color={stroke} opacity={0.34} />}
-              {!LOD.isFar&&<Circle cx={rx-8} cy={ry-8} r={NODE_R*0.12} color="rgba(255,255,255,0.22)" />}
+              <Circle cx={rx} cy={ry} r={renderR+3} color={visual.outerRim} />
+              <Circle cx={rx} cy={ry} r={renderR+1} style="stroke" strokeWidth={1.2} color={visual.ring} opacity={0.42} />
+              <Circle cx={rx} cy={ry} r={renderR} color={visual.fill} opacity={visual.opacity} />
+              <Circle cx={rx} cy={ry} r={renderR-3} color={visual.innerFill} opacity={0.92} />
+              <Circle cx={rx} cy={ry} r={renderR-8} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
+              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-12} style="stroke" strokeWidth={1} color={visual.ring} opacity={0.65} />}
+              {!LOD.isFar&&<Circle cx={rx-11} cy={ry-11} r={NODE_R*0.14} color="rgba(255,255,255,0.28)" />}
+              {!LOD.isFar&&<Circle cx={rx+8} cy={ry+10} r={NODE_R*0.16} color="rgba(0,0,0,0.24)" />}
+              {LOD.isNear && <Circle cx={rx} cy={ry-NODE_R*0.32} r={NODE_R*0.22} color="rgba(255,255,255,0.09)" />}
 
-              {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>(
-                <SkiaText
-                  key={`${n.id}_${li}`}
-                  x={rx-(ln.length*2.8)}
-                  y={sy+li*lh}
-                  text={ln}
-                  font={labelFont}
-                  color={isLit?C.textMain:C.textDim}
-                />
-              ))}
+              {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>{
+                const x = rx-(ln.length*2.8);
+                const y = sy+li*lh;
+                const mainColor = isLit ? '#F8FAFC' : '#B6C2D1';
+                const glow1 = isLit ? toRGBA(visual.stroke, 0.3) : 'rgba(148,163,184,0.12)';
+                const glow2 = isLit ? toRGBA(visual.stroke, 0.18) : 'rgba(148,163,184,0.08)';
+                return (
+                  <Group key={`${n.id}_${li}`}>
+                    <SkiaText x={x} y={y} text={ln} font={labelFont} color={glow2} />
+                    <SkiaText x={x} y={y} text={ln} font={labelFont} color={glow1} />
+                    <SkiaText x={x} y={y} text={ln} font={labelFont} color={mainColor} />
+                  </Group>
+                );
+              })}
             </Group>
           );
         })}
@@ -521,12 +723,12 @@ function SkiaTreeCanvas({
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────────
-function TreeScreen(){
+function TreeScreen({ onTreeChange }){
   const insets = useSafeAreaInsets();
-  const [tree,_setTree]=useState(INIT);
-  const tR=useRef(INIT);
+  const [tree,_setTree]=useState(normalizeTree(INIT));
+  const tR=useRef(normalizeTree(INIT));
   const setTree=t=>{tR.current=t;_setTree(t);};
-  const hist=useRef([INIT]),hi=useRef(0);
+  const hist=useRef([normalizeTree(INIT)]),hi=useRef(0);
   const [canUndo,setCU]=useState(false),[canRedo,setCR]=useState(false);
 
   useEffect(()=>{
@@ -535,13 +737,17 @@ function TreeScreen(){
       try{
         const saved=JSON.parse(raw);
         if(saved?.nodes&&saved?.edges){
-          const t={...INIT,...saved,info:{...INIT.info,...(saved.info||{})}};
+          const t=normalizeTree(saved);
           hist.current=[t];hi.current=0;
           setTree(t);setCU(false);setCR(false);
         }
       }catch(e){}
     });
   },[]);
+
+  useEffect(()=>{
+    onTreeChange?.(tree);
+  },[onTreeChange, tree]);
 
   const commit=t=>{
     const h=hist.current.slice(0,hi.current+1);h.push(t);
@@ -762,9 +968,10 @@ function TreeScreen(){
         }
         if(!hit){
           const p=toSVG(pageX,pageY);
+          const nodeById=new Map(tR.current.nodes.map(n=>[n.id,n]));
           const idx=tR.current.edges.findIndex(e=>{
-            const fn=tR.current.nodes.find(n=>n.id===e.from);
-            const tn=tR.current.nodes.find(n=>n.id===e.to);
+            const fn=nodeById.get(e.from);
+            const tn=nodeById.get(e.to);
             return fn&&tn&&segDist(p.x,p.y,fn.x,fn.y,tn.x,tn.y)<28;
           });
           if(idx!==-1) commit({...tR.current,edges:tR.current.edges.filter((_,i)=>i!==idx)});
@@ -785,7 +992,7 @@ function TreeScreen(){
     const id=name.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')+'_'+Date.now();
     commit({
       ...tR.current,
-      nodes:[...tR.current.nodes,{id,name,x:pendingPos.current.x,y:pendingPos.current.y,unlocked:false,isStart:false}],
+      nodes:[...tR.current.nodes,{id,name,x:pendingPos.current.x,y:pendingPos.current.y,unlocked:false,isStart:false,branch:'core'}],
       info:{...tR.current.info,[id]:{desc:'No description yet.',str:5,bal:5,tec:5}},
     });
     showPrompt(false);
@@ -807,9 +1014,12 @@ function TreeScreen(){
       const res=await DocumentPicker.getDocumentAsync({type:'application/json',copyToCacheDirectory:true});
       if(res.canceled) return;
       const raw=await FileSystem.readAsStringAsync(res.assets[0].uri,{encoding:'utf8'});
-      const loaded=JSON.parse(raw);
-      if(!loaded?.nodes||!loaded?.edges){Alert.alert('Invalid file','Not a valid skill tree JSON.');return;}
-      const t={...INIT,...loaded,info:{...INIT.info,...(loaded.info||{})}};
+      const parsed=JSON.parse(raw);
+      if(!parsed||typeof parsed!=='object'||!Array.isArray(parsed.nodes)||!Array.isArray(parsed.edges)){
+        Alert.alert('Invalid file','Not a valid skill tree JSON.');
+        return;
+      }
+      const t=normalizeTree(parsed);
       Alert.alert('Import Tree','Replace current tree with imported one?',[
         {text:'Cancel',style:'cancel'},
         {text:'Import',onPress:()=>{
@@ -855,11 +1065,29 @@ function TreeScreen(){
 
   // ── SVG node/edge styling ──────────────────────────────────────────────────
   const nStyle=n=>{
-    if(bld&&connA===n.id) return{fill:'#2a1a00',stroke:C.amber,sw:2.5,opacity:1};
+    const branch = resolveBranch(n);
+    const bc = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
     const status=nodeStatusMap[n.id] || 'locked';
-    if(status==='start'||status==='mastered') return{fill:'#d9efe0',stroke:'#4CAF50',sw:2.2,opacity:0.95};
-    if(status==='ready') return{fill:'#f1e4cf',stroke:'#FFC107',sw:2.1,opacity:0.95};
-    return{fill:'#cfcfcf',stroke:'#7b7266',sw:1.2,opacity:0.78};
+    if(bld&&connA===n.id) return{
+      fill:'#132238', innerFill:'#0C1728', outerRim:'#2B3C55', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.88),
+      glowInner:toRGBA(Colors.blue[300],0.4), glowMid:toRGBA(Colors.blue[400],0.28), glowOuter:toRGBA(Colors.blue[500],0.22), sw:2.7, opacity:1,
+    };
+    if(status==='start') return {
+      fill:'#172A43', innerFill:'#0F1D30', outerRim:'#304766', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.82),
+      glowInner:toRGBA(Colors.blue[300],0.4), glowMid:toRGBA(Colors.blue[400],0.3), glowOuter:toRGBA(Colors.blue[500],0.24), sw:2.5, opacity:1,
+    };
+    if(status==='mastered') return {
+      fill:'#141C2A', innerFill:'#0C1320', outerRim:'#2F3E50', stroke:bc.main, ring:toRGBA(bc.ring,0.9),
+      glowInner:toRGBA(bc.ring,0.4), glowMid:toRGBA(bc.main,0.3), glowOuter:toRGBA(bc.main,0.22), sw:2.45, opacity:0.99,
+    };
+    if(status==='ready') return {
+      fill:'#19212F', innerFill:'#101826', outerRim:'#314153', stroke:bc.main, ring:toRGBA(bc.ring,0.84),
+      glowInner:toRGBA(bc.ring,0.33), glowMid:toRGBA(bc.main,0.24), glowOuter:toRGBA(bc.main,0.18), sw:2.25, opacity:0.97,
+    };
+    return {
+      fill:'#0B1220', innerFill:'#070D16', outerRim:'#1C2635', stroke:'rgba(120,138,160,0.38)', ring:'rgba(120,138,160,0.26)',
+      glowInner:'rgba(120,138,160,0.08)', glowMid:'rgba(120,138,160,0.05)', glowOuter:'rgba(120,138,160,0.04)', sw:1.5, opacity:0.9,
+    };
   };
 
   const wrap=name=>{
@@ -916,9 +1144,9 @@ function TreeScreen(){
   }),[lodTier]);
 
   const edgeVisual=useMemo(()=>{
-    if(LOD.isFar) return {masteredW:1.1,readyW:0.95,lockedW:0.85,masteredO:0.62,readyO:0.48,lockedO:0.25};
-    if(LOD.isMid) return {masteredW:1.7,readyW:1.4,lockedW:1.1,masteredO:0.74,readyO:0.6,lockedO:0.3};
-    return {masteredW:2.5,readyW:2.1,lockedW:1.4,masteredO:0.86,readyO:0.72,lockedO:0.38};
+    if(LOD.isFar) return {masteredW:1.2,readyW:1.05,lockedW:0.9,masteredO:0.68,readyO:0.56,lockedO:0.28};
+    if(LOD.isMid) return {masteredW:1.9,readyW:1.55,lockedW:1.2,masteredO:0.8,readyO:0.68,lockedO:0.34};
+    return {masteredW:2.8,readyW:2.3,lockedW:1.5,masteredO:0.9,readyO:0.8,lockedO:0.44};
   },[LOD.isFar,LOD.isMid]);
 
   useEffect(()=>{
@@ -944,7 +1172,17 @@ function TreeScreen(){
     <View style={S.root}>
       {/* Top bar */}
       <View style={[S.bar,{paddingTop:insets.top+10}]}>
-        <Text style={S.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>CALISTHENICS</Text>
+        <View style={S.titleWrap}>
+          <GlowText
+            style={S.title}
+            color={Colors.blue[300]}
+            glowColor="rgba(96,165,250,0.72)"
+            outerGlowColor="rgba(59,130,246,0.38)"
+            numberOfLines={1}
+          >
+            KINETIC SKILL TREE
+          </GlowText>
+        </View>
         <View style={S.barRight}>
           {!bld&&(
             <TouchableOpacity style={S.resetBtn} onPress={()=>{
@@ -1033,9 +1271,10 @@ function TreeScreen(){
       {!bld&&(
         <View style={S.legend}>
           {[
-            ['#4CAF50','Mastered'],
-            ['#FFC107','Ready'],
-            ['#3a3028','Locked'],
+            [BRANCH_COLORS.push.main,'Push'],
+            [BRANCH_COLORS.pull.main,'Pull'],
+            [BRANCH_COLORS.core.main,'Core'],
+            ['#334155','Locked'],
           ].map(([c,l])=>(
             <View key={l} style={S.lr}>
               <View style={[S.dot,{backgroundColor:c}]}/>
@@ -1048,6 +1287,7 @@ function TreeScreen(){
       <NamePrompt visible={prompt} onConfirm={addNode} onCancel={()=>showPrompt(false)}/>
       {sel&&!bld&&(
         <SkillCard node={sel} nodes={tree.nodes} edges={tree.edges}
+          info={tree.info?.[sel.id]}
           onClose={()=>setSel(null)} onRecord={record}/>
       )}
     </View>
@@ -1056,18 +1296,86 @@ function TreeScreen(){
 
 
 
-function ProfileScreen(){
+function getTreeStats(tree){
+  const nodes = (tree?.nodes || []).filter((n)=>!n.isStart);
+  const unlocked = nodes.filter((n)=>n.unlocked);
+  const byBranch = ['push','pull','core'].reduce((acc, b)=>{
+    const branchNodes = nodes.filter((n)=>resolveBranch(n)===b);
+    const unlockedCount = branchNodes.filter((n)=>n.unlocked).length;
+    acc[b] = { total: branchNodes.length, unlocked: unlockedCount, pct: branchNodes.length ? Math.round((unlockedCount / branchNodes.length) * 100) : 0 };
+    return acc;
+  }, {});
+  const leadingBranch = ['push','pull','core'].sort((a,b)=>byBranch[b].pct - byBranch[a].pct)[0] || 'push';
+  const completionPct = nodes.length ? Math.round((unlocked.length / nodes.length) * 100) : 0;
+  return { total: nodes.length, unlocked: unlocked.length, completionPct, byBranch, leadingBranch };
+}
+
+function StatChip({ label, value, accent }){
+  return (
+    <View style={[tabs.statCard, { borderColor: toRGBA(accent, 0.38) }]}>
+      <Text style={tabs.statValue}>{value}</Text>
+      <Text style={tabs.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function ProfileScreen({ tree }){
+  const stats = useMemo(()=>getTreeStats(tree || INIT),[tree]);
+  const leadingBranchColor = BRANCH_COLORS[stats.leadingBranch]?.main || Colors.blue[400];
   return (
     <ScrollView contentContainerStyle={tabs.content} style={tabs.page}>
-      <Text style={tabs.pageTitle}>Profile</Text>
-      <View style={tabs.card}>
-        <Text style={tabs.cardTitle}>Athlete</Text>
-        <Text style={tabs.cardBody}>Level 3 Explorer</Text>
+      <View style={tabs.profileHeader}>
+        <View style={tabs.avatarOrb}><Ionicons name="fitness" size={22} color={Colors.blue[300]} /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={tabs.profileName}>Kinetic Athlete</Text>
+          <Text style={tabs.profileSub}>Level {Math.max(1, Math.floor(stats.unlocked / 2))} · Build momentum daily</Text>
+        </View>
+        <TouchableOpacity style={tabs.headerAction}><Ionicons name="settings-outline" size={18} color={Colors.text.secondary} /></TouchableOpacity>
       </View>
+
+      <View style={tabs.statGrid}>
+        <StatChip label="Total Skills" value={stats.total} accent={Colors.blue[400]} />
+        <StatChip label="Unlocked" value={stats.unlocked} accent={Colors.green[500]} />
+        <StatChip label="Completion" value={`${stats.completionPct}%`} accent={Colors.yellow[400]} />
+        <StatChip label="Leading Branch" value={stats.leadingBranch.toUpperCase()} accent={leadingBranchColor} />
+      </View>
+
       <View style={tabs.card}>
-        <Text style={tabs.cardTitle}>Stats</Text>
-        <Text style={tabs.cardBody}>Completed Skills: 12</Text>
-        <Text style={tabs.cardBody}>Current Streak: 5 days</Text>
+        <GlowText style={tabs.cardTitle} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.55)" outerGlowColor="rgba(59,130,246,0.26)">
+          Tree Progress
+        </GlowText>
+        {['push','pull','core'].map((branch)=>{
+          const b = stats.byBranch[branch];
+          const color = BRANCH_COLORS[branch].main;
+          return (
+            <View key={branch} style={tabs.progressRow}>
+              <Text style={[tabs.progressLabel, { color }]}>{branch.toUpperCase()}</Text>
+              <View style={tabs.progressTrack}><View style={[tabs.progressFill, { width: `${b.pct}%`, backgroundColor: color }]} /></View>
+              <Text style={tabs.progressMeta}>{b.unlocked}/{b.total}</Text>
+            </View>
+          );
+        })}
+      </View>
+
+      <View style={tabs.card}>
+        <GlowText style={tabs.cardTitle} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.55)" outerGlowColor="rgba(59,130,246,0.26)">
+          Highlights
+        </GlowText>
+        <Text style={tabs.cardBody}>• Leading branch: {stats.leadingBranch.toUpperCase()} ({stats.byBranch[stats.leadingBranch]?.pct || 0}% complete)</Text>
+        <Text style={tabs.cardBody}>• Skills unlocked: {stats.unlocked} of {stats.total}</Text>
+        <Text style={tabs.cardBody}>• Note: streaks and milestones are not tracked yet.</Text>
+      </View>
+
+      <View style={tabs.card}>
+        <GlowText style={tabs.cardTitle} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.55)" outerGlowColor="rgba(59,130,246,0.26)">
+          Actions
+        </GlowText>
+        {['Edit Profile', 'Preferences', 'Export Progress', 'Tree Settings'].map((row)=>(
+          <TouchableOpacity key={row} style={tabs.actionRow}>
+            <Text style={tabs.settingLabel}>{row}</Text>
+            <Ionicons name="chevron-forward" size={16} color={Colors.slate[400]} />
+          </TouchableOpacity>
+        ))}
       </View>
     </ScrollView>
   );
@@ -1079,15 +1387,30 @@ function SettingsScreen(){
 
   return (
     <ScrollView contentContainerStyle={tabs.content} style={tabs.page}>
-      <Text style={tabs.pageTitle}>Settings</Text>
+      <GlowText
+        style={tabs.pageTitle}
+        color={Colors.blue[300]}
+        glowColor="rgba(96,165,250,0.75)"
+        outerGlowColor="rgba(59,130,246,0.38)"
+      >
+        Settings
+      </GlowText>
       <View style={tabs.card}>
         <View style={tabs.settingRow}>
           <Text style={tabs.settingLabel}>Push Notifications</Text>
-          <Switch value={notifications} onValueChange={setNotifications} trackColor={{false:'#3a3028', true:'#8a6a20'}} thumbColor={notifications ? '#FFC107' : '#8b7a63'} />
+          <Switch value={notifications} onValueChange={setNotifications} trackColor={{false:'#334155', true:'#3B82F6'}} thumbColor={notifications ? '#93C5FD' : '#CBD5E1'} />
         </View>
         <View style={tabs.settingRow}>
           <Text style={tabs.settingLabel}>Dark Theme</Text>
-          <Switch value={darkMode} onValueChange={setDarkMode} trackColor={{false:'#3a3028', true:'#2d6b47'}} thumbColor={darkMode ? '#4CAF50' : '#8b7a63'} />
+          <Switch value={darkMode} onValueChange={setDarkMode} trackColor={{false:'#334155', true:'#16A34A'}} thumbColor={darkMode ? '#86EFAC' : '#CBD5E1'} />
+        </View>
+        <View style={tabs.settingRow}>
+          <Text style={tabs.settingLabel}>Haptics</Text>
+          <Ionicons name="phone-portrait-outline" size={17} color={Colors.slate[300]} />
+        </View>
+        <View style={tabs.settingRow}>
+          <Text style={tabs.settingLabel}>Data Sync</Text>
+          <Text style={tabs.cardBody}>Manual</Text>
         </View>
       </View>
     </ScrollView>
@@ -1096,12 +1419,14 @@ function SettingsScreen(){
 
 function AppShell(){
   const [tab, setTab] = useState('Tree');
+  const [treeSnapshot, setTreeSnapshot] = useState(normalizeTree(INIT));
   const insets = useSafeAreaInsets();
 
   const tabsConfig = [
-    { key: 'Tree', icon: 'git-network-outline' },
+    { key: 'Tree', icon: 'git-branch-outline' },
     { key: 'Profile', icon: 'person-outline' },
     { key: 'Settings', icon: 'settings-outline' },
+    { key: 'Daily', icon: 'lock-closed-outline', locked: true },
   ];
 
   return (
@@ -1109,18 +1434,48 @@ function AppShell(){
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
       <View style={tabs.root}>
         <View style={tabs.contentWrap}>
-          {tab === 'Tree' && <TreeScreen />}
-          {tab === 'Profile' && <ProfileScreen />}
+          {tab === 'Tree' && <TreeScreen onTreeChange={setTreeSnapshot} />}
+          {tab === 'Profile' && <ProfileScreen tree={treeSnapshot} />}
           {tab === 'Settings' && <SettingsScreen />}
         </View>
 
-        <View style={[tabs.navBar, { paddingBottom: insets.bottom }]}>
+        <View style={[tabs.navBar, { paddingBottom: insets.bottom }]}> 
           {tabsConfig.map((item) => {
             const active = tab === item.key;
+            if (item.locked) {
+              return (
+                <View key={item.key} style={[tabs.navItem, tabs.navItemLocked]}>
+                  <View style={tabs.navPillInactive}>
+                    <Ionicons name={item.icon} size={22} color="#6B7280" />
+                  </View>
+                  <Text style={[tabs.navLabel, tabs.navLocked]}>{item.key}</Text>
+                </View>
+              );
+            }
+            if (active) {
+              return (
+                <TouchableOpacity key={item.key} style={tabs.navItem} onPress={() => setTab(item.key)}>
+                  <View style={tabs.navOrbStack}>
+                    <View style={tabs.navPillGlowOuter} />
+                    <View style={tabs.navPillGlowMid} />
+                    <View style={tabs.navPillGlowInner} />
+                    <View style={tabs.navPillActiveWrap}>
+                      <View style={tabs.navPillCore} />
+                      <View style={tabs.navPillCoreHighlight} />
+                      <View style={tabs.navPillShine} />
+                      <Ionicons name={item.icon} size={24} color="#FFFFFF" style={tabs.navActiveIcon} />
+                    </View>
+                  </View>
+                  <Text style={[tabs.navLabel, tabs.navLabelActive]}>{item.key}</Text>
+                </TouchableOpacity>
+              );
+            }
             return (
               <TouchableOpacity key={item.key} style={tabs.navItem} onPress={() => setTab(item.key)}>
-                <Ionicons name={item.icon} size={20} color={active ? '#FFC107' : C.textDim} />
-                <Text style={[tabs.navLabel, active && tabs.navLabelActive]}>{item.key}</Text>
+                <View style={tabs.navPillInactive}>
+                  <Ionicons name={item.icon} size={22} color="#6B7280" />
+                </View>
+                <Text style={tabs.navLabel}>{item.key}</Text>
               </TouchableOpacity>
             );
           })}
@@ -1139,79 +1494,222 @@ export default function App(){
 }
 
 const tabs = StyleSheet.create({
-  safeRoot: { flex: 1, backgroundColor: C.bg },
-  root: { flex: 1, backgroundColor: C.bg },
+  safeRoot: { flex: 1, backgroundColor: Colors.background.primary },
+  root: { flex: 1, backgroundColor: Colors.background.primary },
   contentWrap: { flex: 1 },
   navBar: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderColor: C.stone,
-    backgroundColor: C.bg,
-    paddingTop: 10,
+    borderColor: 'rgba(229, 231, 235, 0.1)',
+    backgroundColor: '#1A1D23',
+    paddingTop: 7,
+    minHeight: 68,
+    overflow: 'visible',
   },
-  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
-  navLabel: { color: C.textDim, fontSize: 12, fontWeight: '600' },
-  navLabelActive: { color: '#FFC107' },
-  page: { flex: 1, backgroundColor: C.bg },
+  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 },
+  navItemLocked: { opacity: 0.5 },
+  navOrbStack: {
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ translateY: -3 }],
+    marginBottom: -1,
+  },
+  navPillInactive: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navPillActiveWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1.6,
+    borderColor: 'rgba(147, 197, 253, 0.38)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    shadowColor: '#60A5FA',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.42,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  navPillCore: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#4C5FD5',
+  },
+  navPillCoreHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '55%',
+    backgroundColor: 'rgba(91,124,230,0.28)',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+  },
+  navPillShine: {
+    position: 'absolute',
+    top: 6,
+    width: 28,
+    height: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  navActiveIcon: { marginTop: -0.5 },
+  navPillGlowOuter: {
+    position: 'absolute',
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: 'rgba(59,130,246,0.09)',
+  },
+  navPillGlowMid: {
+    position: 'absolute',
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(59,130,246,0.14)',
+  },
+  navPillGlowInner: {
+    position: 'absolute',
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: 'rgba(59,130,246,0.21)',
+  },
+  navLabel: { color: '#6B7280', fontSize: 12, fontWeight: '500', marginTop: 0 },
+  navLabelActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    textShadowColor: 'rgba(96,165,250,0.55)',
+    textShadowRadius: 8,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+  navLocked: { color: '#6B7280' },
+  page: { flex: 1, backgroundColor: Colors.background.primary },
   content: { padding: 16, gap: 14 },
-  pageTitle: { color: C.gold, fontSize: 26, fontWeight: '800', marginBottom: 4, letterSpacing: 1 },
-  card: {
-    backgroundColor: C.bgDeep,
+  pageTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    marginBottom: 4,
+    letterSpacing: 1,
+  },
+  profileHeader: {
+    backgroundColor: Colors.background.card,
     borderWidth: 1,
-    borderColor: C.stone,
-    borderRadius: 12,
+    borderColor: Colors.border.blue,
+    borderRadius: 18,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  avatarOrb: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#101A2B',
+    borderColor: Colors.border.blueActive,
+    borderWidth: 1,
+  },
+  profileName: { color: Colors.text.primary, fontSize: 17, fontWeight: '800' },
+  profileSub: { color: Colors.text.tertiary, marginTop: 2 },
+  headerAction: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#131A25' },
+  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  statCard: {
+    width: '48%',
+    backgroundColor: Colors.background.cardAlt,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
+  statValue: { color: Colors.text.primary, fontSize: 19, fontWeight: '800' },
+  statLabel: { color: Colors.text.tertiary, fontSize: 12, marginTop: 4 },
+  card: {
+    backgroundColor: Colors.background.card,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: 14,
     padding: 14,
     gap: 8,
   },
-  cardTitle: { color: C.textMain, fontSize: 18, fontWeight: '700' },
-  cardBody: { color: C.textDim, fontSize: 15 },
+  cardTitle: { color: Colors.text.primary, fontSize: 18, fontWeight: '700' },
+  cardBody: { color: Colors.text.tertiary, fontSize: 15 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  progressLabel: { width: 48, fontSize: 12, fontWeight: '700' },
+  progressTrack: { flex: 1, height: 8, borderRadius: 999, backgroundColor: '#111827', overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 999 },
+  progressMeta: { color: Colors.slate[400], width: 40, fontSize: 12, textAlign: 'right' },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.subtle,
+  },
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: 8,
   },
-  settingLabel: { color: C.textMain, fontSize: 15 },
+  settingLabel: { color: Colors.text.secondary, fontSize: 15 },
 });
 const S=StyleSheet.create({
-  root:    {flex:1,backgroundColor:C.bg},
+  root:    {flex:1,backgroundColor:Colors.background.primary},
   bar:     {flexDirection:'row',justifyContent:'space-between',alignItems:'center',
             paddingHorizontal:14,paddingTop:10,paddingBottom:10,gap:10,
-            backgroundColor:C.bg,borderBottomWidth:1,borderColor:C.stone},
-  barRight:{flexDirection:'row',alignItems:'center',gap:8,flexShrink:1},
-  title:   {color:C.gold,fontSize:13,fontWeight:'800',letterSpacing:3,
-            textShadowColor:C.gold,textShadowRadius:8,flexShrink:1,paddingRight:8},
-  resetBtn:{paddingHorizontal:12,paddingVertical:8,borderRadius:6,
-            backgroundColor:C.bgDeep,borderWidth:1,borderColor:'#6a2020'},
-  resetT:  {color:'#a04040',fontSize:11,fontWeight:'800',letterSpacing:1.5},
-  modeBtn: {paddingHorizontal:12,paddingVertical:8,borderRadius:6,
-            backgroundColor:C.bgDeep,borderWidth:1,borderColor:C.stone},
-  modeOn:  {backgroundColor:'#0a1a0e',borderColor:C.green},
-  modeT:   {color:C.textDim,fontSize:11,fontWeight:'800',letterSpacing:1.5},
-  modeTOn: {color:C.green},
+            backgroundColor:'#060A10',borderBottomWidth:1,borderColor:Colors.border.default},
+  barRight:{flexDirection:'row',alignItems:'center',gap:6,flexShrink:0,minWidth:0},
+  titleWrap:{flex:1,minWidth:0,paddingRight:4},
+  title: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 2.2,
+    flexShrink: 1,
+    paddingRight: 6,
+  },
+  resetBtn:{paddingHorizontal:10,paddingVertical:8,borderRadius:8,
+            backgroundColor:'#151922',borderWidth:1,borderColor:'rgba(239,68,68,0.6)',
+            shadowColor:'#EF4444',shadowOpacity:0.22,shadowRadius:8,shadowOffset:{width:0,height:0}},
+  resetT:  {color:'#f87171',fontSize:10.5,fontWeight:'800',letterSpacing:1.2},
+  modeBtn: {paddingHorizontal:10,paddingVertical:8,borderRadius:6,
+            backgroundColor:'#151a24',borderWidth:1,borderColor:Colors.border.default},
+  modeOn:  {backgroundColor:'#12283d',borderColor:'rgba(59,130,246,0.45)'},
+  modeT:   {color:Colors.text.tertiary,fontSize:10.5,fontWeight:'800',letterSpacing:1.2},
+  modeTOn: {color:Colors.green[400]},
   toolbar: {flexDirection:'row',justifyContent:'space-between',alignItems:'center',
             paddingHorizontal:10,paddingVertical:10,rowGap:8,
-            backgroundColor:C.bgDeep,borderBottomWidth:1,borderColor:C.stone,flexWrap:'wrap'},
+            backgroundColor:Colors.background.secondary,borderBottomWidth:1,borderColor:Colors.border.default,flexWrap:'wrap'},
   tg:      {flexDirection:'row',gap:7,flexWrap:'wrap'},
   tBtn:    {paddingHorizontal:11,paddingVertical:8,borderRadius:6,
-            backgroundColor:C.bg,borderWidth:1,borderColor:C.stone},
-  tOn:     {backgroundColor:'#1a1208',borderColor:C.goldDim},
-  tT:      {color:C.textDim,fontSize:12,fontWeight:'600'},
-  tTOn:    {color:C.gold},
+            backgroundColor:'#121722',borderWidth:1,borderColor:Colors.border.default},
+  tOn:     {backgroundColor:'rgba(59,130,246,0.18)',borderColor:'rgba(59,130,246,0.4)'},
+  tT:      {color:Colors.text.tertiary,fontSize:12,fontWeight:'600'},
+  tTOn:    {color:Colors.blue[300]},
   uBtn:    {paddingHorizontal:11,paddingVertical:8,borderRadius:6,
-            backgroundColor:C.bg,borderWidth:1,borderColor:C.stone},
+            backgroundColor:Colors.background.primary,borderWidth:1,borderColor:Colors.border.default},
   dim:     {opacity:0.2},
-  uT:      {color:C.textDim,fontSize:12,fontWeight:'600'},
-  ioRow:   {flexDirection:'row',gap:10,paddingHorizontal:14,paddingVertical:8,backgroundColor:C.bg},
-  ioBtn:   {flex:1,backgroundColor:C.bgDeep,borderRadius:6,paddingVertical:10,
-            alignItems:'center',borderWidth:1,borderColor:C.stone},
-  ioT:     {color:C.textDim,fontSize:12,fontWeight:'800',letterSpacing:2},
-  hintRow: {paddingHorizontal:16,paddingVertical:6,backgroundColor:C.bg},
-  hintT:   {color:C.textFaint,fontSize:11,textAlign:'center',letterSpacing:0.5},
-  canvas:  {flex:1,backgroundColor:'#131110',overflow:'hidden'},
+  uT:      {color:Colors.text.tertiary,fontSize:12,fontWeight:'600'},
+  ioRow:   {flexDirection:'row',gap:10,paddingHorizontal:14,paddingVertical:8,backgroundColor:Colors.background.primary},
+  ioBtn:   {flex:1,backgroundColor:Colors.background.cardAlt,borderRadius:6,paddingVertical:10,
+            alignItems:'center',borderWidth:1,borderColor:Colors.border.default},
+  ioT:     {color:Colors.text.secondary,fontSize:12,fontWeight:'800',letterSpacing:2},
+  hintRow: {paddingHorizontal:16,paddingVertical:6,backgroundColor:Colors.background.primary},
+  hintT:   {color:Colors.text.tertiary,fontSize:11,textAlign:'center',letterSpacing:0.5},
+  canvas:  {flex:1,backgroundColor:'#05080F',overflow:'hidden'},
   legend:  {flexDirection:'row',justifyContent:'center',gap:28,paddingVertical:12,
-            backgroundColor:C.bg,borderTopWidth:1,borderColor:C.stone},
+            backgroundColor:'#060A10',borderTopWidth:1,borderColor:Colors.border.default},
   lr:      {flexDirection:'row',alignItems:'center',gap:7},
   dot:     {width:8,height:8,borderRadius:4},
-  lt:      {color:C.textDim,fontSize:11,letterSpacing:1},
+  lt:      {color:Colors.text.secondary,fontSize:11,letterSpacing:1},
 });
