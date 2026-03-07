@@ -70,10 +70,10 @@ const Colors = {
 };
 
 const BRANCH_COLORS = {
-  neutral: { main: Colors.blue[400], glow: 'rgba(96,165,250,0.34)', edge: 'rgba(96,165,250,0.72)', ring: '#93C5FD' },
-  push: { main: Colors.green[500], glow: 'rgba(34,197,94,0.35)', edge: 'rgba(74,222,128,0.78)', ring: '#86EFAC' },
-  pull: { main: Colors.blue[500], glow: 'rgba(59,130,246,0.38)', edge: 'rgba(96,165,250,0.8)', ring: '#93C5FD' },
-  core: { main: Colors.yellow[400], glow: 'rgba(250,204,21,0.36)', edge: 'rgba(250,204,21,0.82)', ring: '#FDE047' },
+  neutral: { main: '#60A5FA', glow: 'rgba(96,165,250,0.5)', edge: 'rgba(96,165,250,0.86)', ring: '#BFDBFE' },
+  push: { main: '#22C55E', glow: 'rgba(34,197,94,0.55)', edge: 'rgba(74,222,128,0.9)', ring: '#BBF7D0' },
+  pull: { main: '#4F46E5', glow: 'rgba(99,102,241,0.58)', edge: 'rgba(129,140,248,0.92)', ring: '#C7D2FE' },
+  core: { main: '#FACC15', glow: 'rgba(250,204,21,0.56)', edge: 'rgba(253,224,71,0.94)', ring: '#FEF08A' },
 };
 
 const C = {
@@ -194,16 +194,16 @@ const glowText = StyleSheet.create({
 
 const INIT = {
   nodes:[
-    {id:'start',      name:'Start',          x:450,y:120, unlocked:true, isStart:true, branch:'neutral' },
-    {id:'dead_hang',  name:'Dead Hang',       x:270,y:270, unlocked:false,isStart:false, branch:'pull'},
-    {id:'pushup',     name:'Push-Up',         x:635,y:265, unlocked:false,isStart:false, branch:'push'},
-    {id:'active_hang',name:'Active Hang',     x:240,y:445, unlocked:false,isStart:false, branch:'pull'},
-    {id:'diamond_pu', name:'Diamond Push-Up', x:675,y:450, unlocked:false,isStart:false, branch:'push'},
-    {id:'scap_pulls', name:'Scapular Pulls',  x:135,y:620, unlocked:false,isStart:false, branch:'pull'},
-    {id:'neg_pullup', name:'Neg. Pull-Up',    x:390,y:635, unlocked:false,isStart:false, branch:'pull'},
-    {id:'pike_pu',    name:'Pike Push-Up',    x:635,y:635, unlocked:false,isStart:false, branch:'push'},
-    {id:'pullup',     name:'Pull-Up',         x:250,y:805, unlocked:false,isStart:false, branch:'pull'},
-    {id:'hspu',       name:'HSPU',            x:650,y:825, unlocked:false,isStart:false, branch:'push'},
+    {id:'start',      name:'Start',          x:450,y:104, unlocked:true, isStart:true, branch:'neutral' },
+    {id:'dead_hang',  name:'Dead Hang',       x:255,y:252, unlocked:false,isStart:false, branch:'pull'},
+    {id:'pushup',     name:'Push-Up',         x:650,y:244, unlocked:false,isStart:false, branch:'push'},
+    {id:'active_hang',name:'Active Hang',     x:220,y:430, unlocked:false,isStart:false, branch:'pull'},
+    {id:'diamond_pu', name:'Diamond Push-Up', x:700,y:436, unlocked:false,isStart:false, branch:'push'},
+    {id:'scap_pulls', name:'Scapular Pulls',  x:110,y:618, unlocked:false,isStart:false, branch:'pull'},
+    {id:'neg_pullup', name:'Neg. Pull-Up',    x:395,y:620, unlocked:false,isStart:false, branch:'pull'},
+    {id:'pike_pu',    name:'Pike Push-Up',    x:630,y:624, unlocked:false,isStart:false, branch:'push'},
+    {id:'pullup',     name:'Pull-Up',         x:235,y:818, unlocked:false,isStart:false, branch:'pull'},
+    {id:'hspu',       name:'HSPU',            x:675,y:836, unlocked:false,isStart:false, branch:'push'},
   ],
   edges:[
     {from:'start',to:'dead_hang'},{from:'start',to:'pushup'},
@@ -314,6 +314,10 @@ function SkillCard({node,nodes,edges,info,onClose,onRecord}){
             </TouchableOpacity>
           </View>
 
+          <GlowText style={cs.kicker} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.65)" outerGlowColor="rgba(59,130,246,0.25)" align="center">
+            SKILL DETAIL
+          </GlowText>
+
           {/* Decorative top line */}
           <View style={cs.divRow}>
             <View style={cs.divLine}/>
@@ -344,7 +348,9 @@ function SkillCard({node,nodes,edges,info,onClose,onRecord}){
           {/* Difficulty section */}
           {!node.isStart && (
             <View style={cs.diffSection}>
-              <Text style={cs.sectionLabel}>DIFFICULTY</Text>
+              <GlowText style={cs.sectionLabel} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.5)" outerGlowColor="rgba(79,70,229,0.25)" align="center">
+                DIFFICULTY
+              </GlowText>
               <DiffBar label="Strength"  value={skillInfo.str} color="#c04040" glowColor="#ff2020"/>
               <DiffBar label="Balance"   value={skillInfo.bal} color="#3a70d0" glowColor="#2060ff"/>
               <DiffBar label="Technique" value={skillInfo.tec} color="#b09020" glowColor="#ffd030"/>
@@ -367,7 +373,9 @@ function SkillCard({node,nodes,edges,info,onClose,onRecord}){
           {/* Prerequisites if not met */}
           {unmetPrereqs.length > 0 && (
             <View style={cs.prereqBox}>
-              <Text style={cs.prereqTitle}>PREREQUISITES NEEDED</Text>
+              <GlowText style={cs.prereqTitle} color="#FCA5A5" glowColor="rgba(248,113,113,0.55)" outerGlowColor="rgba(239,68,68,0.28)">
+                PREREQUISITES NEEDED
+              </GlowText>
               {unmetPrereqs.map(p=>(
                 <Text key={p.id} style={cs.prereqItem}>· {p.name}</Text>
               ))}
@@ -407,10 +415,11 @@ const cs = StyleSheet.create({
                 overflow:'hidden',paddingBottom:8},
   handle:      {alignSelf:'center',width:56,height:5,borderRadius:999,backgroundColor:'rgba(148,163,184,0.42)',marginTop:10,marginBottom:4},
   topRow:      {flexDirection:'row',justifyContent:'space-between',alignItems:'center',paddingHorizontal:18,paddingTop:16,paddingBottom:8},
-  statusBadge: {borderWidth:1,borderRadius:4,paddingHorizontal:10,paddingVertical:4},
+  statusBadge: {borderWidth:1,borderRadius:6,paddingHorizontal:10,paddingVertical:4,backgroundColor:'rgba(2,6,23,0.55)'},
   statusT:     {fontSize:10,fontWeight:'800',letterSpacing:2.5},
   xBtn:        {width:30,height:30,alignItems:'center',justifyContent:'center'},
   xT:          {color:C.textDim,fontSize:16,fontWeight:'300'},
+  kicker:      {fontSize:10,fontWeight:'800',letterSpacing:3.2,textAlign:'center',marginBottom:4},
 
   divRow:      {flexDirection:'row',alignItems:'center',marginHorizontal:18,marginVertical:6},
   divLine:     {flex:1,height:1,backgroundColor:C.stone},
@@ -427,7 +436,7 @@ const cs = StyleSheet.create({
 
   diffSection: {paddingHorizontal:18,paddingTop:10,paddingBottom:4},
   desc:       {color:C.textDim,fontSize:13,lineHeight:18,paddingHorizontal:18,paddingTop:4,paddingBottom:8,textAlign:'center'},
-  sectionLabel:{color:C.textDim,fontSize:10,fontWeight:'800',letterSpacing:3,textAlign:'center',marginBottom:14},
+  sectionLabel:{fontSize:10,fontWeight:'800',letterSpacing:3,textAlign:'center',marginBottom:14},
 
   symbolRow:   {alignItems:'center',paddingVertical:10},
   symbolCircle:{width:36,height:36,borderRadius:18,borderWidth:1.5,borderColor:C.stoneLt,backgroundColor:'#0f172a'},
@@ -440,7 +449,7 @@ const cs = StyleSheet.create({
 
   prereqBox:   {marginHorizontal:18,marginBottom:8,padding:12,backgroundColor:'#131923',
                 borderRadius:8,borderWidth:1,borderColor:'#7f1d1d'},
-  prereqTitle: {color:'#f87171',fontSize:9,fontWeight:'800',letterSpacing:2.5,marginBottom:6},
+  prereqTitle: {fontSize:9,fontWeight:'800',letterSpacing:2.5,marginBottom:6},
   prereqItem:  {color:'#fca5a5',fontSize:13,marginBottom:3},
 
   attemptBtn:  {margin:18,marginTop:10,backgroundColor:'#111827',borderRadius:10,paddingVertical:18,
@@ -541,7 +550,7 @@ function SkiaTreeCanvas({
   txV, tyV, scV,
   dragVisual, LOD, edgeVisual,
   bld, connA, isInteracting,
-  canvasSize, nStyle,
+  canvasSize, nStyle, pulseBeat,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
   const iconFont = useMemo(()=>matchFont({ fontSize: 18, fontFamily: 'Ionicons' }),[]);
@@ -554,12 +563,12 @@ function SkiaTreeCanvas({
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
   const iconMap = Ionicons.getRawGlyphMap?.() || {};
   const nodeIconGlyph = (node, status) => {
-    if (status === 'start') return iconMap['radio-button-on-outline'] ? String.fromCodePoint(iconMap['radio-button-on-outline']) : null;
+    if (status === 'start') return iconMap['sparkles-outline'] ? String.fromCodePoint(iconMap['sparkles-outline']) : null;
     const branch = resolveBranch(node);
-    if (branch === 'push') return iconMap['barbell-outline'] ? String.fromCodePoint(iconMap['barbell-outline']) : null;
-    if (branch === 'pull') return iconMap['body-outline'] ? String.fromCodePoint(iconMap['body-outline']) : null;
-    if (branch === 'core') return iconMap['pulse-outline'] ? String.fromCodePoint(iconMap['pulse-outline']) : null;
-    return iconMap['fitness-outline'] ? String.fromCodePoint(iconMap['fitness-outline']) : null;
+    if (branch === 'push') return iconMap['flash-outline'] ? String.fromCodePoint(iconMap['flash-outline']) : null;
+    if (branch === 'pull') return iconMap['arrow-up-outline'] ? String.fromCodePoint(iconMap['arrow-up-outline']) : null;
+    if (branch === 'core') return iconMap['nuclear-outline'] ? String.fromCodePoint(iconMap['nuclear-outline']) : null;
+    return iconMap['star-outline'] ? String.fromCodePoint(iconMap['star-outline']) : null;
   };
 
   const dustAtlas = useMemo(() => {
@@ -629,8 +638,9 @@ function SkiaTreeCanvas({
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
       <Group transform={sceneTransform}>
-        <Circle cx={450} cy={380} r={720} color="rgba(16,28,44,0.06)" />
-        <Circle cx={450} cy={420} r={430} color="rgba(59,130,246,0.045)" />
+        <Circle cx={450} cy={380} r={760} color="rgba(16,28,44,0.09)" />
+        <Circle cx={450} cy={410} r={470} color="rgba(79,70,229,0.07)" />
+        <Circle cx={450} cy={430} r={320} color="rgba(59,130,246,0.09)" />
         <Atlas
           image={dustAtlas.image}
           sprites={dustAtlas.sprites}
@@ -644,7 +654,10 @@ function SkiaTreeCanvas({
           return (
             <Group key={edge.id}>
               {LOD.isNear && !isInteracting && edge.status!=='locked' && (
-                <Path path={edge.path} style="stroke" strokeWidth={w+3.6} color={edge.branchColor.glow} strokeCap="round" />
+                <Path path={edge.path} style="stroke" strokeWidth={w+4.8} color={toRGBA(edge.branchColor.main, edge.status==='mastered'?0.36:0.29)} strokeCap="round" />
+              )}
+              {edge.status==='mastered' && (
+                <Path path={edge.path} style="stroke" strokeWidth={w+2} color={toRGBA(edge.branchColor.main,0.44)} strokeCap="round" />
               )}
               <Path path={edge.path} style="stroke" strokeWidth={w} color={color} strokeCap="round">
                 {LOD.useDashedReady && edge.status==='ready' && !bld && <DashPathEffect intervals={[12,10]} />}
@@ -664,6 +677,7 @@ function SkiaTreeCanvas({
           const isLit=status==='start'||status==='mastered'||status==='ready';
           const isReady=status==='ready';
           const isMastered=status==='start'||status==='mastered';
+          const pulseMul = isReady ? (pulseBeat ? 1.07 : 0.97) : (isMastered ? (pulseBeat ? 1.03 : 0.99) : 1);
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,visual.sw-0.5):visual.sw;
           const baseAuraColor =
@@ -679,7 +693,7 @@ function SkiaTreeCanvas({
                 <Circle
                   cx={rx}
                   cy={ry}
-                  r={LOD.isFar ? NODE_R * 0.82 : NODE_R * 1.06}
+                  r={(LOD.isFar ? NODE_R * 0.82 : NODE_R * 1.06) * pulseMul}
                   color={baseAuraColor}
                 />
               )}
@@ -687,8 +701,8 @@ function SkiaTreeCanvas({
                 <Circle
                   cx={rx}
                   cy={ry}
-                  r={LOD.isFar ? NODE_R * 0.92 : NODE_R * 1.18}
-                  color={visual.glowOuter}
+                  r={(LOD.isFar ? NODE_R * 0.92 : NODE_R * 1.18) * pulseMul}
+                  color={toRGBA(visual.stroke, isReady ? 0.22 : 0.18)}
                 />
               )}
 
@@ -708,17 +722,21 @@ function SkiaTreeCanvas({
               {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-12} style="stroke" strokeWidth={1} color={visual.ring} opacity={0.65} />}
               {!LOD.isFar&&<Circle cx={rx-11} cy={ry-11} r={NODE_R*0.14} color="rgba(255,255,255,0.28)" />}
               {!LOD.isFar&&<Circle cx={rx+8} cy={ry+10} r={NODE_R*0.16} color="rgba(0,0,0,0.24)" />}
+              {LOD.isNear && <Circle cx={rx} cy={ry-NODE_R*0.32} r={NODE_R*0.22} color="rgba(255,255,255,0.09)" />}
               {LOD.isNear && !isInteracting && (()=>{
                 const glyph = nodeIconGlyph(n, status);
                 if(!glyph) return null;
                 return (
-                  <SkiaText
-                    x={rx-8}
-                    y={ry+6}
-                    text={glyph}
-                    font={iconFont}
-                    color={status==='locked' ? 'rgba(182,194,209,0.72)' : toRGBA(visual.stroke,0.95)}
-                  />
+                  <Group>
+                    <Circle cx={rx} cy={ry} r={NODE_R*0.28} color={status==='locked'?'rgba(2,6,23,0.5)':toRGBA(visual.stroke,0.18)} />
+                    <SkiaText
+                      x={rx-8}
+                      y={ry+6}
+                      text={glyph}
+                      font={iconFont}
+                      color={status==='locked' ? 'rgba(182,194,209,0.72)' : toRGBA(visual.ring,0.98)}
+                    />
+                  </Group>
                 );
               })()}
 
@@ -796,6 +814,12 @@ function TreeScreen({ onTreeChange }){
   };
 
   const [canvasSize,setCanvasSize]=useState({width:0,height:0});
+  const [pulseBeat,setPulseBeat]=useState(0);
+
+  useEffect(()=>{
+    const id=setInterval(()=>setPulseBeat(prev=>prev?0:1), 850);
+    return ()=>clearInterval(id);
+  },[]);
 
   useEffect(()=>{
     // Keep live transform values in sync after non-gesture renders.
@@ -1278,6 +1302,7 @@ function TreeScreen({ onTreeChange }){
             isInteracting={isInteracting}
             canvasSize={canvasSize}
             nStyle={nStyle}
+            pulseBeat={pulseBeat}
           />
         )}
       </View>
@@ -1356,7 +1381,9 @@ function ProfileScreen({ tree }){
       </View>
 
       <View style={tabs.card}>
-        <Text style={tabs.cardTitle}>Tree Progress</Text>
+        <GlowText style={tabs.cardTitle} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.55)" outerGlowColor="rgba(59,130,246,0.26)">
+          Tree Progress
+        </GlowText>
         {['push','pull','core'].map((branch)=>{
           const b = stats.byBranch[branch];
           const color = BRANCH_COLORS[branch].main;
@@ -1371,14 +1398,18 @@ function ProfileScreen({ tree }){
       </View>
 
       <View style={tabs.card}>
-        <Text style={tabs.cardTitle}>Highlights</Text>
+        <GlowText style={tabs.cardTitle} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.55)" outerGlowColor="rgba(59,130,246,0.26)">
+          Highlights
+        </GlowText>
         <Text style={tabs.cardBody}>• Leading branch: {stats.leadingBranch.toUpperCase()} ({stats.byBranch[stats.leadingBranch]?.pct || 0}% complete)</Text>
         <Text style={tabs.cardBody}>• Skills unlocked: {stats.unlocked} of {stats.total}</Text>
         <Text style={tabs.cardBody}>• Note: streaks and milestones are not tracked yet.</Text>
       </View>
 
       <View style={tabs.card}>
-        <Text style={tabs.cardTitle}>Actions</Text>
+        <GlowText style={tabs.cardTitle} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.55)" outerGlowColor="rgba(59,130,246,0.26)">
+          Actions
+        </GlowText>
         {['Edit Profile', 'Preferences', 'Export Progress', 'Tree Settings'].map((row)=>(
           <TouchableOpacity key={row} style={tabs.actionRow}>
             <Text style={tabs.settingLabel}>{row}</Text>
