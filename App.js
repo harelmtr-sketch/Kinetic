@@ -618,7 +618,6 @@ function SkiaTreeCanvas({
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
       <Group transform={sceneTransform}>
-        <Circle cx={450} cy={420} r={900} color="rgba(15,23,42,0.03)" />
         <Atlas
           image={dustAtlas.image}
           sprites={dustAtlas.sprites}
@@ -969,9 +968,10 @@ function TreeScreen({ onTreeChange }){
         }
         if(!hit){
           const p=toSVG(pageX,pageY);
+          const nodeById=new Map(tR.current.nodes.map(n=>[n.id,n]));
           const idx=tR.current.edges.findIndex(e=>{
-            const fn=tR.current.nodes.find(n=>n.id===e.from);
-            const tn=tR.current.nodes.find(n=>n.id===e.to);
+            const fn=nodeById.get(e.from);
+            const tn=nodeById.get(e.to);
             return fn&&tn&&segDist(p.x,p.y,fn.x,fn.y,tn.x,tn.y)<28;
           });
           if(idx!==-1) commit({...tR.current,edges:tR.current.edges.filter((_,i)=>i!==idx)});
@@ -1172,15 +1172,17 @@ function TreeScreen({ onTreeChange }){
     <View style={S.root}>
       {/* Top bar */}
       <View style={[S.bar,{paddingTop:insets.top+10}]}>
-        <GlowText
-          style={S.title}
-          color={Colors.blue[300]}
-          glowColor="rgba(96,165,250,0.72)"
-          outerGlowColor="rgba(59,130,246,0.38)"
-          numberOfLines={1}
-        >
-          KINETIC SKILL TREE
-        </GlowText>
+        <View style={S.titleWrap}>
+          <GlowText
+            style={S.title}
+            color={Colors.blue[300]}
+            glowColor="rgba(96,165,250,0.72)"
+            outerGlowColor="rgba(59,130,246,0.38)"
+            numberOfLines={1}
+          >
+            KINETIC SKILL TREE
+          </GlowText>
+        </View>
         <View style={S.barRight}>
           {!bld&&(
             <TouchableOpacity style={S.resetBtn} onPress={()=>{
@@ -1461,7 +1463,7 @@ function AppShell(){
                       <View style={tabs.navPillCore} />
                       <View style={tabs.navPillCoreHighlight} />
                       <View style={tabs.navPillShine} />
-                      <Ionicons name={item.icon} size={25} color="#FFFFFF" style={tabs.navActiveIcon} />
+                      <Ionicons name={item.icon} size={24} color="#FFFFFF" style={tabs.navActiveIcon} />
                     </View>
                   </View>
                   <Text style={[tabs.navLabel, tabs.navLabelActive]}>{item.key}</Text>
@@ -1500,18 +1502,19 @@ const tabs = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: 'rgba(229, 231, 235, 0.1)',
     backgroundColor: '#1A1D23',
-    paddingTop: 8,
+    paddingTop: 7,
+    minHeight: 68,
     overflow: 'visible',
   },
-  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 },
   navItemLocked: { opacity: 0.5 },
   navOrbStack: {
-    width: 76,
-    height: 76,
+    width: 72,
+    height: 72,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ translateY: -5 }],
-    marginBottom: -3,
+    transform: [{ translateY: -3 }],
+    marginBottom: -1,
   },
   navPillInactive: {
     width: 42,
@@ -1521,9 +1524,9 @@ const tabs = StyleSheet.create({
     justifyContent: 'center',
   },
   navPillActiveWrap: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 1.6,
     borderColor: 'rgba(147, 197, 253, 0.38)',
     alignItems: 'center',
@@ -1531,9 +1534,9 @@ const tabs = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: '#60A5FA',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowOpacity: 0.42,
+    shadowRadius: 8,
+    elevation: 5,
   },
   navPillCore: {
     ...StyleSheet.absoluteFillObject,
@@ -1546,40 +1549,40 @@ const tabs = StyleSheet.create({
     right: 0,
     height: '55%',
     backgroundColor: 'rgba(91,124,230,0.28)',
-    borderTopLeftRadius: 29,
-    borderTopRightRadius: 29,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
   },
   navPillShine: {
     position: 'absolute',
-    top: 7,
-    width: 30,
-    height: 12,
+    top: 6,
+    width: 28,
+    height: 10,
     borderRadius: 10,
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  navActiveIcon: { marginTop: -1 },
+  navActiveIcon: { marginTop: -0.5 },
   navPillGlowOuter: {
     position: 'absolute',
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: 'rgba(59,130,246,0.10)',
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: 'rgba(59,130,246,0.09)',
   },
   navPillGlowMid: {
     position: 'absolute',
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(59,130,246,0.16)',
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(59,130,246,0.14)',
   },
   navPillGlowInner: {
     position: 'absolute',
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(59,130,246,0.24)',
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: 'rgba(59,130,246,0.21)',
   },
-  navLabel: { color: '#6B7280', fontSize: 12, fontWeight: '500', marginTop: -1 },
+  navLabel: { color: '#6B7280', fontSize: 12, fontWeight: '500', marginTop: 0 },
   navLabelActive: {
     color: '#FFFFFF',
     fontWeight: '700',
@@ -1666,22 +1669,23 @@ const S=StyleSheet.create({
   bar:     {flexDirection:'row',justifyContent:'space-between',alignItems:'center',
             paddingHorizontal:14,paddingTop:10,paddingBottom:10,gap:10,
             backgroundColor:'#060A10',borderBottomWidth:1,borderColor:Colors.border.default},
-  barRight:{flexDirection:'row',alignItems:'center',gap:8,flexShrink:1},
+  barRight:{flexDirection:'row',alignItems:'center',gap:6,flexShrink:0,minWidth:0},
+  titleWrap:{flex:1,minWidth:0,paddingRight:4},
   title: {
     fontSize: 13,
     fontWeight: '800',
-    letterSpacing: 3,
+    letterSpacing: 2.2,
     flexShrink: 1,
-    paddingRight: 8,
+    paddingRight: 6,
   },
-  resetBtn:{paddingHorizontal:12,paddingVertical:8,borderRadius:8,
+  resetBtn:{paddingHorizontal:10,paddingVertical:8,borderRadius:8,
             backgroundColor:'#151922',borderWidth:1,borderColor:'rgba(239,68,68,0.6)',
             shadowColor:'#EF4444',shadowOpacity:0.22,shadowRadius:8,shadowOffset:{width:0,height:0}},
-  resetT:  {color:'#f87171',fontSize:11,fontWeight:'800',letterSpacing:1.5},
-  modeBtn: {paddingHorizontal:12,paddingVertical:8,borderRadius:6,
+  resetT:  {color:'#f87171',fontSize:10.5,fontWeight:'800',letterSpacing:1.2},
+  modeBtn: {paddingHorizontal:10,paddingVertical:8,borderRadius:6,
             backgroundColor:'#151a24',borderWidth:1,borderColor:Colors.border.default},
   modeOn:  {backgroundColor:'#12283d',borderColor:'rgba(59,130,246,0.45)'},
-  modeT:   {color:Colors.text.tertiary,fontSize:11,fontWeight:'800',letterSpacing:1.5},
+  modeT:   {color:Colors.text.tertiary,fontSize:10.5,fontWeight:'800',letterSpacing:1.2},
   modeTOn: {color:Colors.green[400]},
   toolbar: {flexDirection:'row',justifyContent:'space-between',alignItems:'center',
             paddingHorizontal:10,paddingVertical:10,rowGap:8,
