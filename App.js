@@ -357,13 +357,6 @@ function SkillCard({node,nodes,edges,info,onClose,onRecord}){
             </View>
           )}
 
-          {/* Symbol placeholder */}
-          {!node.isStart && (
-            <View style={cs.symbolRow}>
-              <View style={cs.symbolCircle}/>
-            </View>
-          )}
-
           {/* Video/image placeholder */}
           <View style={cs.mediaBg}>
             <Text style={cs.mediaLabel}>VIDEO PLACEHOLDER</Text>
@@ -438,14 +431,11 @@ const cs = StyleSheet.create({
   desc:       {color:C.textDim,fontSize:13,lineHeight:18,paddingHorizontal:18,paddingTop:4,paddingBottom:8,textAlign:'center'},
   sectionLabel:{fontSize:10,fontWeight:'800',letterSpacing:3,textAlign:'center',marginBottom:14},
 
-  symbolRow:   {alignItems:'center',paddingVertical:10},
-  symbolCircle:{width:36,height:36,borderRadius:18,borderWidth:1.5,borderColor:C.stoneLt,backgroundColor:'#0f172a'},
-
-  mediaBg:     {marginHorizontal:18,marginVertical:10,height:160,backgroundColor:'#0f172a',
-                borderRadius:10,borderWidth:1,borderColor:C.stone,
-                alignItems:'center',justifyContent:'center'},
-  mediaLabel:  {color:C.textFaint,fontSize:11,fontWeight:'700',letterSpacing:2,marginBottom:4},
-  mediaHint:   {color:C.textFaint,fontSize:10},
+  mediaBg:     {marginHorizontal:18,marginVertical:10,height:160,backgroundColor:'#0d1524',
+                borderRadius:12,borderWidth:1,borderColor:toRGBA(Colors.blue[400],0.36),
+                alignItems:'center',justifyContent:'center',shadowColor:Colors.blue[500],shadowOpacity:0.18,shadowRadius:10,shadowOffset:{width:0,height:0}},
+  mediaLabel:  {color:Colors.blue[300],fontSize:11,fontWeight:'700',letterSpacing:2,marginBottom:4},
+  mediaHint:   {color:C.textDim,fontSize:10},
 
   prereqBox:   {marginHorizontal:18,marginBottom:8,padding:12,backgroundColor:'#131923',
                 borderRadius:8,borderWidth:1,borderColor:'#7f1d1d'},
@@ -550,10 +540,9 @@ function SkiaTreeCanvas({
   txV, tyV, scV,
   dragVisual, LOD, edgeVisual,
   bld, connA, isInteracting,
-  canvasSize, nStyle, pulseBeat,
+  canvasSize, nStyle,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
-  const iconFont = useMemo(()=>matchFont({ fontSize: 18, fontFamily: 'Ionicons' }),[]);
   const sceneTransform = useDerivedValue(()=>([
     { translateX: txV.value },
     { translateY: tyV.value },
@@ -561,15 +550,6 @@ function SkiaTreeCanvas({
   ]),[]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
-  const iconMap = Ionicons.getRawGlyphMap?.() || {};
-  const nodeIconGlyph = (node, status) => {
-    if (status === 'start') return iconMap['sparkles-outline'] ? String.fromCodePoint(iconMap['sparkles-outline']) : null;
-    const branch = resolveBranch(node);
-    if (branch === 'push') return iconMap['flash-outline'] ? String.fromCodePoint(iconMap['flash-outline']) : null;
-    if (branch === 'pull') return iconMap['arrow-up-outline'] ? String.fromCodePoint(iconMap['arrow-up-outline']) : null;
-    if (branch === 'core') return iconMap['nuclear-outline'] ? String.fromCodePoint(iconMap['nuclear-outline']) : null;
-    return iconMap['star-outline'] ? String.fromCodePoint(iconMap['star-outline']) : null;
-  };
 
   const dustAtlas = useMemo(() => {
     const W = 3600;
@@ -677,7 +657,6 @@ function SkiaTreeCanvas({
           const isLit=status==='start'||status==='mastered'||status==='ready';
           const isReady=status==='ready';
           const isMastered=status==='start'||status==='mastered';
-          const pulseMul = isReady ? (pulseBeat ? 1.07 : 0.97) : (isMastered ? (pulseBeat ? 1.03 : 0.99) : 1);
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,visual.sw-0.5):visual.sw;
           const baseAuraColor =
@@ -693,7 +672,7 @@ function SkiaTreeCanvas({
                 <Circle
                   cx={rx}
                   cy={ry}
-                  r={(LOD.isFar ? NODE_R * 0.82 : NODE_R * 1.06) * pulseMul}
+                  r={LOD.isFar ? NODE_R * 0.82 : NODE_R * 1.06}
                   color={baseAuraColor}
                 />
               )}
@@ -701,7 +680,7 @@ function SkiaTreeCanvas({
                 <Circle
                   cx={rx}
                   cy={ry}
-                  r={(LOD.isFar ? NODE_R * 0.92 : NODE_R * 1.18) * pulseMul}
+                  r={LOD.isFar ? NODE_R * 0.92 : NODE_R * 1.18}
                   color={toRGBA(visual.stroke, isReady ? 0.22 : 0.18)}
                 />
               )}
@@ -723,33 +702,21 @@ function SkiaTreeCanvas({
               {!LOD.isFar&&<Circle cx={rx-11} cy={ry-11} r={NODE_R*0.14} color="rgba(255,255,255,0.28)" />}
               {!LOD.isFar&&<Circle cx={rx+8} cy={ry+10} r={NODE_R*0.16} color="rgba(0,0,0,0.24)" />}
               {LOD.isNear && <Circle cx={rx} cy={ry-NODE_R*0.32} r={NODE_R*0.22} color="rgba(255,255,255,0.09)" />}
-              {LOD.isNear && !isInteracting && (()=>{
-                const glyph = nodeIconGlyph(n, status);
-                if(!glyph) return null;
+
+              {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>{
+                const x = rx-(ln.length*2.8);
+                const y = sy+li*lh;
+                const mainColor = isLit ? '#F8FAFC' : '#B6C2D1';
+                const glow1 = isLit ? toRGBA(visual.stroke, 0.3) : 'rgba(148,163,184,0.12)';
+                const glow2 = isLit ? toRGBA(visual.stroke, 0.18) : 'rgba(148,163,184,0.08)';
                 return (
-                  <Group>
-                    <Circle cx={rx} cy={ry} r={NODE_R*0.28} color={status==='locked'?'rgba(2,6,23,0.5)':toRGBA(visual.stroke,0.18)} />
-                    <SkiaText
-                      x={rx-8}
-                      y={ry+6}
-                      text={glyph}
-                      font={iconFont}
-                      color={status==='locked' ? 'rgba(182,194,209,0.72)' : toRGBA(visual.ring,0.98)}
-                    />
+                  <Group key={`${n.id}_${li}`}>
+                    <SkiaText x={x} y={y} text={ln} font={labelFont} color={glow2} />
+                    <SkiaText x={x} y={y} text={ln} font={labelFont} color={glow1} />
+                    <SkiaText x={x} y={y} text={ln} font={labelFont} color={mainColor} />
                   </Group>
                 );
-              })()}
-
-              {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>(
-                <SkiaText
-                  key={`${n.id}_${li}`}
-                  x={rx-(ln.length*2.8)}
-                  y={sy+li*lh}
-                  text={ln}
-                  font={labelFont}
-                  color={isLit ? '#F8FAFC' : '#B6C2D1'}
-                />
-              ))}
+              })}
             </Group>
           );
         })}
@@ -814,12 +781,6 @@ function TreeScreen({ onTreeChange }){
   };
 
   const [canvasSize,setCanvasSize]=useState({width:0,height:0});
-  const [pulseBeat,setPulseBeat]=useState(0);
-
-  useEffect(()=>{
-    const id=setInterval(()=>setPulseBeat(prev=>prev?0:1), 850);
-    return ()=>clearInterval(id);
-  },[]);
 
   useEffect(()=>{
     // Keep live transform values in sync after non-gesture renders.
@@ -1126,8 +1087,8 @@ function TreeScreen({ onTreeChange }){
       glowInner:toRGBA(bc.ring,0.33), glowMid:toRGBA(bc.main,0.24), glowOuter:toRGBA(bc.main,0.18), sw:2.25, opacity:0.97,
     };
     return {
-      fill:'#101924', innerFill:'#0A111A', outerRim:'#273345', stroke:toRGBA(bc.main,0.55), ring:toRGBA(bc.ring,0.5),
-      glowInner:toRGBA(bc.main,0.16), glowMid:toRGBA(bc.main,0.11), glowOuter:'rgba(100,116,139,0.1)', sw:1.65, opacity:0.9,
+      fill:'#0B1220', innerFill:'#070D16', outerRim:'#1C2635', stroke:'rgba(120,138,160,0.38)', ring:'rgba(120,138,160,0.26)',
+      glowInner:'rgba(120,138,160,0.08)', glowMid:'rgba(120,138,160,0.05)', glowOuter:'rgba(120,138,160,0.04)', sw:1.5, opacity:0.9,
     };
   };
 
@@ -1302,7 +1263,6 @@ function TreeScreen({ onTreeChange }){
             isInteracting={isInteracting}
             canvasSize={canvasSize}
             nStyle={nStyle}
-            pulseBeat={pulseBeat}
           />
         )}
       </View>
@@ -1337,8 +1297,8 @@ function TreeScreen({ onTreeChange }){
 
 
 function getTreeStats(tree){
-  const nodes = tree?.nodes || [];
-  const unlocked = nodes.filter((n)=>n.unlocked || n.isStart);
+  const nodes = (tree?.nodes || []).filter((n)=>!n.isStart);
+  const unlocked = nodes.filter((n)=>n.unlocked);
   const byBranch = ['push','pull','core'].reduce((acc, b)=>{
     const branchNodes = nodes.filter((n)=>resolveBranch(n)===b);
     const unlockedCount = branchNodes.filter((n)=>n.unlocked).length;
