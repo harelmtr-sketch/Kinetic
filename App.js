@@ -194,16 +194,16 @@ const glowText = StyleSheet.create({
 
 const INIT = {
   nodes:[
-    {id:'start',      name:'Start',          x:450,y:100, unlocked:true, isStart:true, branch:'neutral' },
-    {id:'dead_hang',  name:'Dead Hang',       x:250,y:280, unlocked:false,isStart:false, branch:'pull'},
-    {id:'pushup',     name:'Push-Up',         x:650,y:280, unlocked:false,isStart:false, branch:'push'},
-    {id:'active_hang',name:'Active Hang',     x:250,y:460, unlocked:false,isStart:false, branch:'pull'},
-    {id:'diamond_pu', name:'Diamond Push-Up', x:650,y:460, unlocked:false,isStart:false, branch:'push'},
-    {id:'scap_pulls', name:'Scapular Pulls',  x:120,y:640, unlocked:false,isStart:false, branch:'pull'},
-    {id:'neg_pullup', name:'Neg. Pull-Up',    x:380,y:640, unlocked:false,isStart:false, branch:'pull'},
-    {id:'pike_pu',    name:'Pike Push-Up',    x:650,y:640, unlocked:false,isStart:false, branch:'push'},
-    {id:'pullup',     name:'Pull-Up',         x:250,y:820, unlocked:false,isStart:false, branch:'pull'},
-    {id:'hspu',       name:'HSPU',            x:650,y:820, unlocked:false,isStart:false, branch:'push'},
+    {id:'start',      name:'Start',          x:450,y:120, unlocked:true, isStart:true, branch:'neutral' },
+    {id:'dead_hang',  name:'Dead Hang',       x:270,y:270, unlocked:false,isStart:false, branch:'pull'},
+    {id:'pushup',     name:'Push-Up',         x:635,y:265, unlocked:false,isStart:false, branch:'push'},
+    {id:'active_hang',name:'Active Hang',     x:240,y:445, unlocked:false,isStart:false, branch:'pull'},
+    {id:'diamond_pu', name:'Diamond Push-Up', x:675,y:450, unlocked:false,isStart:false, branch:'push'},
+    {id:'scap_pulls', name:'Scapular Pulls',  x:135,y:620, unlocked:false,isStart:false, branch:'pull'},
+    {id:'neg_pullup', name:'Neg. Pull-Up',    x:390,y:635, unlocked:false,isStart:false, branch:'pull'},
+    {id:'pike_pu',    name:'Pike Push-Up',    x:635,y:635, unlocked:false,isStart:false, branch:'push'},
+    {id:'pullup',     name:'Pull-Up',         x:250,y:805, unlocked:false,isStart:false, branch:'pull'},
+    {id:'hspu',       name:'HSPU',            x:650,y:825, unlocked:false,isStart:false, branch:'push'},
   ],
   edges:[
     {from:'start',to:'dead_hang'},{from:'start',to:'pushup'},
@@ -300,6 +300,7 @@ function SkillCard({node,nodes,edges,info,onClose,onRecord}){
 
         {/* Card — 6:9 ratio feel, max width constrained */}
         <View style={cs.card}>
+          <View style={cs.handle} />
 
           {/* Top row: status badge + X */}
           <View style={cs.topRow}>
@@ -399,10 +400,12 @@ function SkillCard({node,nodes,edges,info,onClose,onRecord}){
 }
 
 const cs = StyleSheet.create({
-  overlay:     {flex:1,backgroundColor:'rgba(0,0,0,0.88)',alignItems:'center',justifyContent:'center',padding:20},
-  card:        {backgroundColor:C.bgCard,borderRadius:16,width:'100%',maxWidth:380,borderWidth:1,borderColor:C.stone,
-                shadowColor:'#000',shadowOffset:{width:0,height:24},shadowOpacity:0.9,shadowRadius:40,elevation:40,
-                overflow:'hidden'},
+  overlay:     {flex:1,backgroundColor:'rgba(0,0,0,0.76)',justifyContent:'flex-end',paddingHorizontal:14,paddingBottom:8},
+  card:        {backgroundColor:C.bgCard,borderTopLeftRadius:24,borderTopRightRadius:24,borderBottomLeftRadius:18,borderBottomRightRadius:18,
+                width:'100%',maxWidth:520,alignSelf:'center',borderWidth:1,borderColor:C.stone,
+                shadowColor:'#000',shadowOffset:{width:0,height:16},shadowOpacity:0.65,shadowRadius:28,elevation:24,
+                overflow:'hidden',paddingBottom:8},
+  handle:      {alignSelf:'center',width:56,height:5,borderRadius:999,backgroundColor:'rgba(148,163,184,0.42)',marginTop:10,marginBottom:4},
   topRow:      {flexDirection:'row',justifyContent:'space-between',alignItems:'center',paddingHorizontal:18,paddingTop:16,paddingBottom:8},
   statusBadge: {borderWidth:1,borderRadius:4,paddingHorizontal:10,paddingVertical:4},
   statusT:     {fontSize:10,fontWeight:'800',letterSpacing:2.5},
@@ -541,6 +544,7 @@ function SkiaTreeCanvas({
   canvasSize, nStyle,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
+  const iconFont = useMemo(()=>matchFont({ fontSize: 18, fontFamily: 'Ionicons' }),[]);
   const sceneTransform = useDerivedValue(()=>([
     { translateX: txV.value },
     { translateY: tyV.value },
@@ -548,6 +552,15 @@ function SkiaTreeCanvas({
   ]),[]);
 
   const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+  const iconMap = Ionicons.getRawGlyphMap?.() || {};
+  const nodeIconGlyph = (node, status) => {
+    if (status === 'start') return iconMap['radio-button-on-outline'] ? String.fromCodePoint(iconMap['radio-button-on-outline']) : null;
+    const branch = resolveBranch(node);
+    if (branch === 'push') return iconMap['barbell-outline'] ? String.fromCodePoint(iconMap['barbell-outline']) : null;
+    if (branch === 'pull') return iconMap['body-outline'] ? String.fromCodePoint(iconMap['body-outline']) : null;
+    if (branch === 'core') return iconMap['pulse-outline'] ? String.fromCodePoint(iconMap['pulse-outline']) : null;
+    return iconMap['fitness-outline'] ? String.fromCodePoint(iconMap['fitness-outline']) : null;
+  };
 
   const dustAtlas = useMemo(() => {
     const W = 3600;
@@ -591,8 +604,14 @@ function SkiaTreeCanvas({
       const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
       const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
       const path = Skia.Path.Make();
+      const dx = toPos.x - fromPos.x;
+      const dy = toPos.y - fromPos.y;
+      const mx = (fromPos.x + toPos.x) / 2;
+      const my = (fromPos.y + toPos.y) / 2;
+      const bendX = mx + (Math.abs(dy) > Math.abs(dx) ? (dx > 0 ? 24 : -24) : 0);
+      const bendY = my - Math.min(44, Math.max(14, Math.abs(dx) * 0.09));
       path.moveTo(fromPos.x,fromPos.y);
-      path.lineTo(toPos.x,toPos.y);
+      path.quadTo(bendX, bendY, toPos.x, toPos.y);
 
       const fromState=nodeStatusMap[fn.id] || 'locked';
       const toState=nodeStatusMap[tn.id] || 'locked';
@@ -640,7 +659,7 @@ function SkiaTreeCanvas({
           const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
           const lines=wrappedLabels[n.id]||[n.name];
           const lh=13;
-          const sy=ry-(lines.length*lh)/2+lh*0.8;
+          const sy=ry+NODE_R+14;
           const status=nodeStatusMap[n.id]||'locked';
           const isLit=status==='start'||status==='mastered'||status==='ready';
           const isReady=status==='ready';
@@ -681,13 +700,27 @@ function SkiaTreeCanvas({
                 </Group>
               )}
 
-              <Circle cx={rx} cy={ry} r={renderR+2} color={visual.outerRim} />
+              <Circle cx={rx} cy={ry} r={renderR+3} color={visual.outerRim} />
+              <Circle cx={rx} cy={ry} r={renderR+1} style="stroke" strokeWidth={1.2} color={visual.ring} opacity={0.42} />
               <Circle cx={rx} cy={ry} r={renderR} color={visual.fill} opacity={visual.opacity} />
-              <Circle cx={rx} cy={ry} r={renderR-4} color={visual.innerFill} opacity={0.9} />
-              <Circle cx={rx} cy={ry} r={renderR-6} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
+              <Circle cx={rx} cy={ry} r={renderR-3} color={visual.innerFill} opacity={0.92} />
+              <Circle cx={rx} cy={ry} r={renderR-8} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
               {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-12} style="stroke" strokeWidth={1} color={visual.ring} opacity={0.65} />}
-              {!LOD.isFar&&<Circle cx={rx-10} cy={ry-10} r={NODE_R*0.14} color="rgba(255,255,255,0.25)" />}
+              {!LOD.isFar&&<Circle cx={rx-11} cy={ry-11} r={NODE_R*0.14} color="rgba(255,255,255,0.28)" />}
               {!LOD.isFar&&<Circle cx={rx+8} cy={ry+10} r={NODE_R*0.16} color="rgba(0,0,0,0.24)" />}
+              {LOD.isNear && !isInteracting && (()=>{
+                const glyph = nodeIconGlyph(n, status);
+                if(!glyph) return null;
+                return (
+                  <SkiaText
+                    x={rx-8}
+                    y={ry+6}
+                    text={glyph}
+                    font={iconFont}
+                    color={status==='locked' ? 'rgba(182,194,209,0.72)' : toRGBA(visual.stroke,0.95)}
+                  />
+                );
+              })()}
 
               {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>(
                 <SkiaText
@@ -1053,24 +1086,24 @@ function TreeScreen({ onTreeChange }){
     const bc = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
     const status=nodeStatusMap[n.id] || 'locked';
     if(bld&&connA===n.id) return{
-      fill:'#111827', innerFill:'#0B1220', outerRim:'#1E293B', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.8),
-      glowInner:toRGBA(Colors.blue[300],0.3), glowMid:toRGBA(Colors.blue[400],0.2), glowOuter:toRGBA(Colors.blue[500],0.16), sw:2.5, opacity:1,
+      fill:'#132238', innerFill:'#0C1728', outerRim:'#2B3C55', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.88),
+      glowInner:toRGBA(Colors.blue[300],0.4), glowMid:toRGBA(Colors.blue[400],0.28), glowOuter:toRGBA(Colors.blue[500],0.22), sw:2.7, opacity:1,
     };
     if(status==='start') return {
-      fill:'#16243A', innerFill:'#101A2A', outerRim:'#26364D', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.7),
-      glowInner:toRGBA(Colors.blue[300],0.36), glowMid:toRGBA(Colors.blue[400],0.24), glowOuter:toRGBA(Colors.blue[500],0.19), sw:2.4, opacity:1,
+      fill:'#172A43', innerFill:'#0F1D30', outerRim:'#304766', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.82),
+      glowInner:toRGBA(Colors.blue[300],0.4), glowMid:toRGBA(Colors.blue[400],0.3), glowOuter:toRGBA(Colors.blue[500],0.24), sw:2.5, opacity:1,
     };
     if(status==='mastered') return {
-      fill:'#131A26', innerFill:'#0D131D', outerRim:'#263140', stroke:bc.main, ring:toRGBA(bc.ring,0.8),
-      glowInner:toRGBA(bc.ring,0.32), glowMid:toRGBA(bc.main,0.24), glowOuter:toRGBA(bc.main,0.17), sw:2.3, opacity:0.98,
+      fill:'#141C2A', innerFill:'#0C1320', outerRim:'#2F3E50', stroke:bc.main, ring:toRGBA(bc.ring,0.9),
+      glowInner:toRGBA(bc.ring,0.4), glowMid:toRGBA(bc.main,0.3), glowOuter:toRGBA(bc.main,0.22), sw:2.45, opacity:0.99,
     };
     if(status==='ready') return {
-      fill:'#171E2A', innerFill:'#101620', outerRim:'#2A3546', stroke:bc.main, ring:toRGBA(bc.ring,0.78),
-      glowInner:toRGBA(bc.ring,0.28), glowMid:toRGBA(bc.main,0.2), glowOuter:toRGBA(bc.main,0.14), sw:2.1, opacity:0.95,
+      fill:'#19212F', innerFill:'#101826', outerRim:'#314153', stroke:bc.main, ring:toRGBA(bc.ring,0.84),
+      glowInner:toRGBA(bc.ring,0.33), glowMid:toRGBA(bc.main,0.24), glowOuter:toRGBA(bc.main,0.18), sw:2.25, opacity:0.97,
     };
     return {
-      fill:'#0E141D', innerFill:'#090E15', outerRim:'#1F2937', stroke:'#334155', ring:'rgba(71,85,105,0.45)',
-      glowInner:'rgba(71,85,105,0.12)', glowMid:'rgba(71,85,105,0.09)', glowOuter:'rgba(71,85,105,0.06)', sw:1.5, opacity:0.88,
+      fill:'#101924', innerFill:'#0A111A', outerRim:'#273345', stroke:toRGBA(bc.main,0.55), ring:toRGBA(bc.ring,0.5),
+      glowInner:toRGBA(bc.main,0.16), glowMid:toRGBA(bc.main,0.11), glowOuter:'rgba(100,116,139,0.1)', sw:1.65, opacity:0.9,
     };
   };
 
