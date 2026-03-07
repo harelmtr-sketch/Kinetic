@@ -1423,7 +1423,7 @@ function AppShell(){
   const insets = useSafeAreaInsets();
 
   const tabsConfig = [
-    { key: 'Tree', icon: 'git-network-outline' },
+    { key: 'Tree', icon: 'git-branch-outline' },
     { key: 'Profile', icon: 'person-outline' },
     { key: 'Settings', icon: 'settings-outline' },
     { key: 'Daily', icon: 'lock-closed-outline', locked: true },
@@ -1445,23 +1445,37 @@ function AppShell(){
             if (item.locked) {
               return (
                 <View key={item.key} style={[tabs.navItem, tabs.navItemLocked]}>
-                  <View style={tabs.navPill}>
-                    <Ionicons name={item.icon} size={24} color="#6B7280" />
+                  <View style={tabs.navPillInactive}>
+                    <Ionicons name={item.icon} size={22} color="#6B7280" />
                   </View>
                   <Text style={[tabs.navLabel, tabs.navLocked]}>{item.key}</Text>
                 </View>
               );
             }
+            if (active) {
+              return (
+                <TouchableOpacity key={item.key} style={tabs.navItem} onPress={() => setTab(item.key)}>
+                  <View style={tabs.navOrbStack}>
+                    <View style={tabs.navPillGlowOuter} />
+                    <View style={tabs.navPillGlowMid} />
+                    <View style={tabs.navPillGlowInner} />
+                    <View style={tabs.navPillActiveWrap}>
+                      <View style={tabs.navPillCore} />
+                      <View style={tabs.navPillCoreHighlight} />
+                      <View style={tabs.navPillShine} />
+                      <Ionicons name={item.icon} size={27} color="#FFFFFF" style={tabs.navActiveIcon} />
+                    </View>
+                  </View>
+                  <Text style={[tabs.navLabel, tabs.navLabelActive]}>{item.key}</Text>
+                </TouchableOpacity>
+              );
+            }
             return (
               <TouchableOpacity key={item.key} style={tabs.navItem} onPress={() => setTab(item.key)}>
-                <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                  {active && <View style={tabs.navPillGlowOuter} />}
-                  {active && <View style={tabs.navPillGlowInner} />}
-                  <View style={[tabs.navPill, active && tabs.navPillActive]}>
-                    <Ionicons name={item.icon} size={24} color={active ? '#FFFFFF' : '#6B7280'} />
-                  </View>
+                <View style={tabs.navPillInactive}>
+                  <Ionicons name={item.icon} size={22} color="#6B7280" />
                 </View>
-                <Text style={[tabs.navLabel, active && tabs.navLabelActive]}>{item.key}</Text>
+                <Text style={tabs.navLabel}>{item.key}</Text>
               </TouchableOpacity>
             );
           })}
@@ -1488,44 +1502,88 @@ const tabs = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: 'rgba(229, 231, 235, 0.1)',
     backgroundColor: '#1A1D23',
-    paddingTop: 8,
+    paddingTop: 10,
+    overflow: 'visible',
   },
-  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
-  navItemLocked: { opacity: 0.55 },
-  navPill: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  navItemLocked: { opacity: 0.5 },
+  navOrbStack: {
+    width: 88,
+    height: 88,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'transparent',
+    transform: [{ translateY: -10 }],
+    marginBottom: -6,
   },
-  navPillActive: {
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    borderColor: 'rgba(59, 130, 246, 0.3)',
+  navPillInactive: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navPillActiveWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 1.8,
+    borderColor: 'rgba(147, 197, 253, 0.38)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
     shadowColor: '#60A5FA',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.6,
     shadowRadius: 12,
     elevation: 7,
   },
+  navPillCore: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#5468E0',
+  },
+  navPillCoreHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(91,124,230,0.45)',
+    borderRadius: 32,
+  },
+  navPillShine: {
+    position: 'absolute',
+    top: 8,
+    width: 40,
+    height: 18,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  navActiveIcon: { marginTop: 1 },
   navPillGlowOuter: {
     position: 'absolute',
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(59,130,246,0.15)',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: 'rgba(59,130,246,0.10)',
+  },
+  navPillGlowMid: {
+    position: 'absolute',
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(59,130,246,0.16)',
   },
   navPillGlowInner: {
     position: 'absolute',
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: 'rgba(59,130,246,0.25)',
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(59,130,246,0.24)',
   },
-  navLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
-  navLabelActive: { color: '#FFFFFF' },
+  navLabel: { color: '#6B7280', fontSize: 12, fontWeight: '500' },
+  navLabelActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    textShadowColor: 'rgba(96,165,250,0.55)',
+    textShadowRadius: 8,
+    textShadowOffset: { width: 0, height: 0 },
+  },
   navLocked: { color: '#6B7280' },
   page: { flex: 1, backgroundColor: Colors.background.primary },
   content: { padding: 16, gap: 14 },
