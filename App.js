@@ -618,9 +618,7 @@ function SkiaTreeCanvas({
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
       <Group transform={sceneTransform}>
-        <Circle cx={450} cy={380} r={760} color="rgba(16,28,44,0.09)" />
-        <Circle cx={450} cy={410} r={470} color="rgba(79,70,229,0.07)" />
-        <Circle cx={450} cy={430} r={320} color="rgba(59,130,246,0.09)" />
+        <Circle cx={450} cy={420} r={900} color="rgba(15,23,42,0.03)" />
         <Atlas
           image={dustAtlas.image}
           sprites={dustAtlas.sprites}
@@ -1463,7 +1461,7 @@ function AppShell(){
                       <View style={tabs.navPillCore} />
                       <View style={tabs.navPillCoreHighlight} />
                       <View style={tabs.navPillShine} />
-                      <Ionicons name={item.icon} size={27} color="#FFFFFF" style={tabs.navActiveIcon} />
+                      <Ionicons name={item.icon} size={25} color="#FFFFFF" style={tabs.navActiveIcon} />
                     </View>
                   </View>
                   <Text style={[tabs.navLabel, tabs.navLabelActive]}>{item.key}</Text>
@@ -1502,18 +1500,18 @@ const tabs = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: 'rgba(229, 231, 235, 0.1)',
     backgroundColor: '#1A1D23',
-    paddingTop: 10,
+    paddingTop: 8,
     overflow: 'visible',
   },
-  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
   navItemLocked: { opacity: 0.5 },
   navOrbStack: {
-    width: 88,
-    height: 88,
+    width: 76,
+    height: 76,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ translateY: -10 }],
-    marginBottom: -6,
+    transform: [{ translateY: -5 }],
+    marginBottom: -3,
   },
   navPillInactive: {
     width: 42,
@@ -1523,60 +1521,65 @@ const tabs = StyleSheet.create({
     justifyContent: 'center',
   },
   navPillActiveWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 1.8,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 1.6,
     borderColor: 'rgba(147, 197, 253, 0.38)',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
     shadowColor: '#60A5FA',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    elevation: 7,
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 6,
   },
   navPillCore: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#5468E0',
+    backgroundColor: '#4C5FD5',
   },
   navPillCoreHighlight: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(91,124,230,0.45)',
-    borderRadius: 32,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '55%',
+    backgroundColor: 'rgba(91,124,230,0.28)',
+    borderTopLeftRadius: 29,
+    borderTopRightRadius: 29,
   },
   navPillShine: {
     position: 'absolute',
-    top: 8,
-    width: 40,
-    height: 18,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    top: 7,
+    width: 30,
+    height: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  navActiveIcon: { marginTop: 1 },
+  navActiveIcon: { marginTop: -1 },
   navPillGlowOuter: {
     position: 'absolute',
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: 'rgba(59,130,246,0.10)',
   },
   navPillGlowMid: {
     position: 'absolute',
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: 'rgba(59,130,246,0.16)',
   },
   navPillGlowInner: {
     position: 'absolute',
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: 'rgba(59,130,246,0.24)',
   },
-  navLabel: { color: '#6B7280', fontSize: 12, fontWeight: '500' },
+  navLabel: { color: '#6B7280', fontSize: 12, fontWeight: '500', marginTop: -1 },
   navLabelActive: {
     color: '#FFFFFF',
     fontWeight: '700',
