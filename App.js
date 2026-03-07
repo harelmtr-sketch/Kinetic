@@ -359,13 +359,13 @@ const cs = StyleSheet.create({
   attemptBtnT: {color:C.gold,fontSize:17,fontWeight:'800',letterSpacing:5,
                 textShadowColor:C.gold,textShadowRadius:10},
 
-  lockedBtn:   {margin:18,marginTop:10,backgroundColor:'#160e0e',borderRadius:10,paddingVertical:18,
-                alignItems:'center',borderWidth:1,borderColor:'#4a2020'},
-  lockedBtnT:  {color:'#6a3030',fontSize:13,fontWeight:'700',letterSpacing:2},
+  lockedBtn:   {margin:18,marginTop:10,backgroundColor:'#131923',borderRadius:10,paddingVertical:18,
+                alignItems:'center',borderWidth:1,borderColor:'rgba(239,68,68,0.35)'},
+  lockedBtnT:  {color:'#fca5a5',fontSize:13,fontWeight:'700',letterSpacing:2},
 
-  masteredBtn: {margin:18,marginTop:10,backgroundColor:'#0a1810',borderRadius:10,paddingVertical:18,
+  masteredBtn: {margin:18,marginTop:10,backgroundColor:'#131b22',borderRadius:10,paddingVertical:18,
                 alignItems:'center',borderWidth:1.5,borderColor:C.green,
-                shadowColor:C.green,shadowOpacity:0.3,shadowRadius:12,shadowOffset:{width:0,height:0}},
+                shadowColor:C.green,shadowOpacity:0.28,shadowRadius:12,shadowOffset:{width:0,height:0}},
   masteredBtnT:{color:C.green,fontSize:17,fontWeight:'800',letterSpacing:5},
 
   originBtn:   {margin:18,marginTop:10,backgroundColor:'#111827',borderRadius:10,paddingVertical:18,
@@ -509,8 +509,8 @@ function SkiaTreeCanvas({
   return(
     <Canvas style={{width:canvasSize.width,height:canvasSize.height}}>
       <Group transform={sceneTransform}>
-        <Circle cx={450} cy={420} r={860} color="rgba(19,32,52,0.2)" />
-        <Circle cx={450} cy={420} r={520} color="rgba(59,130,246,0.05)" />
+        <Circle cx={450} cy={420} r={860} color="rgba(19,32,52,0.1)" />
+        <Circle cx={450} cy={420} r={520} color="rgba(59,130,246,0.08)" />
         <Atlas
           image={dustAtlas.image}
           sprites={dustAtlas.sprites}
@@ -519,11 +519,12 @@ function SkiaTreeCanvas({
         {edgeSegments.map((edge)=>{
           const w = edge.status==='mastered' ? edgeVisual.masteredW : edge.status==='ready' ? edgeVisual.readyW : edgeVisual.lockedW;
           const o = edge.status==='mastered' ? edgeVisual.masteredO : edge.status==='ready' ? edgeVisual.readyO : edgeVisual.lockedO;
-          const color = edge.status==='locked' ? `rgba(100,116,139,${o})` : toRGBA(edge.branchColor.main, o);
+          const boostedO = Math.min(0.95, o + (edge.status==='locked' ? 0.06 : 0.12));
+          const color = edge.status==='locked' ? `rgba(100,116,139,${boostedO})` : toRGBA(edge.branchColor.main, boostedO);
           return (
             <Group key={edge.id}>
               {LOD.isNear && !isInteracting && edge.status!=='locked' && (
-                <Path path={edge.path} style="stroke" strokeWidth={w+3} color={edge.branchColor.glow} strokeCap="round" />
+                <Path path={edge.path} style="stroke" strokeWidth={w+3.6} color={edge.branchColor.glow} strokeCap="round" />
               )}
               <Path path={edge.path} style="stroke" strokeWidth={w} color={color} strokeCap="round">
                 {LOD.useDashedReady && edge.status==='ready' && !bld && <DashPathEffect intervals={[12,10]} />}
@@ -545,14 +546,14 @@ function SkiaTreeCanvas({
           const isMastered=status==='start'||status==='mastered';
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,visual.sw-0.5):visual.sw;
-          const showCheapHalo=USE_GLOW&&isLit;
-          const haloColor=visual.glowOuter;
+          const baseAuraColor=status==='locked'?'rgba(100,116,139,0.14)':toRGBA(visual.stroke,0.2);
           return(
             <Group key={n.id}>
               {LOD.showOuterRing&&<Circle cx={rx} cy={ry} r={NODE_R+13} style="stroke" strokeWidth={1.15} color={visual.ring} />}
               {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edge} />}
 
-              {showCheapHalo&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.72:NODE_R*1.1} color={haloColor} />}
+              {USE_GLOW&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.76:NODE_R*1.02} color={baseAuraColor} />}
+              {USE_GLOW&&isLit&&<Circle cx={rx} cy={ry} r={LOD.isFar?NODE_R*0.86:NODE_R*1.14} color={visual.glowOuter} />}
 
               {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
                 <Group>
@@ -879,9 +880,12 @@ function TreeScreen({ onTreeChange }){
       const res=await DocumentPicker.getDocumentAsync({type:'application/json',copyToCacheDirectory:true});
       if(res.canceled) return;
       const raw=await FileSystem.readAsStringAsync(res.assets[0].uri,{encoding:'utf8'});
-      const loaded=normalizeTree(JSON.parse(raw));
-      if(!loaded?.nodes||!loaded?.edges){Alert.alert('Invalid file','Not a valid skill tree JSON.');return;}
-      const t=loaded;
+      const parsed=JSON.parse(raw);
+      if(!parsed||typeof parsed!=='object'||!Array.isArray(parsed.nodes)||!Array.isArray(parsed.edges)){
+        Alert.alert('Invalid file','Not a valid skill tree JSON.');
+        return;
+      }
+      const t=normalizeTree(parsed);
       Alert.alert('Import Tree','Replace current tree with imported one?',[
         {text:'Cancel',style:'cancel'},
         {text:'Import',onPress:()=>{
@@ -1006,9 +1010,9 @@ function TreeScreen({ onTreeChange }){
   }),[lodTier]);
 
   const edgeVisual=useMemo(()=>{
-    if(LOD.isFar) return {masteredW:1.1,readyW:0.95,lockedW:0.85,masteredO:0.62,readyO:0.48,lockedO:0.25};
-    if(LOD.isMid) return {masteredW:1.7,readyW:1.4,lockedW:1.1,masteredO:0.74,readyO:0.6,lockedO:0.3};
-    return {masteredW:2.5,readyW:2.1,lockedW:1.4,masteredO:0.86,readyO:0.72,lockedO:0.38};
+    if(LOD.isFar) return {masteredW:1.2,readyW:1.05,lockedW:0.9,masteredO:0.68,readyO:0.56,lockedO:0.28};
+    if(LOD.isMid) return {masteredW:1.9,readyW:1.55,lockedW:1.2,masteredO:0.8,readyO:0.68,lockedO:0.34};
+    return {masteredW:2.8,readyW:2.3,lockedW:1.5,masteredO:0.9,readyO:0.8,lockedO:0.44};
   },[LOD.isFar,LOD.isMid]);
 
   useEffect(()=>{
@@ -1157,9 +1161,9 @@ function getTreeStats(tree){
     acc[b] = { total: branchNodes.length, unlocked: unlockedCount, pct: branchNodes.length ? Math.round((unlockedCount / branchNodes.length) * 100) : 0 };
     return acc;
   }, {});
-  const hardestBranch = ['push','pull','core'].sort((a,b)=>byBranch[b].pct - byBranch[a].pct)[0] || 'push';
+  const leadingBranch = ['push','pull','core'].sort((a,b)=>byBranch[b].pct - byBranch[a].pct)[0] || 'push';
   const completionPct = nodes.length ? Math.round((unlocked.length / nodes.length) * 100) : 0;
-  return { total: nodes.length, unlocked: unlocked.length, completionPct, byBranch, hardestBranch };
+  return { total: nodes.length, unlocked: unlocked.length, completionPct, byBranch, leadingBranch };
 }
 
 function StatChip({ label, value, accent }){
@@ -1173,7 +1177,7 @@ function StatChip({ label, value, accent }){
 
 function ProfileScreen({ tree }){
   const stats = useMemo(()=>getTreeStats(tree || INIT),[tree]);
-  const hardestColor = BRANCH_COLORS[stats.hardestBranch]?.main || Colors.blue[400];
+  const leadingBranchColor = BRANCH_COLORS[stats.leadingBranch]?.main || Colors.blue[400];
   return (
     <ScrollView contentContainerStyle={tabs.content} style={tabs.page}>
       <View style={tabs.profileHeader}>
@@ -1189,7 +1193,7 @@ function ProfileScreen({ tree }){
         <StatChip label="Total Skills" value={stats.total} accent={Colors.blue[400]} />
         <StatChip label="Unlocked" value={stats.unlocked} accent={Colors.green[500]} />
         <StatChip label="Completion" value={`${stats.completionPct}%`} accent={Colors.yellow[400]} />
-        <StatChip label="Leading Branch" value={stats.hardestBranch.toUpperCase()} accent={hardestColor} />
+        <StatChip label="Leading Branch" value={stats.leadingBranch.toUpperCase()} accent={leadingBranchColor} />
       </View>
 
       <View style={tabs.card}>
@@ -1209,7 +1213,7 @@ function ProfileScreen({ tree }){
 
       <View style={tabs.card}>
         <Text style={tabs.cardTitle}>Highlights</Text>
-        <Text style={tabs.cardBody}>• Leading branch: {stats.hardestBranch.toUpperCase()} ({stats.byBranch[stats.hardestBranch]?.pct || 0}% complete)</Text>
+        <Text style={tabs.cardBody}>• Leading branch: {stats.leadingBranch.toUpperCase()} ({stats.byBranch[stats.leadingBranch]?.pct || 0}% complete)</Text>
         <Text style={tabs.cardBody}>• Skills unlocked: {stats.unlocked} of {stats.total}</Text>
         <Text style={tabs.cardBody}>• Note: streaks and milestones are not tracked yet.</Text>
       </View>
@@ -1284,14 +1288,18 @@ function AppShell(){
             if (item.locked) {
               return (
                 <View key={item.key} style={[tabs.navItem, tabs.navItemLocked]}>
-                  <Ionicons name={item.icon} size={20} color={Colors.text.disabled} />
+                  <View style={tabs.navPill}>
+                    <Ionicons name={item.icon} size={24} color="#6B7280" />
+                  </View>
                   <Text style={[tabs.navLabel, tabs.navLocked]}>{item.key}</Text>
                 </View>
               );
             }
             return (
               <TouchableOpacity key={item.key} style={tabs.navItem} onPress={() => setTab(item.key)}>
-                <Ionicons name={item.icon} size={20} color={active ? Colors.blue[300] : Colors.slate[400]} />
+                <View style={[tabs.navPill, active && tabs.navPillActive]}>
+                  <Ionicons name={item.icon} size={24} color={active ? '#FFFFFF' : '#6B7280'} />
+                </View>
                 <Text style={[tabs.navLabel, active && tabs.navLabelActive]}>{item.key}</Text>
               </TouchableOpacity>
             );
@@ -1317,15 +1325,33 @@ const tabs = StyleSheet.create({
   navBar: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderColor: Colors.border.default,
-    backgroundColor: '#0B0F16',
-    paddingTop: 10,
+    borderColor: 'rgba(229, 231, 235, 0.1)',
+    backgroundColor: '#1A1D23',
+    paddingTop: 8,
   },
   navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
   navItemLocked: { opacity: 0.55 },
-  navLabel: { color: Colors.slate[400], fontSize: 12, fontWeight: '600' },
-  navLabelActive: { color: Colors.blue[300] },
-  navLocked: { color: Colors.text.disabled },
+  navPill: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  navPillActive: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+    shadowColor: '#60A5FA',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  navLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
+  navLabelActive: { color: '#FFFFFF' },
+  navLocked: { color: '#6B7280' },
   page: { flex: 1, backgroundColor: Colors.background.primary },
   content: { padding: 16, gap: 14 },
   pageTitle: { color: Colors.blue[300], fontSize: 26, fontWeight: '800', marginBottom: 4, letterSpacing: 1 },
@@ -1402,12 +1428,13 @@ const S=StyleSheet.create({
   barRight:{flexDirection:'row',alignItems:'center',gap:8,flexShrink:1},
   title:   {color:Colors.blue[300],fontSize:13,fontWeight:'800',letterSpacing:3,
             textShadowColor:toRGBA(Colors.blue[400],0.7),textShadowRadius:8,flexShrink:1,paddingRight:8},
-  resetBtn:{paddingHorizontal:12,paddingVertical:8,borderRadius:6,
-            backgroundColor:'#180C12',borderWidth:1,borderColor:'#7f1d1d'},
+  resetBtn:{paddingHorizontal:12,paddingVertical:8,borderRadius:8,
+            backgroundColor:'#151922',borderWidth:1,borderColor:'rgba(239,68,68,0.6)',
+            shadowColor:'#EF4444',shadowOpacity:0.22,shadowRadius:8,shadowOffset:{width:0,height:0}},
   resetT:  {color:'#f87171',fontSize:11,fontWeight:'800',letterSpacing:1.5},
   modeBtn: {paddingHorizontal:12,paddingVertical:8,borderRadius:6,
-            backgroundColor:Colors.background.cardAlt,borderWidth:1,borderColor:Colors.border.default},
-  modeOn:  {backgroundColor:'#0b1a18',borderColor:Colors.green[500]},
+            backgroundColor:'#151a24',borderWidth:1,borderColor:Colors.border.default},
+  modeOn:  {backgroundColor:'#12283d',borderColor:'rgba(59,130,246,0.45)'},
   modeT:   {color:Colors.text.tertiary,fontSize:11,fontWeight:'800',letterSpacing:1.5},
   modeTOn: {color:Colors.green[400]},
   toolbar: {flexDirection:'row',justifyContent:'space-between',alignItems:'center',
@@ -1415,8 +1442,8 @@ const S=StyleSheet.create({
             backgroundColor:Colors.background.secondary,borderBottomWidth:1,borderColor:Colors.border.default,flexWrap:'wrap'},
   tg:      {flexDirection:'row',gap:7,flexWrap:'wrap'},
   tBtn:    {paddingHorizontal:11,paddingVertical:8,borderRadius:6,
-            backgroundColor:Colors.background.primary,borderWidth:1,borderColor:Colors.border.default},
-  tOn:     {backgroundColor:'#122235',borderColor:Colors.border.blueActive},
+            backgroundColor:'#121722',borderWidth:1,borderColor:Colors.border.default},
+  tOn:     {backgroundColor:'rgba(59,130,246,0.18)',borderColor:'rgba(59,130,246,0.4)'},
   tT:      {color:Colors.text.tertiary,fontSize:12,fontWeight:'600'},
   tTOn:    {color:Colors.blue[300]},
   uBtn:    {paddingHorizontal:11,paddingVertical:8,borderRadius:6,
