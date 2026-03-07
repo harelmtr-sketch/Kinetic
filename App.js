@@ -202,13 +202,13 @@ const db = StyleSheet.create({
   label:    {color:C.textMain,fontSize:15,width:90,fontWeight:'500',letterSpacing:0.5},
   bars:     {flex:1,flexDirection:'row',gap:3},
   seg:      {flex:1,height:14,borderRadius:3},
-  segEmpty: {flex:1,height:14,borderRadius:3,backgroundColor:'#2a2218',borderWidth:1,borderColor:'#3a3020'},
+  segEmpty: {flex:1,height:14,borderRadius:3,backgroundColor:'#111827',borderWidth:1,borderColor:'#1f2937'},
   num:      {width:24,textAlign:'right',fontSize:15,fontWeight:'700',marginLeft:8},
 });
 
 // ── Skill Card ────────────────────────────────────────────────────────────────
-function SkillCard({node,nodes,edges,onClose,onRecord}){
-  const info = INIT.info[node.id] || {desc:'',str:5,bal:5,tec:5};
+function SkillCard({node,nodes,edges,info,onClose,onRecord}){
+  const skillInfo = info || {desc:'',str:5,bal:5,tec:5};
   const unlockable = !node.isStart && canUnlock(node.id,nodes,edges);
   const prereqs = edges.filter(e=>e.to===node.id).map(e=>nodes.find(n=>n.id===e.from)).filter(Boolean);
   const unmetPrereqs = prereqs.filter(p=>!p.unlocked);
@@ -256,13 +256,15 @@ function SkillCard({node,nodes,edges,onClose,onRecord}){
             <View style={cs.divLine}/>
           </View>
 
+          {!!skillInfo.desc && <Text style={cs.desc}>{skillInfo.desc}</Text>}
+
           {/* Difficulty section */}
           {!node.isStart && (
             <View style={cs.diffSection}>
               <Text style={cs.sectionLabel}>DIFFICULTY</Text>
-              <DiffBar label="Strength"  value={info.str} color="#c04040" glowColor="#ff2020"/>
-              <DiffBar label="Balance"   value={info.bal} color="#3a70d0" glowColor="#2060ff"/>
-              <DiffBar label="Technique" value={info.tec} color="#b09020" glowColor="#ffd030"/>
+              <DiffBar label="Strength"  value={skillInfo.str} color="#c04040" glowColor="#ff2020"/>
+              <DiffBar label="Balance"   value={skillInfo.bal} color="#3a70d0" glowColor="#2060ff"/>
+              <DiffBar label="Technique" value={skillInfo.tec} color="#b09020" glowColor="#ffd030"/>
             </View>
           )}
 
@@ -334,23 +336,24 @@ const cs = StyleSheet.create({
                 textShadowColor:C.gold+'40',textShadowRadius:12},
 
   diffSection: {paddingHorizontal:18,paddingTop:10,paddingBottom:4},
+  desc:       {color:C.textDim,fontSize:13,lineHeight:18,paddingHorizontal:18,paddingTop:4,paddingBottom:8,textAlign:'center'},
   sectionLabel:{color:C.textDim,fontSize:10,fontWeight:'800',letterSpacing:3,textAlign:'center',marginBottom:14},
 
   symbolRow:   {alignItems:'center',paddingVertical:10},
-  symbolCircle:{width:36,height:36,borderRadius:18,borderWidth:1.5,borderColor:C.stoneLt,backgroundColor:'#1a1612'},
+  symbolCircle:{width:36,height:36,borderRadius:18,borderWidth:1.5,borderColor:C.stoneLt,backgroundColor:'#0f172a'},
 
-  mediaBg:     {marginHorizontal:18,marginVertical:10,height:160,backgroundColor:'#1a1510',
+  mediaBg:     {marginHorizontal:18,marginVertical:10,height:160,backgroundColor:'#0f172a',
                 borderRadius:10,borderWidth:1,borderColor:C.stone,
                 alignItems:'center',justifyContent:'center'},
   mediaLabel:  {color:C.textFaint,fontSize:11,fontWeight:'700',letterSpacing:2,marginBottom:4},
   mediaHint:   {color:C.textFaint,fontSize:10},
 
-  prereqBox:   {marginHorizontal:18,marginBottom:8,padding:12,backgroundColor:'#1e0e0e',
-                borderRadius:8,borderWidth:1,borderColor:'#6b2020'},
-  prereqTitle: {color:'#c04040',fontSize:9,fontWeight:'800',letterSpacing:2.5,marginBottom:6},
-  prereqItem:  {color:'#a06060',fontSize:13,marginBottom:3},
+  prereqBox:   {marginHorizontal:18,marginBottom:8,padding:12,backgroundColor:'#131923',
+                borderRadius:8,borderWidth:1,borderColor:'#7f1d1d'},
+  prereqTitle: {color:'#f87171',fontSize:9,fontWeight:'800',letterSpacing:2.5,marginBottom:6},
+  prereqItem:  {color:'#fca5a5',fontSize:13,marginBottom:3},
 
-  attemptBtn:  {margin:18,marginTop:10,backgroundColor:'#1a1510',borderRadius:10,paddingVertical:18,
+  attemptBtn:  {margin:18,marginTop:10,backgroundColor:'#111827',borderRadius:10,paddingVertical:18,
                 alignItems:'center',borderWidth:1.5,borderColor:C.gold,
                 shadowColor:C.gold,shadowOpacity:0.3,shadowRadius:12,shadowOffset:{width:0,height:0}},
   attemptBtnT: {color:C.gold,fontSize:17,fontWeight:'800',letterSpacing:5,
@@ -365,7 +368,7 @@ const cs = StyleSheet.create({
                 shadowColor:C.green,shadowOpacity:0.3,shadowRadius:12,shadowOffset:{width:0,height:0}},
   masteredBtnT:{color:C.green,fontSize:17,fontWeight:'800',letterSpacing:5},
 
-  originBtn:   {margin:18,marginTop:10,backgroundColor:'#161208',borderRadius:10,paddingVertical:18,
+  originBtn:   {margin:18,marginTop:10,backgroundColor:'#111827',borderRadius:10,paddingVertical:18,
                 alignItems:'center',borderWidth:1,borderColor:C.goldDim},
   originBtnT:  {color:C.goldDim,fontSize:14,fontWeight:'700',letterSpacing:4},
 });
@@ -409,11 +412,11 @@ const np = StyleSheet.create({
   kav:    {flex:1,backgroundColor:'rgba(0,0,0,0.82)',justifyContent:'flex-start',paddingTop:110,paddingHorizontal:30},
   box:    {backgroundColor:C.bgCard,borderRadius:14,padding:24,borderWidth:1,borderColor:C.stone},
   title:  {color:C.textMain,fontSize:14,fontWeight:'800',letterSpacing:4,textAlign:'center',marginBottom:18},
-  input:  {backgroundColor:'#100e0c',borderRadius:10,padding:16,fontSize:17,borderWidth:1,borderColor:C.stone,marginBottom:16,color:C.textMain},
+  input:  {backgroundColor:'#0f172a',borderRadius:10,padding:16,fontSize:17,borderWidth:1,borderColor:C.stone,marginBottom:16,color:C.textMain},
   row:    {flexDirection:'row',gap:10},
-  cancel: {flex:1,backgroundColor:'#1a1410',borderRadius:10,paddingVertical:14,alignItems:'center',borderWidth:1,borderColor:C.stone},
+  cancel: {flex:1,backgroundColor:'#111827',borderRadius:10,paddingVertical:14,alignItems:'center',borderWidth:1,borderColor:C.stone},
   cancelT:{color:C.textDim,fontWeight:'600'},
-  add:    {flex:1,backgroundColor:'#1a1510',borderRadius:10,paddingVertical:14,alignItems:'center',borderWidth:1,borderColor:C.gold},
+  add:    {flex:1,backgroundColor:'#111827',borderRadius:10,paddingVertical:14,alignItems:'center',borderWidth:1,borderColor:C.gold},
   off:    {opacity:0.3},
   addT:   {color:C.gold,fontWeight:'800',letterSpacing:2},
 });
@@ -591,7 +594,7 @@ function TreeScreen({ onTreeChange }){
   const [tree,_setTree]=useState(normalizeTree(INIT));
   const tR=useRef(normalizeTree(INIT));
   const setTree=t=>{tR.current=t;_setTree(t);};
-  const hist=useRef([INIT]),hi=useRef(0);
+  const hist=useRef([normalizeTree(INIT)]),hi=useRef(0);
   const [canUndo,setCU]=useState(false),[canRedo,setCR]=useState(false);
 
   useEffect(()=>{
@@ -878,7 +881,7 @@ function TreeScreen({ onTreeChange }){
       const raw=await FileSystem.readAsStringAsync(res.assets[0].uri,{encoding:'utf8'});
       const loaded=normalizeTree(JSON.parse(raw));
       if(!loaded?.nodes||!loaded?.edges){Alert.alert('Invalid file','Not a valid skill tree JSON.');return;}
-      const t=normalizeTree(loaded);
+      const t=loaded;
       Alert.alert('Import Tree','Replace current tree with imported one?',[
         {text:'Cancel',style:'cancel'},
         {text:'Import',onPress:()=>{
@@ -1136,6 +1139,7 @@ function TreeScreen({ onTreeChange }){
       <NamePrompt visible={prompt} onConfirm={addNode} onCancel={()=>showPrompt(false)}/>
       {sel&&!bld&&(
         <SkillCard node={sel} nodes={tree.nodes} edges={tree.edges}
+          info={tree.info?.[sel.id]}
           onClose={()=>setSel(null)} onRecord={record}/>
       )}
     </View>
@@ -1185,7 +1189,7 @@ function ProfileScreen({ tree }){
         <StatChip label="Total Skills" value={stats.total} accent={Colors.blue[400]} />
         <StatChip label="Unlocked" value={stats.unlocked} accent={Colors.green[500]} />
         <StatChip label="Completion" value={`${stats.completionPct}%`} accent={Colors.yellow[400]} />
-        <StatChip label="Hardest Branch" value={stats.hardestBranch.toUpperCase()} accent={hardestColor} />
+        <StatChip label="Leading Branch" value={stats.hardestBranch.toUpperCase()} accent={hardestColor} />
       </View>
 
       <View style={tabs.card}>
@@ -1205,9 +1209,9 @@ function ProfileScreen({ tree }){
 
       <View style={tabs.card}>
         <Text style={tabs.cardTitle}>Highlights</Text>
-        <Text style={tabs.cardBody}>• Current streak: 5 days</Text>
-        <Text style={tabs.cardBody}>• Favorite branch: {stats.hardestBranch.toUpperCase()}</Text>
-        <Text style={tabs.cardBody}>• Last milestone: {stats.completionPct >= 50 ? 'Half Tree Cleared' : 'First Chain Started'}</Text>
+        <Text style={tabs.cardBody}>• Leading branch: {stats.hardestBranch.toUpperCase()} ({stats.byBranch[stats.hardestBranch]?.pct || 0}% complete)</Text>
+        <Text style={tabs.cardBody}>• Skills unlocked: {stats.unlocked} of {stats.total}</Text>
+        <Text style={tabs.cardBody}>• Note: streaks and milestones are not tracked yet.</Text>
       </View>
 
       <View style={tabs.card}>
