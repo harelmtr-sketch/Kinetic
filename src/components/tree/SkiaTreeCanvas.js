@@ -134,8 +134,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   const farNodeR = NODE_R * 0.34;
   return (
     <Canvas style={{ width: canvasSize.width, height: canvasSize.height }}>
-      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="#010309" />
-      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="rgba(4,8,16,0.9)" />
+      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="#0A0A0A" />
+      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="rgba(16,16,16,0.92)" />
       <Group transform={sceneTransform}>
         {LOD.showDust && <Atlas image={dustAtlas.image} sprites={dustAtlas.sprites} transforms={dustAtlas.transforms} />}
         {edgeSegments.map((edge) => {
@@ -143,7 +143,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const o = edge.status === 'mastered' ? edgeVisual.masteredO : edge.status === 'ready' ? edgeVisual.readyO : edgeVisual.lockedO;
           const boostedO = Math.min(0.92, o + (edge.status === 'locked' ? 0.01 : 0.08));
           const color = edge.status === 'locked'
-            ? toRGBA(edge.branchColor.main, Math.min(0.2, boostedO * 0.65))
+            ? 'rgba(92,84,74,0.28)'
             : toRGBA(edge.branchColor.edgeHex, boostedO);
           return (
             <Group key={edge.id}>
@@ -151,7 +151,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                 <Path path={edge.path} style="stroke" strokeWidth={w + 4.6} color={toRGBA(edge.branchColor.main, 0.28)} strokeCap="round" />
               )}
               {LOD.showEdgeGlow && !isInteracting && edge.status === 'ready' && (
-                <Path path={edge.path} style="stroke" strokeWidth={w + 2.6} color={toRGBA(edge.branchColor.main, 0.14)} strokeCap="round" />
+                <Path path={edge.path} style="stroke" strokeWidth={w + 2.2} color={toRGBA(edge.branchColor.main, 0.12)} strokeCap="round" />
               )}
               {edge.status === 'mastered' && LOD.interactionTier !== 'heavy' && <Path path={edge.path} style="stroke" strokeWidth={w + 1.35} color={toRGBA(edge.branchColor.main, LOD.interactionTier === 'medium' ? 0.25 : 0.35)} strokeCap="round" />}
               {edge.status === 'ready' && <Path path={edge.path} style="stroke" strokeWidth={w + 0.65} color={toRGBA(edge.branchColor.edgeHex, 0.34)} strokeCap="round" />}
@@ -169,8 +169,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const rx = n.x;
           const ry = n.y;
           const lines = wrappedLabels[n.id] || [n.name];
-          const lh = 13;
-          const sy = ry + NODE_R + 14;
+          const lh = 12;
           const status = nodeStatusMap[n.id] || 'locked';
           const isLit = status === 'start' || status === 'mastered' || status === 'ready';
           const isReady = status === 'ready';
@@ -179,10 +178,10 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const isFarNode = LOD.isFar;
           const auraOpacity = status === 'locked' ? (isFarNode ? 0.20 : 0.16) : (isReady ? 0.24 : 0.18);
           const auraColor = toRGBA(visual.stroke, auraOpacity);
-          const auraR = isFarNode ? NODE_R * 0.78 : (isLit ? NODE_R * 1.03 : NODE_R * 0.95);
+          const auraR = isFarNode ? NODE_R * 0.7 : (isLit ? NODE_R * 0.96 : NODE_R * 0.88);
           return (
             <Group key={n.id}>
-              {!isFarNode && <Circle cx={rx} cy={ry} r={NODE_R * 1.75} color={visual.ambient || toRGBA(visual.stroke, 0.04)} />}
+              {!isFarNode && <Circle cx={rx} cy={ry} r={NODE_R * 1.45} color={visual.ambient || toRGBA(visual.stroke, 0.03)} />}
               {LOD.showOuterRing && <Circle cx={rx} cy={ry} r={NODE_R + 13} style="stroke" strokeWidth={1.1} color={visual.ring} />}
               {LOD.showOuterRing && bld && connA === n.id && <Circle cx={rx} cy={ry} r={NODE_R + 16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />}
               {USE_GLOW && <Circle cx={rx} cy={ry} r={auraR} color={auraColor} />}
@@ -194,10 +193,10 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               )}
               {isFarNode ? (
                 <Group>
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.46} color={visual.farAura || toRGBA(visual.stroke, 0.16)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.29} color={visual.farBody || toRGBA(visual.stroke, 0.36)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.14} color={visual.farCore || toRGBA(visual.ring, 0.56)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.35} style="stroke" strokeWidth={0.72} color={toRGBA(visual.stroke, 0.44)} />
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.4} color={visual.farAura || toRGBA(visual.stroke, 0.16)} />
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.25} color={visual.farBody || toRGBA(visual.stroke, 0.36)} />
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.12} color={visual.farCore || toRGBA(visual.ring, 0.56)} />
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.31} style="stroke" strokeWidth={0.64} color={toRGBA(visual.stroke, 0.44)} />
                 </Group>
               ) : (
                 <Group>
@@ -213,9 +212,9 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               )}
               {LOD.showLabels && !isInteracting && lines.map((ln, li) => {
                 const x = rx - (ln.length * 2.8);
-                const y = sy + li * lh;
-                const mainColor = isLit ? '#F8FAFC' : '#95A5B8';
-                const glow1 = isLit ? toRGBA(visual.stroke, 0.24) : 'rgba(100,120,148,0.08)';
+                const y = ry + 4 + (li - ((lines.length - 1) / 2)) * lh;
+                const mainColor = isLit ? '#EAF2FF' : '#B6ADA2';
+                const glow1 = isLit ? toRGBA(visual.stroke, 0.20) : 'rgba(90,78,66,0.12)';
                 return (
                   <Group key={`${n.id}_${li}`}>
                     <SkiaText x={x} y={y} text={ln} font={labelFont} color={glow1} />
@@ -233,10 +232,10 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             {USE_GLOW && <Circle cx={0} cy={0} r={draggedNodeMeta.auraR} color={draggedNodeMeta.auraColor} />}
             {LOD.isFar ? (
               <Group>
-                <Circle cx={0} cy={0} r={NODE_R * 0.46} color={draggedNodeMeta.visual.farAura || toRGBA(draggedNodeMeta.visual.stroke, 0.16)} />
-                <Circle cx={0} cy={0} r={NODE_R * 0.29} color={draggedNodeMeta.visual.farBody || toRGBA(draggedNodeMeta.visual.stroke, 0.36)} />
-                <Circle cx={0} cy={0} r={NODE_R * 0.14} color={draggedNodeMeta.visual.farCore || toRGBA(draggedNodeMeta.visual.ring, 0.56)} />
-                <Circle cx={0} cy={0} r={NODE_R * 0.35} style="stroke" strokeWidth={0.72} color={toRGBA(draggedNodeMeta.visual.stroke, 0.44)} />
+                <Circle cx={0} cy={0} r={NODE_R * 0.4} color={draggedNodeMeta.visual.farAura || toRGBA(draggedNodeMeta.visual.stroke, 0.16)} />
+                <Circle cx={0} cy={0} r={NODE_R * 0.25} color={draggedNodeMeta.visual.farBody || toRGBA(draggedNodeMeta.visual.stroke, 0.36)} />
+                <Circle cx={0} cy={0} r={NODE_R * 0.12} color={draggedNodeMeta.visual.farCore || toRGBA(draggedNodeMeta.visual.ring, 0.56)} />
+                <Circle cx={0} cy={0} r={NODE_R * 0.31} style="stroke" strokeWidth={0.64} color={toRGBA(draggedNodeMeta.visual.stroke, 0.44)} />
               </Group>
             ) : (
               <Group>
@@ -251,12 +250,12 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               </Group>
             )}
             {LOD.showLabels && !isInteracting && draggedNodeMeta.lines.map((ln, li) => {
-              const glow1 = draggedNodeMeta.isLit ? toRGBA(draggedNodeMeta.visual.stroke, 0.28) : 'rgba(100,120,148,0.10)';
-              const mainColor = draggedNodeMeta.isLit ? '#F8FAFC' : '#8898AA';
+              const glow1 = draggedNodeMeta.isLit ? toRGBA(draggedNodeMeta.visual.stroke, 0.2) : 'rgba(90,78,66,0.12)';
+              const mainColor = draggedNodeMeta.isLit ? '#EAF2FF' : '#B6ADA2';
               return (
                 <Group key={`dl_${li}`}>
-                  <SkiaText x={-(ln.length * 2.8)} y={NODE_R + 14 + li * 13} text={ln} font={labelFont} color={glow1} />
-                  <SkiaText x={-(ln.length * 2.8)} y={NODE_R + 14 + li * 13} text={ln} font={labelFont} color={mainColor} />
+                  <SkiaText x={-(ln.length * 2.8)} y={4 + (li - ((draggedNodeMeta.lines.length - 1) / 2)) * 12} text={ln} font={labelFont} color={glow1} />
+                  <SkiaText x={-(ln.length * 2.8)} y={4 + (li - ((draggedNodeMeta.lines.length - 1) / 2)) * 12} text={ln} font={labelFont} color={mainColor} />
                 </Group>
               );
             })}

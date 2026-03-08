@@ -3,9 +3,19 @@ import { ALL_BRANCH_TYPES, BRANCH_MAP, DEV_PERF_LOG } from '../constants/tree';
 
 const VALID_BRANCHES = new Set(ALL_BRANCH_TYPES);
 const BRANCH_KEYWORDS = {
-  push: ['push', 'dip', 'press', 'planche', 'hspu', 'handstand', 'tricep', 'pike'],
-  pull: ['pull', 'chin', 'row', 'hang', 'front lever', 'back lever', 'muscle up', 'scap'],
-  core: ['core', 'abs', 'hollow', 'l-sit', 'plank', 'dragon', 'v-up'],
+  push: [
+    'push-up', 'pushup', 'push up', 'diamond push', 'pike push', 'handstand push', 'hspu',
+    'dip', 'dips', 'tricep dip', 'press', 'planche', 'pseudo planche', 'pseudo-planche',
+  ],
+  pull: [
+    'pull-up', 'pullup', 'pull up', 'chin-up', 'chinup', 'chin up', 'muscle-up', 'muscle up',
+    'row', 'rows', 'australian pull-up', 'australian pull up', 'hang', 'dead hang', 'active hang',
+    'scap', 'front lever', 'back lever',
+  ],
+  core: [
+    'core', 'abs', 'ab', 'hollow', 'hollow hold', 'l-sit', 'lsit', 'l sit', 'plank',
+    'dragon flag', 'v-up', 'v up',
+  ],
 };
 const INIT_BRANCH_BY_ID = new Map(
   (INIT?.nodes || [])
@@ -16,7 +26,18 @@ const INIT_BRANCH_BY_ID = new Map(
 const normalizeBranchValue = (branch) => {
   if (typeof branch !== 'string') return null;
   const normalized = branch.trim().toLowerCase();
-  return VALID_BRANCHES.has(normalized) ? normalized : null;
+  const aliasMap = {
+    pushing: 'push',
+    push_strength: 'push',
+    pulling: 'pull',
+    pull_strength: 'pull',
+    yellow: 'pull',
+    blue: 'core',
+    start: 'neutral',
+    origin: 'neutral',
+  };
+  const mapped = aliasMap[normalized] || normalized;
+  return VALID_BRANCHES.has(mapped) ? mapped : null;
 };
 
 const isValidBranch = (branch) => !!normalizeBranchValue(branch);
@@ -48,7 +69,7 @@ const resolveInitBranchFromId = (id) => {
 
 const inferBranchFromName = (name) => {
   if (typeof name !== 'string' || !name.trim()) return null;
-  const key = name.toLowerCase();
+  const key = name.toLowerCase().replace(/[^a-z0-9+\s-]/g, ' ').replace(/\s+/g, ' ').trim();
   for (const [branch, keywords] of Object.entries(BRANCH_KEYWORDS)) {
     if (keywords.some((word) => key.includes(word))) return branch;
   }

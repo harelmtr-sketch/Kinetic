@@ -536,35 +536,61 @@ export default function TreeScreen({ onTreeChange }) {
     const nb = BRANCH_COLORS.neutral;
     const map = {};
     const makeVisual = (branch, bc, status) => {
-      const baseFill = status === 'mastered' ? toRGBA(bc.main, 0.20) : status === 'ready' ? toRGBA(bc.main, 0.15) : toRGBA(bc.main, 0.08);
-      const innerFill = status === 'mastered' ? toRGBA(bc.main, 0.28) : status === 'ready' ? toRGBA(bc.main, 0.2) : toRGBA(bc.main, 0.12);
-      const core = status === 'mastered' ? toRGBA(bc.ring, 0.2) : status === 'ready' ? toRGBA(bc.ring, 0.15) : toRGBA(bc.ring, 0.09);
-      const strokeAlpha = status === 'mastered' ? 0.96 : status === 'ready' ? 0.88 : 0.48;
-      const ringAlpha = status === 'mastered' ? 0.94 : status === 'ready' ? 0.82 : 0.46;
-      const glowOuterBase = status === 'mastered' ? 0.24 : status === 'ready' ? 0.19 : 0.12;
-      const glowInnerBase = status === 'mastered' ? 0.44 : status === 'ready' ? 0.34 : 0.20;
-      const branchBoost = branch === 'push' ? 1.16 : branch === 'pull' ? 1.24 : branch === 'core' ? 0.72 : 1;
+      const isLocked = status === 'locked';
+      if (isLocked) {
+        return {
+          fill: 'rgba(44,39,35,0.54)',
+          innerFill: 'rgba(30,27,24,0.78)',
+          core: 'rgba(86,80,73,0.38)',
+          outerRim: 'rgba(110,99,88,0.26)',
+          stroke: 'rgba(138,124,108,0.42)',
+          ring: 'rgba(128,115,100,0.28)',
+          glowInner: toRGBA(bc.main, 0.12),
+          glowOuter: toRGBA(bc.main, 0.08),
+          ambient: 'rgba(18,16,14,0.12)',
+          farAura: toRGBA(bc.main, 0.08),
+          farBody: 'rgba(88,78,68,0.34)',
+          farCore: 'rgba(132,118,102,0.34)',
+          innerRing: 'rgba(121,108,93,0.28)',
+          innerRingSoft: 'rgba(86,76,67,0.26)',
+          specular: 'rgba(228,216,202,0.08)',
+          sw: 1.4,
+          opacity: 0.82,
+        };
+      }
+
+      const baseFill = status === 'mastered' ? toRGBA(bc.main, 0.16) : toRGBA(bc.main, 0.12);
+      const innerFill = status === 'mastered' ? toRGBA(bc.main, 0.23) : toRGBA(bc.main, 0.17);
+      const core = status === 'mastered' ? toRGBA(bc.ring, 0.2) : toRGBA(bc.ring, 0.15);
+      const strokeAlpha = status === 'mastered' ? 0.93 : 0.84;
+      const ringAlpha = status === 'mastered' ? 0.88 : 0.76;
+      const glowOuterBase = status === 'mastered' ? 0.2 : 0.16;
+      const glowInnerBase = status === 'mastered' ? 0.34 : 0.28;
+      const branchBoost = branch === 'push' ? 1.08 : branch === 'pull' ? 1.1 : 1;
       const glowOuterAlpha = glowOuterBase * branchBoost;
       const glowInnerAlpha = glowInnerBase * branchBoost;
+
       return {
         fill: baseFill,
         innerFill,
         core,
-        outerRim: toRGBA(bc.ring, status === 'locked' ? 0.16 : 0.3),
+        outerRim: toRGBA(bc.ring, 0.24),
         stroke: toRGBA(bc.main, strokeAlpha),
-        ring: toRGBA(bc.ring, branch === 'core' ? ringAlpha * 0.88 : ringAlpha),
+        ring: toRGBA(bc.ring, ringAlpha),
         glowInner: toRGBA(bc.ring, glowInnerAlpha),
         glowOuter: toRGBA(bc.main, glowOuterAlpha),
-        ambient: toRGBA(bc.main, status === 'mastered' ? (branch === 'core' ? 0.052 : 0.088) : status === 'ready' ? (branch === 'core' ? 0.04 : 0.065) : 0.03),
-        farAura: toRGBA(bc.main, status === 'locked' ? (branch === 'core' ? 0.07 : 0.12) : status === 'ready' ? (branch === 'core' ? 0.14 : 0.2) : (branch === 'core' ? 0.15 : 0.22)),
-        farBody: toRGBA(bc.main, status === 'locked' ? (branch === 'core' ? 0.18 : 0.28) : status === 'ready' ? (branch === 'core' ? 0.32 : 0.43) : (branch === 'core' ? 0.36 : 0.52)),
-        farCore: toRGBA(bc.ring, status === 'locked' ? (branch === 'core' ? 0.28 : 0.44) : status === 'ready' ? (branch === 'core' ? 0.48 : 0.62) : (branch === 'core' ? 0.54 : 0.72)),
-        innerRing: toRGBA(bc.main, status === 'locked' ? 0.22 : 0.34),
-        innerRingSoft: toRGBA(bc.ring, status === 'locked' ? 0.24 : 0.42),
-        specular: status === 'locked' ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.2)',
-        sw: status === 'locked' ? 1.55 : status === 'ready' ? 2.2 : 2.5,
-        opacity: status === 'locked' ? 0.92 : 1,
+        ambient: toRGBA(bc.main, status === 'mastered' ? 0.068 : 0.052),
+        farAura: toRGBA(bc.main, status === 'mastered' ? 0.18 : 0.15),
+        farBody: toRGBA(bc.main, status === 'mastered' ? 0.46 : 0.38),
+        farCore: toRGBA(bc.ring, status === 'mastered' ? 0.66 : 0.54),
+        innerRing: toRGBA(bc.main, 0.30),
+        innerRingSoft: toRGBA(bc.ring, 0.34),
+        specular: 'rgba(240,246,255,0.14)',
+        sw: status === 'mastered' ? 2.4 : 2.1,
+        opacity: 0.98,
       };
+    };
+
     };
 
     for (const n of visibleNodes) {
@@ -589,15 +615,15 @@ export default function TreeScreen({ onTreeChange }) {
         const startBc = BRANCH_COLORS.neutral;
         map[n.id] = {
           ...makeVisual('neutral', startBc, 'ready'),
-          fill: 'rgba(12,26,46,0.88)',
-          innerFill: 'rgba(16,42,72,0.9)',
-          core: 'rgba(147,197,253,0.22)',
-          stroke: 'rgba(96,165,250,0.95)',
-          ring: 'rgba(191,219,254,0.88)',
-          glowInner: 'rgba(96,165,250,0.42)',
-          glowOuter: 'rgba(59,130,246,0.24)',
-          innerRing: 'rgba(96,165,250,0.36)',
-          innerRingSoft: 'rgba(191,219,254,0.34)',
+          fill: 'rgba(14,27,44,0.9)',
+          innerFill: 'rgba(22,46,74,0.92)',
+          core: 'rgba(147,197,253,0.2)',
+          stroke: 'rgba(96,165,250,0.92)',
+          ring: 'rgba(191,219,254,0.82)',
+          glowInner: 'rgba(96,165,250,0.34)',
+          glowOuter: 'rgba(59,130,246,0.2)',
+          innerRing: 'rgba(96,165,250,0.3)',
+          innerRingSoft: 'rgba(191,219,254,0.28)',
           sw: 2.45,
         };
       } else {
@@ -609,13 +635,13 @@ export default function TreeScreen({ onTreeChange }) {
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {
-      masteredW: 1.24, readyW: 1.0, lockedW: 0.72, masteredO: 0.68, readyO: 0.44, lockedO: 0.14,
+      masteredW: 1.3, readyW: 1.0, lockedW: 0.6, masteredO: 0.74, readyO: 0.42, lockedO: 0.11,
     };
     if (LOD.isMid) return {
-      masteredW: 2.0, readyW: 1.45, lockedW: 0.95, masteredO: 0.8, readyO: 0.56, lockedO: 0.18,
+      masteredW: 2.1, readyW: 1.42, lockedW: 0.88, masteredO: 0.84, readyO: 0.52, lockedO: 0.15,
     };
     return {
-      masteredW: 3.0, readyW: 2.1, lockedW: 1.08, masteredO: 0.9, readyO: 0.66, lockedO: 0.23,
+      masteredW: 3.1, readyW: 2.0, lockedW: 0.98, masteredO: 0.92, readyO: 0.62, lockedO: 0.19,
     };
   }, [LOD.isFar, LOD.isMid]);
 
@@ -856,7 +882,7 @@ const styles = StyleSheet.create({
   hintT: {
     color: Colors.text.tertiary, fontSize: 11, textAlign: 'center', letterSpacing: 0.5,
   },
-  canvas: { flex: 1, backgroundColor: '#02050B', overflow: 'hidden' },
+  canvas: { flex: 1, backgroundColor: '#0A0A0A', overflow: 'hidden' },
   legend: {
     flexDirection: 'row', justifyContent: 'center', gap: 28, paddingVertical: 12,
     backgroundColor: '#060A10', borderTopWidth: 1, borderColor: Colors.border.default,
