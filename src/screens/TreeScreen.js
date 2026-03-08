@@ -3,7 +3,7 @@ import React, {
 } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  PanResponder, Alert,
+  PanResponder, Alert, Modal, TextInput,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
@@ -18,7 +18,7 @@ import GlowText from '../components/common/GlowText';
 import SkiaTreeCanvas from '../components/tree/SkiaTreeCanvas';
 import { BRANCH_COLORS, Colors } from '../theme/colors';
 import {
-  STORAGE_KEY, NODE_R, MIN_SC, MAX_SC, DEV_PERF_LOG,
+  STORAGE_KEY, SAVED_TREES_KEY, SELECTED_TREE_KEY, NODE_R, MIN_SC, MAX_SC, DEV_PERF_LOG,
 } from '../constants/tree';
 import { INIT } from '../data/initialTree';
 import {
@@ -32,19 +32,75 @@ export default function TreeScreen({ onTreeChange }) {
   const setTree = (t) => { tR.current = t; _setTree(t); };
   const hist = useRef([normalizeTree(INIT)]); const hi = useRef(0);
   const [canUndo, setCU] = useState(false); const [canRedo, setCR] = useState(false);
+  const [savedTrees, setSavedTrees] = useState([]);
+  const [selectedTreeId, setSelectedTreeId] = useState(null);
+  const [namePromptVisible, setNamePromptVisible] = useState(false);
+  const [treeNameDraft, setTreeNameDraft] = useState('');
+  const [libraryVisible, setLibraryVisible] = useState(false);
+
+  const resetHistoryWithTree = (nextTree) => {
+    hist.current = [nextTree];
+    hi.current = 0;
+    setTree(nextTree);
+    setCU(false);
+    setCR(false);
+  };
+
+  const persistWorkingTree = (nextTree) => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextTree)).catch(() => {});
+  const persistSelectedTree = (id) => {
+    if (id) {
+      AsyncStorage.setItem(SELECTED_TREE_KEY, id).catch(() => {});
+    } else {
+      AsyncStorage.removeItem(SELECTED_TREE_KEY).catch(() => {});
+    }
+    setSelectedTreeId(id || null);
+  };
+  const persistSavedTrees = (nextSavedTrees) => {
+    setSavedTrees(nextSavedTrees);
+    AsyncStorage.setItem(SAVED_TREES_KEY, JSON.stringify(nextSavedTrees)).catch(() => {});
+  };
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (!raw) return;
+    const boot = async () => {
+      const defaultTree = normalizeTree(INIT);
+      let resolvedTree = defaultTree;
+      let resolvedSelectedId = null;
+      let library = [];
+
       try {
-        const saved = JSON.parse(raw);
-        if (saved?.nodes && saved?.edges) {
-          const t = normalizeTree(saved);
-          hist.current = [t]; hi.current = 0;
-          setTree(t); setCU(false); setCR(false);
+        const rawLibrary = await AsyncStorage.getItem(SAVED_TREES_KEY);
+        if (rawLibrary) {
+          const parsed = JSON.parse(rawLibrary);
+          if (Array.isArray(parsed)) {
+            library = parsed.filter((item) => item && item.id && item.name && item.tree?.nodes && item.tree?.edges);
+          }
         }
       } catch (e) {}
-    });
+
+      try {
+        const savedSelectedId = await AsyncStorage.getItem(SELECTED_TREE_KEY);
+        const selectedTree = savedSelectedId ? library.find((entry) => entry.id === savedSelectedId) : null;
+        if (selectedTree) {
+          resolvedTree = normalizeTree(selectedTree.tree);
+          resolvedSelectedId = selectedTree.id;
+        } else {
+          const rawWorking = await AsyncStorage.getItem(STORAGE_KEY);
+          if (rawWorking) {
+            const parsedWorking = JSON.parse(rawWorking);
+            if (parsedWorking?.nodes && parsedWorking?.edges) resolvedTree = normalizeTree(parsedWorking);
+          }
+        }
+      } catch (e) {}
+
+      setSavedTrees(library);
+      setSelectedTreeId(resolvedSelectedId);
+      resetHistoryWithTree(resolvedTree);
+      persistWorkingTree(resolvedTree);
+      if (resolvedSelectedId) AsyncStorage.setItem(SELECTED_TREE_KEY, resolvedSelectedId).catch(() => {});
+      else AsyncStorage.removeItem(SELECTED_TREE_KEY).catch(() => {});
+    };
+
+    boot();
   }, []);
 
   useEffect(() => { onTreeChange?.(tree); }, [onTreeChange, tree]);
@@ -52,7 +108,7 @@ export default function TreeScreen({ onTreeChange }) {
   const commit = (t) => {
     const h = hist.current.slice(0, hi.current + 1); h.push(t);
     hist.current = h; hi.current = h.length - 1; setTree(t); setCU(true); setCR(false);
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(t)).catch(() => {});
+    persistWorkingTree(t);
   };
   const undo = () => { if (!hi.current) return; hi.current -= 1; const t = hist.current[hi.current]; setTree(t); setCU(hi.current > 0); setCR(true); };
   const redo = () => { if (hi.current >= hist.current.length - 1) return; hi.current += 1; const t = hist.current[hi.current]; setTree(t); setCU(true); setCR(hi.current < hist.current.length - 1); };
@@ -395,12 +451,82 @@ export default function TreeScreen({ onTreeChange }) {
           text: 'Import', onPress: () => {
             hist.current = [t]; hi.current = 0;
             setTree(t); setCU(false); setCR(false);
-            AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(t)).catch(() => {});
+            persistWorkingTree(t);
           },
         },
       ]);
     } catch (e) { Alert.alert('Import failed', String(e)); }
   };
+
+  const saveCurrentTreeAs = () => {
+    setTreeNameDraft('');
+    setNamePromptVisible(true);
+  };
+
+  const confirmSaveCurrentTreeAs = () => {
+    const name = treeNameDraft.trim();
+    if (!name) return;
+    const nextEntry = {
+      id: `tree_${Date.now()}`,
+      name,
+      tree: normalizeTree(tR.current),
+      updatedAt: Date.now(),
+    };
+    const nextLibrary = [nextEntry, ...savedTrees];
+    persistSavedTrees(nextLibrary);
+    persistSelectedTree(nextEntry.id);
+    persistWorkingTree(nextEntry.tree);
+    setNamePromptVisible(false);
+    setTreeNameDraft('');
+  };
+
+  const overwriteSelectedTree = () => {
+    if (!selectedTreeId) {
+      Alert.alert('No selected tree', 'Choose a saved tree first or save as a new tree.');
+      return;
+    }
+    const nextLibrary = savedTrees.map((entry) => (
+      entry.id === selectedTreeId
+        ? { ...entry, tree: normalizeTree(tR.current), updatedAt: Date.now() }
+        : entry
+    ));
+    persistSavedTrees(nextLibrary);
+    persistWorkingTree(tR.current);
+  };
+
+  const switchToTree = (treeId) => {
+    const target = savedTrees.find((entry) => entry.id === treeId);
+    if (!target) return;
+    const next = normalizeTree(target.tree);
+    resetHistoryWithTree(next);
+    persistWorkingTree(next);
+    persistSelectedTree(treeId);
+    setLibraryVisible(false);
+  };
+
+  const loadDefaultTree = () => {
+    const next = normalizeTree(INIT);
+    resetHistoryWithTree(next);
+    persistWorkingTree(next);
+    persistSelectedTree(null);
+    setLibraryVisible(false);
+  };
+
+  const deleteSelectedTree = () => {
+    if (!selectedTreeId) return;
+    const entry = savedTrees.find((t) => t.id === selectedTreeId);
+    Alert.alert('Delete tree', `Delete "${entry?.name || 'this tree'}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: () => {
+          const nextLibrary = savedTrees.filter((t) => t.id !== selectedTreeId);
+          persistSavedTrees(nextLibrary);
+          persistSelectedTree(null);
+        },
+      },
+    ]);
+  };
+
 
   const nodeMap = useMemo(() => new Map(tree.nodes.map((n) => [n.id, n])), [tree.nodes]);
   const incomingByNode = useMemo(() => {
@@ -591,7 +717,6 @@ export default function TreeScreen({ onTreeChange }) {
       };
     };
 
-    };
 
     for (const n of visibleNodes) {
       const branch = resolveBranch(n);
@@ -668,7 +793,7 @@ export default function TreeScreen({ onTreeChange }) {
     <View style={styles.root}>
       <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
         <View style={styles.titleWrap}>
-          <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC SKILL TREE</GlowText>
+          <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC</GlowText>
         </View>
         <View style={styles.barRight}>
           {!bld && (
@@ -704,6 +829,22 @@ export default function TreeScreen({ onTreeChange }) {
           <View style={styles.tg}>
             <TouchableOpacity style={[styles.uBtn, !canUndo && styles.dim]} onPress={undo} disabled={!canUndo}><Text style={styles.uT}>Undo</Text></TouchableOpacity>
             <TouchableOpacity style={[styles.uBtn, !canRedo && styles.dim]} onPress={redo} disabled={!canRedo}><Text style={styles.uT}>Redo</Text></TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {bld && (
+        <View style={styles.treeMgrWrap}>
+          <View style={styles.treeMgrHeaderRow}>
+            <Text style={styles.treeMgrTitle}>TREE SLOT</Text>
+            <Text style={styles.treeMgrCurrent}>{selectedTreeId ? (savedTrees.find((t) => t.id === selectedTreeId)?.name || 'Saved') : 'Default'}</Text>
+          </View>
+          <View style={styles.treeMgrActions}>
+            <TouchableOpacity style={styles.miniBtn} onPress={saveCurrentTreeAs}><Text style={styles.miniBtnT}>Save As</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.miniBtn} onPress={overwriteSelectedTree}><Text style={styles.miniBtnT}>Overwrite</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.miniBtn} onPress={() => setLibraryVisible(true)}><Text style={styles.miniBtnT}>Switch</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.miniBtn} onPress={loadDefaultTree}><Text style={styles.miniBtnT}>Default</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.miniBtn, !selectedTreeId && styles.dim]} onPress={deleteSelectedTree} disabled={!selectedTreeId}><Text style={styles.miniBtnT}>Delete</Text></TouchableOpacity>
           </View>
         </View>
       )}
@@ -803,6 +944,45 @@ export default function TreeScreen({ onTreeChange }) {
         </View>
       )}
 
+      <Modal transparent visible={namePromptVisible} animationType="fade" onRequestClose={() => setNamePromptVisible(false)}>
+        <View style={styles.slotModalBack}>
+          <View style={styles.slotModalCard}>
+            <Text style={styles.slotModalTitle}>Save Tree</Text>
+            <TextInput
+              value={treeNameDraft}
+              onChangeText={setTreeNameDraft}
+              placeholder="Tree name"
+              placeholderTextColor={Colors.text.tertiary}
+              style={styles.slotInput}
+              autoFocus
+            />
+            <View style={styles.slotRow}>
+              <TouchableOpacity style={styles.slotBtn} onPress={() => setNamePromptVisible(false)}><Text style={styles.slotBtnT}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.slotBtn, !treeNameDraft.trim() && styles.dim]} onPress={confirmSaveCurrentTreeAs} disabled={!treeNameDraft.trim()}><Text style={styles.slotBtnT}>Save</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal transparent visible={libraryVisible} animationType="fade" onRequestClose={() => setLibraryVisible(false)}>
+        <View style={styles.slotModalBack}>
+          <View style={styles.slotModalCard}>
+            <Text style={styles.slotModalTitle}>Switch Tree</Text>
+            <TouchableOpacity style={styles.slotListItem} onPress={loadDefaultTree}>
+              <Text style={styles.slotListTitle}>Default</Text>
+              <Text style={styles.slotListMeta}>INIT</Text>
+            </TouchableOpacity>
+            {savedTrees.map((entry) => (
+              <TouchableOpacity key={entry.id} style={styles.slotListItem} onPress={() => switchToTree(entry.id)}>
+                <Text style={styles.slotListTitle}>{entry.name}</Text>
+                <Text style={styles.slotListMeta}>{new Date(entry.updatedAt || Date.now()).toLocaleDateString()}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={styles.slotBtn} onPress={() => setLibraryVisible(false)}><Text style={styles.slotBtnT}>Close</Text></TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <NamePrompt visible={prompt} onConfirm={addNode} onCancel={() => showPrompt(false)} />
       {sel && !bld && (
         <SkillCard
@@ -882,6 +1062,38 @@ const styles = StyleSheet.create({
   hintT: {
     color: Colors.text.tertiary, fontSize: 11, textAlign: 'center', letterSpacing: 0.5,
   },
+  treeMgrWrap: {
+    backgroundColor: Colors.background.secondary,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: Colors.border.default,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  treeMgrHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  treeMgrTitle: { color: Colors.text.tertiary, fontSize: 10, letterSpacing: 1.4, fontWeight: '700' },
+  treeMgrCurrent: { color: Colors.text.secondary, fontSize: 11, fontWeight: '700' },
+  treeMgrActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  miniBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    backgroundColor: Colors.background.cardAlt,
+  },
+  miniBtnT: { color: Colors.text.secondary, fontSize: 11, fontWeight: '700' },
+  slotModalBack: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', paddingHorizontal: 24 },
+  slotModalCard: { backgroundColor: Colors.background.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border.default, padding: 16, gap: 10 },
+  slotModalTitle: { color: Colors.text.secondary, fontSize: 13, fontWeight: '800', letterSpacing: 1.2 },
+  slotInput: { borderWidth: 1, borderColor: Colors.border.default, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10, color: Colors.text.primary, backgroundColor: Colors.background.cardAlt },
+  slotRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  slotBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.background.cardAlt, alignSelf: 'flex-end' },
+  slotBtnT: { color: Colors.text.secondary, fontWeight: '700' },
+  slotListItem: { borderWidth: 1, borderColor: Colors.border.default, borderRadius: 8, padding: 10, backgroundColor: Colors.background.cardAlt, gap: 2 },
+  slotListTitle: { color: Colors.text.secondary, fontWeight: '700' },
+  slotListMeta: { color: Colors.text.tertiary, fontSize: 11 },
   canvas: { flex: 1, backgroundColor: '#0A0A0A', overflow: 'hidden' },
   legend: {
     flexDirection: 'row', justifyContent: 'center', gap: 28, paddingVertical: 12,
