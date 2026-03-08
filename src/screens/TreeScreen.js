@@ -212,10 +212,9 @@ export default function TreeScreen({ onTreeChange }) {
       });
 
     pan.maxPointers(1).minDistance(1).averageTouches(true);
-    pinch.minPointers(2);
     tap.requireExternalGestureToFail(pan, pinch);
 
-    return Gesture.Simultaneous(pan, pinch, tap);
+    return Gesture.Exclusive(tap, Gesture.Simultaneous(pan, pinch));
   }, []);
 
   const panR = useRef(PanResponder.create({
@@ -452,7 +451,7 @@ export default function TreeScreen({ onTreeChange }) {
 
   const visibleBounds = useMemo(() => {
     if (!canvasSize.width || !canvasSize.height) return null;
-    const interactionPad = isInteracting ? (220 / xform.sc) : 0;
+    const interactionPad = isInteracting ? Math.max(360 / xform.sc, 260) : 0;
     return {
       left: (-xform.tx) / xform.sc - interactionPad,
       top: (-xform.ty) / xform.sc - interactionPad,
@@ -491,10 +490,23 @@ export default function TreeScreen({ onTreeChange }) {
     });
   }, [tree.edges, visibleNodeIds, visibleBounds, xform.sc, nodeMap]);
 
+  const lodTierRef = useRef('near');
   const lodTier = useMemo(() => {
-    if (xform.sc < 0.27) return 'far';
-    if (xform.sc < 0.62) return 'mid';
-    return 'near';
+    const prev = lodTierRef.current;
+    const sc = xform.sc;
+    let next = prev;
+
+    if (prev === 'near') {
+      if (sc < 0.56) next = 'mid';
+    } else if (prev === 'mid') {
+      if (sc < 0.23) next = 'far';
+      else if (sc > 0.68) next = 'near';
+    } else if (prev === 'far' && sc > 0.31) {
+      next = 'mid';
+    }
+
+    lodTierRef.current = next;
+    return next;
   }, [xform.sc]);
 
   const LOD = useMemo(() => {
@@ -523,14 +535,17 @@ export default function TreeScreen({ onTreeChange }) {
   const nodeStyles = useMemo(() => {
     const nb = BRANCH_COLORS.neutral;
     const map = {};
-    const makeVisual = (bc, status) => {
+    const makeVisual = (branch, bc, status) => {
       const baseFill = status === 'mastered' ? toRGBA(bc.main, 0.22) : status === 'ready' ? toRGBA(bc.main, 0.17) : toRGBA(bc.main, 0.11);
       const innerFill = status === 'mastered' ? toRGBA(bc.main, 0.32) : status === 'ready' ? toRGBA(bc.main, 0.24) : toRGBA(bc.main, 0.15);
       const core = status === 'mastered' ? toRGBA(bc.ring, 0.24) : status === 'ready' ? toRGBA(bc.ring, 0.18) : toRGBA(bc.ring, 0.12);
       const strokeAlpha = status === 'mastered' ? 0.96 : status === 'ready' ? 0.88 : 0.48;
       const ringAlpha = status === 'mastered' ? 0.94 : status === 'ready' ? 0.82 : 0.46;
-      const glowOuterAlpha = status === 'mastered' ? 0.24 : status === 'ready' ? 0.19 : 0.12;
-      const glowInnerAlpha = status === 'mastered' ? 0.44 : status === 'ready' ? 0.34 : 0.20;
+      const glowOuterBase = status === 'mastered' ? 0.24 : status === 'ready' ? 0.19 : 0.12;
+      const glowInnerBase = status === 'mastered' ? 0.44 : status === 'ready' ? 0.34 : 0.20;
+      const branchBoost = branch === 'push' ? 1.08 : branch === 'pull' ? 1.12 : branch === 'core' ? 0.82 : 1;
+      const glowOuterAlpha = glowOuterBase * branchBoost;
+      const glowInnerAlpha = glowInnerBase * branchBoost;
       return {
         fill: baseFill,
         innerFill,
@@ -540,10 +555,10 @@ export default function TreeScreen({ onTreeChange }) {
         ring: toRGBA(bc.ring, ringAlpha),
         glowInner: toRGBA(bc.ring, glowInnerAlpha),
         glowOuter: toRGBA(bc.main, glowOuterAlpha),
-        ambient: toRGBA(bc.main, status === 'mastered' ? 0.10 : status === 'ready' ? 0.075 : 0.05),
-        farAura: toRGBA(bc.main, status === 'locked' ? 0.12 : status === 'ready' ? 0.18 : 0.2),
-        farBody: toRGBA(bc.main, status === 'locked' ? 0.28 : status === 'ready' ? 0.40 : 0.48),
-        farCore: toRGBA(bc.ring, status === 'locked' ? 0.42 : status === 'ready' ? 0.58 : 0.68),
+        ambient: toRGBA(bc.main, status === 'mastered' ? (branch === 'core' ? 0.075 : 0.11) : status === 'ready' ? (branch === 'core' ? 0.06 : 0.082) : 0.05),
+        farAura: toRGBA(bc.main, status === 'locked' ? (branch === 'core' ? 0.1 : 0.14) : status === 'ready' ? 0.2 : 0.22),
+        farBody: toRGBA(bc.main, status === 'locked' ? (branch === 'core' ? 0.24 : 0.32) : status === 'ready' ? 0.42 : 0.5),
+        farCore: toRGBA(bc.ring, status === 'locked' ? (branch === 'core' ? 0.36 : 0.46) : status === 'ready' ? 0.6 : 0.7),
         innerRing: toRGBA(bc.main, status === 'locked' ? 0.22 : 0.34),
         innerRingSoft: toRGBA(bc.ring, status === 'locked' ? 0.24 : 0.42),
         specular: status === 'locked' ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.2)',
@@ -559,7 +574,7 @@ export default function TreeScreen({ onTreeChange }) {
 
       if (bld && connA === n.id) {
         map[n.id] = {
-          ...makeVisual(nb, 'ready'),
+          ...makeVisual('neutral', nb, 'ready'),
           fill: '#0F1E33',
           innerFill: '#173250',
           core: 'rgba(96,165,250,0.2)',
@@ -573,7 +588,7 @@ export default function TreeScreen({ onTreeChange }) {
       } else if (status === 'start') {
         const startBc = BRANCH_COLORS.neutral;
         map[n.id] = {
-          ...makeVisual(startBc, 'ready'),
+          ...makeVisual('neutral', startBc, 'ready'),
           fill: 'rgba(12,26,46,0.88)',
           innerFill: 'rgba(16,42,72,0.9)',
           core: 'rgba(147,197,253,0.22)',
@@ -586,7 +601,7 @@ export default function TreeScreen({ onTreeChange }) {
           sw: 2.45,
         };
       } else {
-        map[n.id] = makeVisual(bc, status);
+        map[n.id] = makeVisual(branch, bc, status);
       }
     }
     return map;

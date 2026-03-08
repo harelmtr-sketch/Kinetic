@@ -35,7 +35,7 @@ export const BRANCH_COLORS = {
   neutral: { main: '#60A5FA', edgeHex: '#93C5FD', glow: 'rgba(96,165,250,0.5)', edge: 'rgba(96,165,250,0.86)', ring: '#BFDBFE' },
   push: { main: '#22C55E', edgeHex: '#4ADE80', glow: 'rgba(34,197,94,0.55)', edge: 'rgba(74,222,128,0.9)', ring: '#BBF7D0' },
   pull: { main: '#7C3AED', edgeHex: '#A78BFA', glow: 'rgba(124,58,237,0.56)', edge: 'rgba(167,139,250,0.9)', ring: '#DDD6FE' },
-  core: { main: '#FACC15', edgeHex: '#FDE047', glow: 'rgba(250,204,21,0.56)', edge: 'rgba(253,224,71,0.94)', ring: '#FEF08A' },
+  core: { main: '#EAB308', edgeHex: '#FACC15', glow: 'rgba(234,179,8,0.46)', edge: 'rgba(250,204,21,0.88)', ring: '#FDE68A' },
 };
 
 export const C = {
