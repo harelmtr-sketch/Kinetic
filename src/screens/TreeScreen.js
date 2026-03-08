@@ -665,33 +665,34 @@ export default function TreeScreen({ onTreeChange }) {
       const isLocked = status === 'locked';
       if (isLocked) {
         return {
-          fill: 'rgba(44,39,35,0.54)',
-          innerFill: 'rgba(30,27,24,0.78)',
-          core: 'rgba(86,80,73,0.38)',
-          outerRim: 'rgba(110,99,88,0.26)',
-          stroke: 'rgba(138,124,108,0.42)',
-          ring: 'rgba(128,115,100,0.28)',
-          glowInner: toRGBA(bc.main, 0.12),
-          glowOuter: toRGBA(bc.main, 0.08),
-          ambient: 'rgba(18,16,14,0.12)',
-          farAura: toRGBA(bc.main, 0.08),
-          farBody: 'rgba(88,78,68,0.34)',
-          farCore: 'rgba(132,118,102,0.34)',
-          innerRing: 'rgba(121,108,93,0.28)',
-          innerRingSoft: 'rgba(86,76,67,0.26)',
-          specular: 'rgba(228,216,202,0.08)',
-          sw: 1.4,
-          opacity: 0.82,
+          fill: 'rgba(36,33,29,0.78)',
+          innerFill: 'rgba(24,22,20,0.88)',
+          core: toRGBA(bc.main, 0.14),
+          outerRim: 'rgba(118,104,89,0.22)',
+          stroke: toRGBA(bc.main, 0.38),
+          ring: 'rgba(124,111,97,0.24)',
+          glowInner: toRGBA(bc.main, 0.11),
+          glowOuter: toRGBA(bc.main, 0.07),
+          ambient: toRGBA(bc.main, 0.04),
+          farAura: toRGBA(bc.main, 0.12),
+          farBody: toRGBA(bc.main, 0.24),
+          farCore: toRGBA(bc.ring, 0.26),
+          innerRing: 'rgba(112,100,86,0.24)',
+          innerRingSoft: 'rgba(80,72,63,0.2)',
+          specular: 'rgba(226,214,198,0.06)',
+          sw: 1.6,
+          opacity: 0.88,
         };
       }
 
-      const baseFill = status === 'mastered' ? toRGBA(bc.main, 0.16) : toRGBA(bc.main, 0.12);
-      const innerFill = status === 'mastered' ? toRGBA(bc.main, 0.23) : toRGBA(bc.main, 0.17);
-      const core = status === 'mastered' ? toRGBA(bc.ring, 0.2) : toRGBA(bc.ring, 0.15);
-      const strokeAlpha = status === 'mastered' ? 0.93 : 0.84;
-      const ringAlpha = status === 'mastered' ? 0.88 : 0.76;
-      const glowOuterBase = status === 'mastered' ? 0.2 : 0.16;
-      const glowInnerBase = status === 'mastered' ? 0.34 : 0.28;
+      const isMastered = status === 'mastered';
+      const baseFill = isMastered ? toRGBA(bc.main, 0.2) : toRGBA(bc.main, 0.15);
+      const innerFill = isMastered ? toRGBA(bc.main, 0.28) : toRGBA(bc.main, 0.22);
+      const core = isMastered ? toRGBA(bc.ring, 0.28) : toRGBA(bc.ring, 0.22);
+      const strokeAlpha = isMastered ? 0.94 : 0.86;
+      const ringAlpha = isMastered ? 0.84 : 0.72;
+      const glowOuterBase = isMastered ? 0.24 : 0.2;
+      const glowInnerBase = isMastered ? 0.38 : 0.32;
       const branchBoost = branch === 'push' ? 1.08 : branch === 'pull' ? 1.1 : 1;
       const glowOuterAlpha = glowOuterBase * branchBoost;
       const glowInnerAlpha = glowInnerBase * branchBoost;
@@ -700,19 +701,19 @@ export default function TreeScreen({ onTreeChange }) {
         fill: baseFill,
         innerFill,
         core,
-        outerRim: toRGBA(bc.ring, 0.24),
+        outerRim: toRGBA(bc.ring, 0.19),
         stroke: toRGBA(bc.main, strokeAlpha),
         ring: toRGBA(bc.ring, ringAlpha),
         glowInner: toRGBA(bc.ring, glowInnerAlpha),
         glowOuter: toRGBA(bc.main, glowOuterAlpha),
-        ambient: toRGBA(bc.main, status === 'mastered' ? 0.068 : 0.052),
-        farAura: toRGBA(bc.main, status === 'mastered' ? 0.18 : 0.15),
-        farBody: toRGBA(bc.main, status === 'mastered' ? 0.46 : 0.38),
-        farCore: toRGBA(bc.ring, status === 'mastered' ? 0.66 : 0.54),
-        innerRing: toRGBA(bc.main, 0.30),
-        innerRingSoft: toRGBA(bc.ring, 0.34),
-        specular: 'rgba(240,246,255,0.14)',
-        sw: status === 'mastered' ? 2.4 : 2.1,
+        ambient: toRGBA(bc.main, isMastered ? 0.078 : 0.064),
+        farAura: toRGBA(bc.main, isMastered ? 0.2 : 0.17),
+        farBody: toRGBA(bc.main, isMastered ? 0.5 : 0.42),
+        farCore: toRGBA(bc.ring, isMastered ? 0.72 : 0.6),
+        innerRing: toRGBA(bc.main, 0.27),
+        innerRingSoft: toRGBA(bc.ring, 0.24),
+        specular: 'rgba(240,246,255,0.12)',
+        sw: isMastered ? 2.35 : 2.05,
         opacity: 0.98,
       };
     };
@@ -734,6 +735,7 @@ export default function TreeScreen({ onTreeChange }) {
           ring: toRGBA(nb.ring, 0.92),
           glowInner: toRGBA(nb.main, 0.46),
           glowOuter: toRGBA(nb.main, 0.24),
+          ambient: toRGBA(nb.main, 0.08),
           sw: 2.7,
         };
       } else if (status === 'start') {
@@ -747,6 +749,7 @@ export default function TreeScreen({ onTreeChange }) {
           ring: 'rgba(191,219,254,0.82)',
           glowInner: 'rgba(96,165,250,0.34)',
           glowOuter: 'rgba(59,130,246,0.2)',
+          ambient: 'rgba(59,130,246,0.1)',
           innerRing: 'rgba(96,165,250,0.3)',
           innerRingSoft: 'rgba(191,219,254,0.28)',
           sw: 2.45,
@@ -760,13 +763,13 @@ export default function TreeScreen({ onTreeChange }) {
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {
-      masteredW: 1.3, readyW: 1.0, lockedW: 0.6, masteredO: 0.74, readyO: 0.42, lockedO: 0.11,
+      masteredW: 1.4, readyW: 1.05, lockedW: 0.7, masteredO: 0.76, readyO: 0.46, lockedO: 0.14,
     };
     if (LOD.isMid) return {
-      masteredW: 2.1, readyW: 1.42, lockedW: 0.88, masteredO: 0.84, readyO: 0.52, lockedO: 0.15,
+      masteredW: 2.2, readyW: 1.5, lockedW: 0.95, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
     };
     return {
-      masteredW: 3.1, readyW: 2.0, lockedW: 0.98, masteredO: 0.92, readyO: 0.62, lockedO: 0.19,
+      masteredW: 3.0, readyW: 2.0, lockedW: 1.04, masteredO: 0.92, readyO: 0.65, lockedO: 0.2,
     };
   }, [LOD.isFar, LOD.isMid]);
 

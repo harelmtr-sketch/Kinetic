@@ -134,17 +134,18 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   const farNodeR = NODE_R * 0.34;
   return (
     <Canvas style={{ width: canvasSize.width, height: canvasSize.height }}>
-      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="#0A0A0A" />
-      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="rgba(16,16,16,0.92)" />
+      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="#050505" />
+      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="rgba(20,18,16,0.22)" />
       <Group transform={sceneTransform}>
         {LOD.showDust && <Atlas image={dustAtlas.image} sprites={dustAtlas.sprites} transforms={dustAtlas.transforms} />}
         {edgeSegments.map((edge) => {
           const w = edge.status === 'mastered' ? edgeVisual.masteredW : edge.status === 'ready' ? edgeVisual.readyW : edgeVisual.lockedW;
           const o = edge.status === 'mastered' ? edgeVisual.masteredO : edge.status === 'ready' ? edgeVisual.readyO : edgeVisual.lockedO;
-          const boostedO = Math.min(0.92, o + (edge.status === 'locked' ? 0.01 : 0.08));
+          const boostedO = Math.min(0.92, o + (edge.status === 'locked' ? 0.02 : 0.08));
           const color = edge.status === 'locked'
-            ? 'rgba(92,84,74,0.28)'
+            ? 'rgba(87,78,67,0.34)'
             : toRGBA(edge.branchColor.edgeHex, boostedO);
+          const dashIntervals = LOD.isFar ? [7, 8] : [11, 9];
           return (
             <Group key={edge.id}>
               {LOD.showEdgeGlow && !isInteracting && edge.status === 'mastered' && (
@@ -156,7 +157,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               {edge.status === 'mastered' && LOD.interactionTier !== 'heavy' && <Path path={edge.path} style="stroke" strokeWidth={w + 1.35} color={toRGBA(edge.branchColor.main, LOD.interactionTier === 'medium' ? 0.25 : 0.35)} strokeCap="round" />}
               {edge.status === 'ready' && <Path path={edge.path} style="stroke" strokeWidth={w + 0.65} color={toRGBA(edge.branchColor.edgeHex, 0.34)} strokeCap="round" />}
               <Path path={edge.path} style="stroke" strokeWidth={w} color={color} strokeCap="round">
-                {LOD.useDashedReady && edge.status === 'ready' && !bld && <DashPathEffect intervals={[12, 10]} />}
+                {edge.status !== 'mastered' && !bld && <DashPathEffect intervals={dashIntervals} />}
               </Path>
             </Group>
           );
@@ -176,37 +177,36 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const renderR = LOD.isFar ? farNodeR : NODE_R;
           const nodeStrokeWidth = LOD.isFar ? Math.max(0.8, visual.sw - 0.5) : visual.sw;
           const isFarNode = LOD.isFar;
-          const auraOpacity = status === 'locked' ? (isFarNode ? 0.20 : 0.16) : (isReady ? 0.24 : 0.18);
+          const auraOpacity = status === 'locked' ? (isFarNode ? 0.18 : 0.12) : (isReady ? 0.28 : 0.22);
           const auraColor = toRGBA(visual.stroke, auraOpacity);
-          const auraR = isFarNode ? NODE_R * 0.7 : (isLit ? NODE_R * 0.96 : NODE_R * 0.88);
+          const auraR = isFarNode ? NODE_R * 0.74 : (isLit ? NODE_R * 1.02 : NODE_R * 0.9);
           return (
             <Group key={n.id}>
-              {!isFarNode && <Circle cx={rx} cy={ry} r={NODE_R * 1.45} color={visual.ambient || toRGBA(visual.stroke, 0.03)} />}
+              {!isFarNode && <Circle cx={rx} cy={ry} r={NODE_R * 1.22} color={visual.ambient || toRGBA(visual.stroke, 0.03)} />}
               {LOD.showOuterRing && <Circle cx={rx} cy={ry} r={NODE_R + 13} style="stroke" strokeWidth={1.1} color={visual.ring} />}
               {LOD.showOuterRing && bld && connA === n.id && <Circle cx={rx} cy={ry} r={NODE_R + 16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />}
               {USE_GLOW && <Circle cx={rx} cy={ry} r={auraR} color={auraColor} />}
               {LOD.showNodeGlowBlur && !isInteracting && USE_GLOW && isLit && !isFarNode && (
                 <Group>
-                  <Circle cx={rx} cy={ry} r={NODE_R * 1.10} color={visual.glowOuter}><Blur blur={GLOW_QUALITY === 'high' ? 17 : 11} /></Circle>
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.82} color={visual.glowInner}><Blur blur={4.5} /></Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.98} color={visual.glowOuter}><Blur blur={GLOW_QUALITY === 'high' ? 14 : 9} /></Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.72} color={visual.glowInner}><Blur blur={3.5} /></Circle>
                 </Group>
               )}
               {isFarNode ? (
                 <Group>
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.4} color={visual.farAura || toRGBA(visual.stroke, 0.16)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.25} color={visual.farBody || toRGBA(visual.stroke, 0.36)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.12} color={visual.farCore || toRGBA(visual.ring, 0.56)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.31} style="stroke" strokeWidth={0.64} color={toRGBA(visual.stroke, 0.44)} />
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.43} color={visual.farAura || toRGBA(visual.stroke, 0.16)} />
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.28} color={visual.farBody || toRGBA(visual.stroke, 0.36)} />
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.13} color={visual.farCore || toRGBA(visual.ring, 0.56)} />
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.30} style="stroke" strokeWidth={0.72} color={toRGBA(visual.stroke, 0.5)} />
                 </Group>
               ) : (
                 <Group>
-                  <Circle cx={rx} cy={ry} r={renderR + 3.2} color={visual.outerRim} />
-                  <Circle cx={rx} cy={ry} r={renderR + 0.5} color={visual.fill} opacity={visual.opacity} />
-                  {!LOD.simplifyNodeStack && <Circle cx={rx} cy={ry} r={renderR - 4} color={visual.innerFill} opacity={0.94} />}
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.52} color={visual.core || toRGBA(visual.stroke, 0.14)} />
-                  <Circle cx={rx} cy={ry} r={renderR - 7} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
-                  {LOD.showInnerRing && <Circle cx={rx} cy={ry} r={NODE_R - 13} style="stroke" strokeWidth={1.1} color={visual.innerRing || visual.ring} opacity={0.62} />}
-                  {LOD.showInnerRing && <Circle cx={rx} cy={ry} r={NODE_R - 19} style="stroke" strokeWidth={0.9} color={visual.innerRingSoft || visual.ring} opacity={0.72} />}
+                  <Circle cx={rx} cy={ry} r={renderR + 2.4} color={visual.outerRim} />
+                  <Circle cx={rx} cy={ry} r={renderR + 0.1} color={visual.fill} opacity={visual.opacity} />
+                  {!LOD.simplifyNodeStack && <Circle cx={rx} cy={ry} r={renderR - 4.6} color={visual.innerFill} opacity={0.95} />}
+                  <Circle cx={rx} cy={ry} r={NODE_R * 0.34} color={visual.core || toRGBA(visual.stroke, 0.14)} />
+                  <Circle cx={rx} cy={ry} r={renderR - 6.7} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
+                  {LOD.showInnerRing && <Circle cx={rx} cy={ry} r={NODE_R - 13.4} style="stroke" strokeWidth={0.95} color={visual.innerRing || visual.ring} opacity={0.58} />}
                   {LOD.showNodeHighlight && <Circle cx={rx - 10} cy={ry - 11} r={NODE_R * 0.13} color={visual.specular || "rgba(255,255,255,0.22)"} />}
                 </Group>
               )}
@@ -232,20 +232,19 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             {USE_GLOW && <Circle cx={0} cy={0} r={draggedNodeMeta.auraR} color={draggedNodeMeta.auraColor} />}
             {LOD.isFar ? (
               <Group>
-                <Circle cx={0} cy={0} r={NODE_R * 0.4} color={draggedNodeMeta.visual.farAura || toRGBA(draggedNodeMeta.visual.stroke, 0.16)} />
-                <Circle cx={0} cy={0} r={NODE_R * 0.25} color={draggedNodeMeta.visual.farBody || toRGBA(draggedNodeMeta.visual.stroke, 0.36)} />
-                <Circle cx={0} cy={0} r={NODE_R * 0.12} color={draggedNodeMeta.visual.farCore || toRGBA(draggedNodeMeta.visual.ring, 0.56)} />
-                <Circle cx={0} cy={0} r={NODE_R * 0.31} style="stroke" strokeWidth={0.64} color={toRGBA(draggedNodeMeta.visual.stroke, 0.44)} />
+                <Circle cx={0} cy={0} r={NODE_R * 0.43} color={draggedNodeMeta.visual.farAura || toRGBA(draggedNodeMeta.visual.stroke, 0.16)} />
+                <Circle cx={0} cy={0} r={NODE_R * 0.28} color={draggedNodeMeta.visual.farBody || toRGBA(draggedNodeMeta.visual.stroke, 0.36)} />
+                <Circle cx={0} cy={0} r={NODE_R * 0.13} color={draggedNodeMeta.visual.farCore || toRGBA(draggedNodeMeta.visual.ring, 0.56)} />
+                <Circle cx={0} cy={0} r={NODE_R * 0.30} style="stroke" strokeWidth={0.72} color={toRGBA(draggedNodeMeta.visual.stroke, 0.5)} />
               </Group>
             ) : (
               <Group>
-                <Circle cx={0} cy={0} r={NODE_R + 3.2} color={draggedNodeMeta.visual.outerRim} />
-                <Circle cx={0} cy={0} r={NODE_R + 0.5} color={draggedNodeMeta.visual.fill} opacity={draggedNodeMeta.visual.opacity} />
-                {!LOD.simplifyNodeStack && <Circle cx={0} cy={0} r={NODE_R - 4} color={draggedNodeMeta.visual.innerFill} opacity={0.94} />}
-                <Circle cx={0} cy={0} r={NODE_R * 0.52} color={draggedNodeMeta.visual.core || toRGBA(draggedNodeMeta.visual.stroke, 0.14)} />
-                <Circle cx={0} cy={0} r={NODE_R - 7} style="stroke" strokeWidth={draggedNodeMeta.visual.sw} color={draggedNodeMeta.visual.stroke} opacity={draggedNodeMeta.visual.opacity} />
-                {LOD.showInnerRing && <Circle cx={0} cy={0} r={NODE_R - 13} style="stroke" strokeWidth={1.1} color={draggedNodeMeta.visual.innerRing || draggedNodeMeta.visual.ring} opacity={0.62} />}
-                {LOD.showInnerRing && <Circle cx={0} cy={0} r={NODE_R - 19} style="stroke" strokeWidth={0.9} color={draggedNodeMeta.visual.innerRingSoft || draggedNodeMeta.visual.ring} opacity={0.72} />}
+                <Circle cx={0} cy={0} r={NODE_R + 2.4} color={draggedNodeMeta.visual.outerRim} />
+                <Circle cx={0} cy={0} r={NODE_R + 0.1} color={draggedNodeMeta.visual.fill} opacity={draggedNodeMeta.visual.opacity} />
+                {!LOD.simplifyNodeStack && <Circle cx={0} cy={0} r={NODE_R - 4.6} color={draggedNodeMeta.visual.innerFill} opacity={0.95} />}
+                <Circle cx={0} cy={0} r={NODE_R * 0.34} color={draggedNodeMeta.visual.core || toRGBA(draggedNodeMeta.visual.stroke, 0.14)} />
+                <Circle cx={0} cy={0} r={NODE_R - 6.7} style="stroke" strokeWidth={draggedNodeMeta.visual.sw} color={draggedNodeMeta.visual.stroke} opacity={draggedNodeMeta.visual.opacity} />
+                {LOD.showInnerRing && <Circle cx={0} cy={0} r={NODE_R - 13.4} style="stroke" strokeWidth={0.95} color={draggedNodeMeta.visual.innerRing || draggedNodeMeta.visual.ring} opacity={0.58} />}
                 {LOD.showNodeHighlight && <Circle cx={-10} cy={-11} r={NODE_R * 0.13} color={draggedNodeMeta.visual.specular || "rgba(255,255,255,0.22)"} />}
               </Group>
             )}
