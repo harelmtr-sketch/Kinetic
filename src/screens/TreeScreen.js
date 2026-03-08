@@ -21,7 +21,7 @@ import {
 } from '../constants/tree';
 import { INIT } from '../data/initialTree';
 import {
-  normalizeTree, segDist, resolveBranch, toRGBA,
+  normalizeTree, segDist, resolveBranch, segmentIntersectsRect, toRGBA,
 } from '../utils/treeUtils';
 
 export default function TreeScreen({ onTreeChange }) {
@@ -106,6 +106,11 @@ export default function TreeScreen({ onTreeChange }) {
   const dId = useRef(null); const dNx = useRef(0); const dNy = useRef(0); const dPx = useRef(0); const dPy = useRef(0);
   const dragLive = useRef({ id: null, x: 0, y: 0 });
   const [isInteracting, setIsInteracting] = useState(false);
+  const interactionTier = useMemo(() => {
+    if (!isInteracting) return 'idle';
+    if (xform.sc < 0.4) return 'heavy';
+    return xform.sc < 0.9 ? 'medium' : 'light';
+  }, [isInteracting, xform.sc]);
 
   const setDragPos = (id, x, y) => {
     dragXV.value = x;
@@ -383,6 +388,56 @@ export default function TreeScreen({ onTreeChange }) {
     ));
   }, [tree.nodes, visibleBounds, xform.sc]);
 
+  const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((n) => n.id)), [visibleNodes]);
+
+  const visibleEdges = useMemo(() => {
+    if (!visibleBounds) return tree.edges;
+    const edgeMargin = NODE_R * (xform.sc < 0.6 ? 1.6 : 2.2);
+    const edgeRect = {
+      left: visibleBounds.left - edgeMargin,
+      top: visibleBounds.top - edgeMargin,
+      right: visibleBounds.right + edgeMargin,
+      bottom: visibleBounds.bottom + edgeMargin,
+    };
+
+    return tree.edges.filter((e) => {
+      if (visibleNodeIds.has(e.from) || visibleNodeIds.has(e.to)) return true;
+      const fn = nodeMap.get(e.from);
+      const tn = nodeMap.get(e.to);
+      if (!fn || !tn) return false;
+      return segmentIntersectsRect(fn.x, fn.y, tn.x, tn.y, edgeRect);
+    });
+  }, [tree.edges, visibleNodeIds, visibleBounds, xform.sc, nodeMap]);
+
+  const lodTier = useMemo(() => {
+    if (xform.sc < 0.32) return 'far';
+    if (xform.sc < 0.72) return 'mid';
+    return 'near';
+  }, [xform.sc]);
+
+  const LOD = useMemo(() => {
+    const isFar = lodTier === 'far';
+    const isMid = lodTier === 'mid';
+    const isNear = lodTier === 'near';
+    const forceCheap = interactionTier === 'heavy';
+
+    return {
+      isFar,
+      isMid,
+      isNear,
+      interactionTier,
+      showLabels: isNear && interactionTier === 'idle',
+      showInnerRing: !isFar && !forceCheap,
+      showOuterRing: isNear && interactionTier !== 'heavy',
+      useDashedReady: isNear && interactionTier === 'idle',
+      showEdgeGlow: isNear && interactionTier === 'idle',
+      showNodeGlowBlur: isNear && interactionTier === 'idle',
+      simplifyNodeStack: isFar || interactionTier === 'heavy',
+      showNodeHighlight: !isFar && interactionTier !== 'heavy',
+      showDust: !forceCheap,
+    };
+  }, [interactionTier, lodTier]);
+
   const nodeStyles = useMemo(() => {
     const nb = BRANCH_COLORS.neutral;
     const map = {};
@@ -424,25 +479,6 @@ export default function TreeScreen({ onTreeChange }) {
     }
     return map;
   }, [visibleNodes, nodeStatusMap, bld, connA]);
-
-  const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((n) => n.id)), [visibleNodes]);
-  const visibleEdges = useMemo(() => tree.edges.filter((e) => visibleNodeIds.has(e.from) || visibleNodeIds.has(e.to)), [tree.edges, visibleNodeIds]);
-
-  const lodTier = useMemo(() => {
-    if (xform.sc < 0.35) return 'far';
-    if (xform.sc < 0.75) return 'mid';
-    return 'near';
-  }, [xform.sc]);
-
-  const LOD = useMemo(() => ({
-    isFar: lodTier === 'far',
-    isMid: lodTier === 'mid',
-    isNear: lodTier === 'near',
-    showLabels: lodTier === 'near',
-    showInnerRing: lodTier !== 'far',
-    showOuterRing: lodTier === 'near',
-    useDashedReady: lodTier === 'near',
-  }), [lodTier]);
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {

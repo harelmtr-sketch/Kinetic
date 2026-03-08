@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   Blur,
   Atlas,
@@ -86,6 +86,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     return { image, sprites, transforms };
   }, []);
 
+  const edgePathCache = useRef(new Map());
+
   const edgeData = useMemo(() => visibleEdges.map((e, idx) => {
     const fn = nodeMap.get(e.from);
     const tn = nodeMap.get(e.to);
@@ -103,17 +105,36 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     };
   }).filter(Boolean), [bld, nodeMap, nodeStatusMap, visibleEdges]);
 
-  const edgeSegments = useMemo(() => edgeData.map(({
-    id, fn, tn, status, branchColor,
-  }) => ({
-    id, path: buildEdgePath(fn, tn), status, branchColor,
-  })), [edgeData]);
+  const edgeSegments = useMemo(() => {
+    const cache = edgePathCache.current;
+    const seen = new Set();
+    const segments = edgeData.map(({
+      id, fn, tn, status, branchColor,
+    }) => {
+      const key = `${fn.id}->${tn.id}:${fn.x},${fn.y}|${tn.x},${tn.y}`;
+      seen.add(key);
+      let path = cache.get(key);
+      if (!path) {
+        path = buildEdgePath(fn, tn);
+        cache.set(key, path);
+      }
+      return {
+        id, path, status, branchColor,
+      };
+    });
+
+    for (const key of cache.keys()) {
+      if (!seen.has(key)) cache.delete(key);
+    }
+
+    return segments;
+  }, [edgeData]);
 
   const farNodeR = NODE_R * 0.34;
   return (
     <Canvas style={{ width: canvasSize.width, height: canvasSize.height }}>
       <Group transform={sceneTransform}>
-        <Atlas image={dustAtlas.image} sprites={dustAtlas.sprites} transforms={dustAtlas.transforms} />
+        {LOD.showDust && <Atlas image={dustAtlas.image} sprites={dustAtlas.sprites} transforms={dustAtlas.transforms} />}
         {edgeSegments.map((edge) => {
           const w = edge.status === 'mastered' ? edgeVisual.masteredW : edge.status === 'ready' ? edgeVisual.readyW : edgeVisual.lockedW;
           const o = edge.status === 'mastered' ? edgeVisual.masteredO : edge.status === 'ready' ? edgeVisual.readyO : edgeVisual.lockedO;
@@ -123,10 +144,10 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             : toRGBA(edge.branchColor.edgeHex, boostedO);
           return (
             <Group key={edge.id}>
-              {LOD.isNear && !isInteracting && edge.status !== 'locked' && (
+              {LOD.showEdgeGlow && !isInteracting && edge.status !== 'locked' && (
                 <Path path={edge.path} style="stroke" strokeWidth={w + 4.8} color={toRGBA(edge.branchColor.main, edge.status === 'mastered' ? 0.32 : 0.22)} strokeCap="round" />
               )}
-              {edge.status === 'mastered' && <Path path={edge.path} style="stroke" strokeWidth={w + 1.5} color={toRGBA(edge.branchColor.main, 0.38)} strokeCap="round" />}
+              {edge.status === 'mastered' && LOD.interactionTier !== 'heavy' && <Path path={edge.path} style="stroke" strokeWidth={w + 1.5} color={toRGBA(edge.branchColor.main, LOD.interactionTier === 'medium' ? 0.28 : 0.38)} strokeCap="round" />}
               <Path path={edge.path} style="stroke" strokeWidth={w} color={color} strokeCap="round">
                 {LOD.useDashedReady && edge.status === 'ready' && !bld && <DashPathEffect intervals={[12, 10]} />}
               </Path>
@@ -155,7 +176,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               {LOD.showOuterRing && <Circle cx={rx} cy={ry} r={NODE_R + 13} style="stroke" strokeWidth={1.1} color={visual.ring} />}
               {LOD.showOuterRing && bld && connA === n.id && <Circle cx={rx} cy={ry} r={NODE_R + 16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />}
               {USE_GLOW && <Circle cx={rx} cy={ry} r={auraR} color={auraColor} />}
-              {LOD.isNear && !isInteracting && USE_GLOW && isLit && (
+              {LOD.showNodeGlowBlur && !isInteracting && USE_GLOW && isLit && (
                 <Group>
                   <Circle cx={rx} cy={ry} r={NODE_R * 1.10} color={visual.glowOuter}><Blur blur={GLOW_QUALITY === 'high' ? 18 : 12} /></Circle>
                   <Circle cx={rx} cy={ry} r={NODE_R * 0.82} color={visual.glowInner}><Blur blur={5} /></Circle>
@@ -163,10 +184,10 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               )}
               <Circle cx={rx} cy={ry} r={renderR + 2} color={visual.outerRim} />
               <Circle cx={rx} cy={ry} r={renderR} color={visual.fill} opacity={visual.opacity} />
-              <Circle cx={rx} cy={ry} r={renderR - 3} color={visual.innerFill} opacity={0.92} />
+              {!LOD.simplifyNodeStack && <Circle cx={rx} cy={ry} r={renderR - 3} color={visual.innerFill} opacity={0.92} />}
               <Circle cx={rx} cy={ry} r={renderR - 7} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
               {LOD.showInnerRing && <Circle cx={rx} cy={ry} r={NODE_R - 13} style="stroke" strokeWidth={1} color={visual.ring} opacity={0.55} />}
-              {!LOD.isFar && <Circle cx={rx - 10} cy={ry - 11} r={NODE_R * 0.13} color="rgba(255,255,255,0.22)" />}
+              {LOD.showNodeHighlight && <Circle cx={rx - 10} cy={ry - 11} r={NODE_R * 0.13} color="rgba(255,255,255,0.22)" />}
               {LOD.showLabels && !isInteracting && lines.map((ln, li) => {
                 const x = rx - (ln.length * 2.8);
                 const y = sy + li * lh;
@@ -192,7 +213,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             <Circle cx={0} cy={0} r={NODE_R - 3} color={draggedNodeMeta.visual.innerFill} opacity={0.92} />
             <Circle cx={0} cy={0} r={NODE_R - 7} style="stroke" strokeWidth={draggedNodeMeta.visual.sw} color={draggedNodeMeta.visual.stroke} opacity={draggedNodeMeta.visual.opacity} />
             {LOD.showInnerRing && <Circle cx={0} cy={0} r={NODE_R - 13} style="stroke" strokeWidth={1} color={draggedNodeMeta.visual.ring} opacity={0.55} />}
-            <Circle cx={-10} cy={-11} r={NODE_R * 0.13} color="rgba(255,255,255,0.22)" />
+            {LOD.showNodeHighlight && <Circle cx={-10} cy={-11} r={NODE_R * 0.13} color="rgba(255,255,255,0.22)" />}
             {LOD.showLabels && !isInteracting && draggedNodeMeta.lines.map((ln, li) => {
               const glow1 = draggedNodeMeta.isLit ? toRGBA(draggedNodeMeta.visual.stroke, 0.28) : 'rgba(100,120,148,0.10)';
               const mainColor = draggedNodeMeta.isLit ? '#F8FAFC' : '#8898AA';

@@ -26,6 +26,33 @@ export function segDist(px, py, ax, ay, bx, by) {
   return Math.hypot(px - ax - t * dx, py - ay - t * dy);
 }
 
+export function segmentIntersectsRect(ax, ay, bx, by, rect) {
+  const { left, top, right, bottom } = rect;
+  const pointInRect = (x, y) => x >= left && x <= right && y >= top && y <= bottom;
+  if (pointInRect(ax, ay) || pointInRect(bx, by)) return true;
+
+  const minX = Math.min(ax, bx);
+  const maxX = Math.max(ax, bx);
+  const minY = Math.min(ay, by);
+  const maxY = Math.max(ay, by);
+  if (maxX < left || minX > right || maxY < top || minY > bottom) return false;
+
+  const edgeIntersects = (x1, y1, x2, y2, x3, y3, x4, y4) => {
+    const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (den === 0) return false;
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
+    const u = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / den;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  };
+
+  return (
+    edgeIntersects(ax, ay, bx, by, left, top, right, top)
+    || edgeIntersects(ax, ay, bx, by, right, top, right, bottom)
+    || edgeIntersects(ax, ay, bx, by, right, bottom, left, bottom)
+    || edgeIntersects(ax, ay, bx, by, left, bottom, left, top)
+  );
+}
+
 export function normalizeTree(rawTree) {
   return {
     ...INIT,
