@@ -492,8 +492,8 @@ export default function TreeScreen({ onTreeChange }) {
   }, [tree.edges, visibleNodeIds, visibleBounds, xform.sc, nodeMap]);
 
   const lodTier = useMemo(() => {
-    if (xform.sc < 0.32) return 'far';
-    if (xform.sc < 0.72) return 'mid';
+    if (xform.sc < 0.27) return 'far';
+    if (xform.sc < 0.62) return 'mid';
     return 'near';
   }, [xform.sc]);
 
@@ -510,11 +510,11 @@ export default function TreeScreen({ onTreeChange }) {
       interactionTier,
       showLabels: isNear && interactionTier === 'idle',
       showInnerRing: !isFar && !forceCheap,
-      showOuterRing: isNear && interactionTier !== 'heavy',
+      showOuterRing: !isFar && interactionTier !== 'heavy',
       useDashedReady: isNear && interactionTier === 'idle',
       showEdgeGlow: isNear && interactionTier === 'idle',
       showNodeGlowBlur: isNear && interactionTier === 'idle',
-      simplifyNodeStack: isFar || interactionTier === 'heavy' || interactionTier === 'medium',
+      simplifyNodeStack: isFar || interactionTier === 'heavy',
       showNodeHighlight: !isFar && interactionTier !== 'heavy',
       showDust: interactionTier === 'idle' && !isFar,
     };
@@ -540,6 +540,10 @@ export default function TreeScreen({ onTreeChange }) {
         ring: toRGBA(bc.ring, ringAlpha),
         glowInner: toRGBA(bc.ring, glowInnerAlpha),
         glowOuter: toRGBA(bc.main, glowOuterAlpha),
+        ambient: toRGBA(bc.main, status === 'mastered' ? 0.10 : status === 'ready' ? 0.075 : 0.05),
+        farAura: toRGBA(bc.main, status === 'locked' ? 0.12 : status === 'ready' ? 0.18 : 0.2),
+        farBody: toRGBA(bc.main, status === 'locked' ? 0.28 : status === 'ready' ? 0.40 : 0.48),
+        farCore: toRGBA(bc.ring, status === 'locked' ? 0.42 : status === 'ready' ? 0.58 : 0.68),
         innerRing: toRGBA(bc.main, status === 'locked' ? 0.22 : 0.34),
         innerRingSoft: toRGBA(bc.ring, status === 'locked' ? 0.24 : 0.42),
         specular: status === 'locked' ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.2)',
@@ -567,18 +571,18 @@ export default function TreeScreen({ onTreeChange }) {
           sw: 2.7,
         };
       } else if (status === 'start') {
-        const startBc = BRANCH_COLORS.push;
+        const startBc = BRANCH_COLORS.neutral;
         map[n.id] = {
           ...makeVisual(startBc, 'ready'),
-          fill: 'rgba(16,38,30,0.86)',
-          innerFill: 'rgba(20,60,44,0.9)',
-          core: 'rgba(74,222,128,0.2)',
-          stroke: 'rgba(74,222,128,0.94)',
-          ring: 'rgba(134,239,172,0.86)',
-          glowInner: 'rgba(74,222,128,0.44)',
-          glowOuter: 'rgba(34,197,94,0.24)',
-          innerRing: 'rgba(74,222,128,0.34)',
-          innerRingSoft: 'rgba(134,239,172,0.32)',
+          fill: 'rgba(12,26,46,0.88)',
+          innerFill: 'rgba(16,42,72,0.9)',
+          core: 'rgba(147,197,253,0.22)',
+          stroke: 'rgba(96,165,250,0.95)',
+          ring: 'rgba(191,219,254,0.88)',
+          glowInner: 'rgba(96,165,250,0.42)',
+          glowOuter: 'rgba(59,130,246,0.24)',
+          innerRing: 'rgba(96,165,250,0.36)',
+          innerRingSoft: 'rgba(191,219,254,0.34)',
           sw: 2.45,
         };
       } else {
@@ -837,7 +841,7 @@ const styles = StyleSheet.create({
   hintT: {
     color: Colors.text.tertiary, fontSize: 11, textAlign: 'center', letterSpacing: 0.5,
   },
-  canvas: { flex: 1, backgroundColor: '#03060D', overflow: 'hidden' },
+  canvas: { flex: 1, backgroundColor: '#02050B', overflow: 'hidden' },
   legend: {
     flexDirection: 'row', justifyContent: 'center', gap: 28, paddingVertical: 12,
     backgroundColor: '#060A10', borderTopWidth: 1, borderColor: Colors.border.default,
