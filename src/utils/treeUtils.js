@@ -5,9 +5,26 @@ const VALID_BRANCHES = new Set(ALL_BRANCH_TYPES);
 
 const isValidBranch = (branch) => typeof branch === 'string' && VALID_BRANCHES.has(branch);
 
+const stripLegacySuffix = (id) => {
+  if (typeof id !== 'string' || !id) return null;
+  return id.replace(/_\d+$/, '');
+};
+
+const resolveLegacyBranchFromId = (id) => {
+  if (typeof id !== 'string' || !id) return null;
+  if (BRANCH_MAP[id]) return BRANCH_MAP[id];
+
+  const baseId = stripLegacySuffix(id);
+  if (baseId && BRANCH_MAP[baseId]) return BRANCH_MAP[baseId];
+  if (baseId && VALID_BRANCHES.has(baseId)) return baseId;
+
+  return null;
+};
+
 export const resolveBranch = (node) => {
   if (isValidBranch(node?.branch)) return node.branch;
-  if (node?.id && BRANCH_MAP[node.id]) return BRANCH_MAP[node.id];
+  const legacyBranch = resolveLegacyBranchFromId(node?.id);
+  if (legacyBranch) return legacyBranch;
   return node?.isStart ? 'neutral' : 'core';
 };
 
@@ -29,7 +46,7 @@ const normalizeNodesWithBranch = (nodes, edges) => {
     ...n,
     branch: isValidBranch(n.branch)
       ? n.branch
-      : (BRANCH_MAP[n.id] || (n.isStart ? 'neutral' : null)),
+      : (resolveLegacyBranchFromId(n.id) || (n.isStart ? 'neutral' : null)),
   }]));
 
   const incomingByNode = new Map();
