@@ -1,9 +1,20 @@
 import { INIT } from '../data/initialTree';
-import { ALL_BRANCH_TYPES, BRANCH_MAP } from '../constants/tree';
+import { ALL_BRANCH_TYPES, BRANCH_MAP, DEV_PERF_LOG } from '../constants/tree';
 
 const VALID_BRANCHES = new Set(ALL_BRANCH_TYPES);
+const BRANCH_KEYWORDS = {
+  push: ['push', 'dip', 'press', 'planche', 'hspu', 'handstand', 'tricep', 'pike'],
+  pull: ['pull', 'chin', 'row', 'hang', 'front lever', 'back lever', 'muscle up', 'scap'],
+  core: ['core', 'abs', 'hollow', 'l-sit', 'plank', 'dragon', 'v-up'],
+};
 
-const isValidBranch = (branch) => typeof branch === 'string' && VALID_BRANCHES.has(branch);
+const normalizeBranchValue = (branch) => {
+  if (typeof branch !== 'string') return null;
+  const normalized = branch.trim().toLowerCase();
+  return VALID_BRANCHES.has(normalized) ? normalized : null;
+};
+
+const isValidBranch = (branch) => !!normalizeBranchValue(branch);
 
 const stripLegacySuffix = (id) => {
   if (typeof id !== 'string' || !id) return null;
@@ -21,13 +32,27 @@ const resolveLegacyBranchFromId = (id) => {
   return null;
 };
 
-export const resolveBranch = (node) => {
-  if (isValidBranch(node?.branch)) return node.branch;
-  const legacyBranch = resolveLegacyBranchFromId(node?.id);
-  if (legacyBranch) return legacyBranch;
-  return node?.isStart ? 'neutral' : 'core';
+const inferBranchFromName = (name) => {
+  if (typeof name !== 'string' || !name.trim()) return null;
+  const key = name.toLowerCase();
+  for (const [branch, keywords] of Object.entries(BRANCH_KEYWORDS)) {
+    if (keywords.some((word) => key.includes(word))) return branch;
+  }
+  return null;
 };
 
+export const resolveBranch = (node) => {
+  const explicit = normalizeBranchValue(node?.branch);
+  if (explicit) return explicit;
+
+  const legacyBranch = resolveLegacyBranchFromId(node?.id);
+  if (legacyBranch) return legacyBranch;
+
+  const nameBranch = inferBranchFromName(node?.name);
+  if (nameBranch) return nameBranch;
+
+  return node?.isStart ? 'neutral' : 'core';
+};
 
 export const resolveEdgeBranch = (fromNode, toNode) => {
   const fromBranch = resolveBranch(fromNode);
@@ -36,31 +61,45 @@ export const resolveEdgeBranch = (fromNode, toNode) => {
   if (fromBranch === toBranch) return toBranch;
   if (fromBranch === 'neutral') return toBranch;
   if (toBranch === 'neutral') return fromBranch;
-  if (fromBranch === 'core' && toBranch !== 'core') return toBranch;
-  if (toBranch === 'core' && fromBranch !== 'core') return fromBranch;
+
+  if (toBranch !== 'core') return toBranch;
+  if (fromBranch !== 'core') return fromBranch;
+
   return toBranch;
 };
 
 const inferBranchFromNeighbors = (nodeId, incomingByNode, outgoingByNode, byId) => {
-  const candidates = new Set();
-  const collectBranch = (neighborId) => {
+  const score = { push: 0, pull: 0, core: 0 };
+  const collectBranch = (neighborId, weight = 1) => {
     const b = byId.get(neighborId)?.branch;
-    if (b && b !== 'neutral') candidates.add(b);
+    if (!b || b === 'neutral') return;
+    score[b] += weight;
   };
 
-  (incomingByNode.get(nodeId) || []).forEach(collectBranch);
-  (outgoingByNode.get(nodeId) || []).forEach(collectBranch);
-  if (candidates.size !== 1) return null;
-  return candidates.values().next().value;
+  (incomingByNode.get(nodeId) || []).forEach((nid) => collectBranch(nid, 1.15));
+  (outgoingByNode.get(nodeId) || []).forEach((nid) => collectBranch(nid, 1));
+
+  const ranked = Object.entries(score).sort((a, b) => b[1] - a[1]);
+  if (!ranked[0] || ranked[0][1] === 0) return null;
+  if (ranked[1] && ranked[0][1] - ranked[1][1] < 0.9) return null;
+  return ranked[0][0];
 };
 
 const normalizeNodesWithBranch = (nodes, edges) => {
-  const byId = new Map(nodes.map((n) => [n.id, {
-    ...n,
-    branch: isValidBranch(n.branch)
-      ? n.branch
-      : (resolveLegacyBranchFromId(n.id) || (n.isStart ? 'neutral' : null)),
-  }]));
+  const fallbackNodes = [];
+  const byId = new Map(nodes.map((n) => {
+    const explicit = normalizeBranchValue(n.branch);
+    const legacy = resolveLegacyBranchFromId(n.id);
+    const byName = inferBranchFromName(n.name);
+
+    let branch = explicit || legacy || byName || (n.isStart ? 'neutral' : null);
+    if (!branch && !n.isStart) fallbackNodes.push(n.id);
+
+    return [n.id, {
+      ...n,
+      branch,
+    }];
+  }));
 
   const incomingByNode = new Map();
   const outgoingByNode = new Map();
@@ -71,7 +110,6 @@ const normalizeNodesWithBranch = (nodes, edges) => {
     outgoingByNode.get(e.from).push(e.to);
   }
 
-  // Conservative migration: only infer when all known neighboring branch evidence agrees.
   let changed = true;
   while (changed) {
     changed = false;
@@ -85,13 +123,27 @@ const normalizeNodesWithBranch = (nodes, edges) => {
     }
   }
 
-  return nodes.map((n) => {
-    const normalized = byId.get(n.id);
+  const normalized = nodes.map((n) => {
+    const current = byId.get(n.id);
     return {
-      ...normalized,
-      branch: normalized.branch || (normalized.isStart ? 'neutral' : 'core'),
+      ...current,
+      branch: current.branch || (current.isStart ? 'neutral' : 'core'),
     };
   });
+
+  if (DEV_PERF_LOG) {
+    const counts = normalized.reduce((acc, n) => {
+      const b = resolveBranch(n);
+      acc[b] = (acc[b] || 0) + 1;
+      return acc;
+    }, {});
+    console.log('[tree] branch distribution', counts, {
+      coreFallbackCount: fallbackNodes.length,
+      coreFallbackSample: fallbackNodes.slice(0, 8),
+    });
+  }
+
+  return normalized;
 };
 
 export const toRGBA = (hex, alpha = 1) => {
