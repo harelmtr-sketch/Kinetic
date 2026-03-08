@@ -1,0 +1,33 @@
+export const INIT = {
+  nodes: [
+    { id: 'start', name: 'Start', x: 450, y: 104, unlocked: true, isStart: true, branch: 'neutral' },
+    { id: 'dead_hang', name: 'Dead Hang', x: 255, y: 252, unlocked: false, isStart: false, branch: 'pull' },
+    { id: 'pushup', name: 'Push-Up', x: 650, y: 244, unlocked: false, isStart: false, branch: 'push' },
+    { id: 'active_hang', name: 'Active Hang', x: 220, y: 430, unlocked: false, isStart: false, branch: 'pull' },
+    { id: 'diamond_pu', name: 'Diamond Push-Up', x: 700, y: 436, unlocked: false, isStart: false, branch: 'push' },
+    { id: 'scap_pulls', name: 'Scapular Pulls', x: 110, y: 618, unlocked: false, isStart: false, branch: 'pull' },
+    { id: 'neg_pullup', name: 'Neg. Pull-Up', x: 395, y: 620, unlocked: false, isStart: false, branch: 'pull' },
+    { id: 'pike_pu', name: 'Pike Push-Up', x: 630, y: 624, unlocked: false, isStart: false, branch: 'push' },
+    { id: 'pullup', name: 'Pull-Up', x: 235, y: 818, unlocked: false, isStart: false, branch: 'pull' },
+    { id: 'hspu', name: 'HSPU', x: 675, y: 836, unlocked: false, isStart: false, branch: 'push' },
+  ],
+  edges: [
+    { from: 'start', to: 'dead_hang' }, { from: 'start', to: 'pushup' },
+    { from: 'dead_hang', to: 'active_hang' },
+    { from: 'active_hang', to: 'scap_pulls' }, { from: 'active_hang', to: 'neg_pullup' },
+    { from: 'scap_pulls', to: 'pullup' }, { from: 'neg_pullup', to: 'pullup' },
+    { from: 'pushup', to: 'diamond_pu' }, { from: 'diamond_pu', to: 'pike_pu' }, { from: 'pike_pu', to: 'hspu' },
+  ],
+  info: {
+    start: { desc: 'Your journey begins here. Every master was once a beginner.', str: 0, bal: 0, tec: 0 },
+    dead_hang: { desc: 'Hang from bar, arms fully extended. Builds grip and shoulder health.', str: 3, bal: 2, tec: 1 },
+    pushup: { desc: 'Standard push-up. The foundation of all pushing movements.', str: 3, bal: 2, tec: 2 },
+    active_hang: { desc: 'Hang with shoulders actively depressed and engaged. Crucial for safety.', str: 4, bal: 3, tec: 3 },
+    diamond_pu: { desc: 'Tricep push-up with hands forming a diamond shape.', str: 5, bal: 3, tec: 4 },
+    scap_pulls: { desc: 'Retract and depress scapula while hanging. Activates the lats.', str: 4, bal: 3, tec: 5 },
+    neg_pullup: { desc: 'Lower slowly from the top of a pull-up. Eccentric strength builder.', str: 6, bal: 4, tec: 4 },
+    pike_pu: { desc: 'Shoulder push-up in pike position. Direct prerequisite for HSPU.', str: 5, bal: 5, tec: 6 },
+    pullup: { desc: 'Full pull-up from dead hang to chin over bar. The upper body king.', str: 7, bal: 5, tec: 5 },
+    hspu: { desc: 'Handstand Push-Up. The pinnacle of overhead pressing strength.', str: 9, bal: 9, tec: 9 },
+  },
+};
