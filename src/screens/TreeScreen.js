@@ -66,6 +66,10 @@ export default function TreeScreen({ onTreeChange }) {
 
   const txN = useRef(0); const tyN = useRef(0); const scN = useRef(1);
   const txV = useSharedValue(0); const tyV = useSharedValue(0); const scV = useSharedValue(1);
+  const panStartTx = useSharedValue(0); const panStartTy = useSharedValue(0); const panStartSc = useSharedValue(1);
+  const pinchStartTx = useSharedValue(0); const pinchStartTy = useSharedValue(0); const pinchStartSc = useSharedValue(1);
+  const pinchStartSvgFx = useSharedValue(0); const pinchStartSvgFy = useSharedValue(0);
+  const canvasLeftV = useSharedValue(0); const canvasTopV = useSharedValue(0);
   const dragXV = useSharedValue(0); const dragYV = useSharedValue(0);
   const [dragId, setDragId] = useState(null);
   const [xform, setXform] = useState({ tx: 0, ty: 0, sc: 1 });
@@ -73,15 +77,6 @@ export default function TreeScreen({ onTreeChange }) {
   const setLiveXform = (tx, ty, sc) => {
     txN.current = tx; tyN.current = ty; scN.current = sc;
     txV.value = tx; tyV.value = ty; scV.value = sc;
-
-    const now = Date.now();
-    if (isInteractingRef.current && now - lastXformSyncRef.current > 90) {
-      lastXformSyncRef.current = now;
-      setXform((prev) => {
-        if (Math.abs(prev.tx - tx) < 0.5 && Math.abs(prev.ty - ty) < 0.5 && Math.abs(prev.sc - sc) < 0.003) return prev;
-        return { tx, ty, sc };
-      });
-    }
   };
   const commitLiveXform = () => {
     const next = { tx: txN.current, ty: tyN.current, sc: scN.current };
@@ -99,7 +94,12 @@ export default function TreeScreen({ onTreeChange }) {
   }, []);
 
   const cL = useRef(0); const cT = useRef(0); const cRef = useRef(null);
-  const measureC = () => cRef.current?.measure((_, __, _w, _h, px, py) => { cL.current = px; cT.current = py; });
+  const measureC = () => cRef.current?.measure((_, __, _w, _h, px, py) => {
+    cL.current = px;
+    cT.current = py;
+    canvasLeftV.value = px;
+    canvasTopV.value = py;
+  });
 
   const toSVG = (px, py) => ({
     x: (px - cL.current - txN.current) / scN.current,
@@ -116,8 +116,6 @@ export default function TreeScreen({ onTreeChange }) {
   const dId = useRef(null); const dNx = useRef(0); const dNy = useRef(0); const dPx = useRef(0); const dPy = useRef(0);
   const dragLive = useRef({ id: null, x: 0, y: 0 });
   const [isInteracting, setIsInteracting] = useState(false);
-  const isInteractingRef = useRef(false);
-  const lastXformSyncRef = useRef(0);
   const interactionTier = useMemo(() => {
     if (!isInteracting) return 'idle';
     if (xform.sc < 0.4) return 'heavy';
@@ -139,13 +137,11 @@ export default function TreeScreen({ onTreeChange }) {
       clearTimeout(glowDebounceRef.current);
       glowDebounceRef.current = null;
     }
-    isInteractingRef.current = true;
     setIsInteracting(true);
   };
   const endInteraction = () => {
     if (glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
     glowDebounceRef.current = setTimeout(() => {
-      isInteractingRef.current = false;
       setIsInteracting(false);
       glowDebounceRef.current = null;
     }, 90);
@@ -156,46 +152,56 @@ export default function TreeScreen({ onTreeChange }) {
     if (hit) setSel({ ...hit });
   };
 
-  const navGesture = useMemo(() => {
-    const panStart = { tx: 0, ty: 0, sc: 1 };
-    const pinchStart = {
-      tx: 0, ty: 0, sc: 1, svgFx: 0, svgFy: 0,
-    };
+  const commitSharedXform = (tx, ty, sc) => {
+    txN.current = tx;
+    tyN.current = ty;
+    scN.current = sc;
+    setXform((prev) => (
+      prev.tx === tx && prev.ty === ty && prev.sc === sc
+        ? prev
+        : { tx, ty, sc }
+    ));
+  };
 
+  const navGesture = useMemo(() => {
     const pan = Gesture.Pan()
       .onBegin(() => {
-        panStart.tx = txN.current;
-        panStart.ty = tyN.current;
-        panStart.sc = scN.current;
+        panStartTx.value = txV.value;
+        panStartTy.value = tyV.value;
+        panStartSc.value = scV.value;
         runOnJS(beginInteraction)();
       })
       .onUpdate((evt) => {
-        runOnJS(setLiveXform)(panStart.tx + evt.translationX, panStart.ty + evt.translationY, panStart.sc);
+        txV.value = panStartTx.value + evt.translationX;
+        tyV.value = panStartTy.value + evt.translationY;
+        scV.value = panStartSc.value;
       })
       .onFinalize(() => {
-        runOnJS(commitLiveXform)();
+        runOnJS(commitSharedXform)(txV.value, tyV.value, scV.value);
         runOnJS(endInteraction)();
       });
 
     const pinch = Gesture.Pinch()
       .onBegin((evt) => {
-        pinchStart.sc = scN.current;
-        pinchStart.tx = txN.current;
-        pinchStart.ty = tyN.current;
-        const fx = evt.focalX - cL.current;
-        const fy = evt.focalY - cT.current;
-        pinchStart.svgFx = (fx - pinchStart.tx) / pinchStart.sc;
-        pinchStart.svgFy = (fy - pinchStart.ty) / pinchStart.sc;
+        pinchStartSc.value = scV.value;
+        pinchStartTx.value = txV.value;
+        pinchStartTy.value = tyV.value;
+        const fx = evt.focalX - canvasLeftV.value;
+        const fy = evt.focalY - canvasTopV.value;
+        pinchStartSvgFx.value = (fx - pinchStartTx.value) / pinchStartSc.value;
+        pinchStartSvgFy.value = (fy - pinchStartTy.value) / pinchStartSc.value;
         runOnJS(beginInteraction)();
       })
       .onUpdate((evt) => {
-        const nextSc = Math.min(Math.max(pinchStart.sc * evt.scale, MIN_SC), MAX_SC);
-        const fx = evt.focalX - cL.current;
-        const fy = evt.focalY - cT.current;
-        runOnJS(setLiveXform)(fx - pinchStart.svgFx * nextSc, fy - pinchStart.svgFy * nextSc, nextSc);
+        const nextSc = Math.min(Math.max(pinchStartSc.value * evt.scale, MIN_SC), MAX_SC);
+        const fx = evt.focalX - canvasLeftV.value;
+        const fy = evt.focalY - canvasTopV.value;
+        scV.value = nextSc;
+        txV.value = fx - pinchStartSvgFx.value * nextSc;
+        tyV.value = fy - pinchStartSvgFy.value * nextSc;
       })
       .onFinalize(() => {
-        runOnJS(commitLiveXform)();
+        runOnJS(commitSharedXform)(txV.value, tyV.value, scV.value);
         runOnJS(endInteraction)();
       });
 
