@@ -623,10 +623,10 @@ export default function TreeScreen({ onTreeChange }) {
     let next = prev;
 
     if (prev === 'near') {
-      if (sc < 0.56) next = 'mid';
+      if (sc < 0.5) next = 'mid';
     } else if (prev === 'mid') {
       if (sc < 0.23) next = 'far';
-      else if (sc > 0.68) next = 'near';
+      else if (sc > 0.58) next = 'near';
     } else if (prev === 'far' && sc > 0.31) {
       next = 'mid';
     }

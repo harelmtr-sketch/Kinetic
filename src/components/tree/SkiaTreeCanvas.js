@@ -26,7 +26,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   bld, connA, isInteracting,
   canvasSize, nodeStyles,
 }) {
-  const labelFont = useMemo(() => matchFont({ fontSize: 10, fontStyle: 'bold' }), []);
+  const labelFont = useMemo(() => matchFont({ fontSize: 11, fontStyle: 'bold' }), []);
 
   const sceneTransform = useDerivedValue(() => ([
     { translateX: txV.value },
@@ -286,8 +286,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
               {useFakeGlow && (
                 <Group>
-                  <Circle cx={rx} cy={ry} r={NODE_R * 1.3} color={toRGBA(visual.glowOuter || visual.stroke, 0.11)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.98} color={toRGBA(visual.glowInner || visual.stroke, 0.09)} />
+                  <Circle cx={rx} cy={ry} r={NODE_R * 1.36} color={toRGBA(visual.glowOuter || visual.stroke, 0.15)} />
+                  <Circle cx={rx} cy={ry} r={NODE_R * 1.04} color={toRGBA(visual.glowInner || visual.stroke, 0.12)} />
                 </Group>
               )}
 
@@ -325,10 +325,10 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               )}
 
               {LOD.showLabels && lines.map((ln, li) => {
-                const x = rx - (ln.length * 2.8);
+                const x = rx - (ln.length * 3.05);
                 const y = ry + 4 + (li - ((lines.length - 1) / 2)) * lh;
                 const mainColor = isLit ? '#F4F7FF' : '#C7BCAF';
-                const glowColor = isLit ? toRGBA(visual.stroke, 0.32) : 'rgba(96,84,70,0.16)';
+                const glowColor = isLit ? toRGBA(visual.stroke, 0.46) : 'rgba(96,84,70,0.2)';
                 return (
                   <Group key={`${n.id}_${li}`}>
                     <SkiaText x={x} y={y} text={ln} font={labelFont} color={glowColor} />
@@ -349,8 +349,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
             {draggedNodeMeta.useFakeGlow && (
               <Group>
-                <Circle cx={0} cy={0} r={NODE_R * 1.3} color={toRGBA(draggedNodeMeta.visual.glowOuter || draggedNodeMeta.visual.stroke, 0.11)} />
-                <Circle cx={0} cy={0} r={NODE_R * 0.98} color={toRGBA(draggedNodeMeta.visual.glowInner || draggedNodeMeta.visual.stroke, 0.09)} />
+                <Circle cx={0} cy={0} r={NODE_R * 1.36} color={toRGBA(draggedNodeMeta.visual.glowOuter || draggedNodeMeta.visual.stroke, 0.15)} />
+                <Circle cx={0} cy={0} r={NODE_R * 1.04} color={toRGBA(draggedNodeMeta.visual.glowInner || draggedNodeMeta.visual.stroke, 0.12)} />
               </Group>
             )}
 
@@ -388,10 +388,10 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             )}
 
             {LOD.showLabels && draggedNodeMeta.lines.map((ln, li) => {
-              const glowColor = draggedNodeMeta.isLit ? toRGBA(draggedNodeMeta.visual.stroke, 0.32) : 'rgba(96,84,70,0.16)';
+              const glowColor = draggedNodeMeta.isLit ? toRGBA(draggedNodeMeta.visual.stroke, 0.46) : 'rgba(96,84,70,0.2)';
               const mainColor = draggedNodeMeta.isLit ? '#F4F7FF' : '#C7BCAF';
               const y = 4 + (li - ((draggedNodeMeta.lines.length - 1) / 2)) * 12;
-              const x = -(ln.length * 2.8);
+              const x = -(ln.length * 3.05);
               return (
                 <Group key={`dl_${li}`}>
                   <SkiaText x={x} y={y} text={ln} font={labelFont} color={glowColor} />
