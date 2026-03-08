@@ -28,6 +28,19 @@ export const resolveBranch = (node) => {
   return node?.isStart ? 'neutral' : 'core';
 };
 
+
+export const resolveEdgeBranch = (fromNode, toNode) => {
+  const fromBranch = resolveBranch(fromNode);
+  const toBranch = resolveBranch(toNode);
+
+  if (fromBranch === toBranch) return toBranch;
+  if (fromBranch === 'neutral') return toBranch;
+  if (toBranch === 'neutral') return fromBranch;
+  if (fromBranch === 'core' && toBranch !== 'core') return toBranch;
+  if (toBranch === 'core' && fromBranch !== 'core') return fromBranch;
+  return toBranch;
+};
+
 const inferBranchFromNeighbors = (nodeId, incomingByNode, outgoingByNode, byId) => {
   const candidates = new Set();
   const collectBranch = (neighborId) => {

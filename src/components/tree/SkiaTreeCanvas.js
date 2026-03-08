@@ -14,7 +14,7 @@ import {
 import { useDerivedValue } from 'react-native-reanimated';
 import { BRANCH_COLORS } from '../../theme/colors';
 import { NODE_R, USE_GLOW, GLOW_QUALITY } from '../../constants/tree';
-import { resolveBranch, toRGBA } from '../../utils/treeUtils';
+import { resolveEdgeBranch, toRGBA } from '../../utils/treeUtils';
 import { mulberry32, buildEdgePath } from '../../utils/skiaTreeUtils';
 
 const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
@@ -98,7 +98,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const toLit = toState === 'start' || toState === 'mastered';
     const toReady = toState === 'ready';
     const status = bld ? 'locked' : (fromLit && toLit ? 'mastered' : ((fromLit && !toLit) || toReady ? 'ready' : 'locked'));
-    const branch = resolveBranch(tn);
+    const branch = resolveEdgeBranch(fn, tn);
     const branchColor = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
     return {
       id: `${e.from}_${e.to}_${idx}`, fn, tn, status, branchColor,
@@ -169,7 +169,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const isReady = status === 'ready';
           const renderR = LOD.isFar ? farNodeR : NODE_R;
           const nodeStrokeWidth = LOD.isFar ? Math.max(0.8, visual.sw - 0.5) : visual.sw;
-          const auraOpacity = status === 'locked' ? (LOD.isFar ? 0.12 : 0.10) : (isReady ? 0.24 : 0.18);
+          const auraOpacity = status === 'locked' ? (LOD.isFar ? 0.20 : 0.16) : (isReady ? 0.24 : 0.18);
           const auraColor = toRGBA(visual.stroke, auraOpacity);
           const auraR = LOD.isFar ? NODE_R * 0.90 : (isLit ? NODE_R * 1.16 : NODE_R * 1.08);
           return (
@@ -177,7 +177,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               {LOD.showOuterRing && <Circle cx={rx} cy={ry} r={NODE_R + 13} style="stroke" strokeWidth={1.1} color={visual.ring} />}
               {LOD.showOuterRing && bld && connA === n.id && <Circle cx={rx} cy={ry} r={NODE_R + 16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />}
               {USE_GLOW && <Circle cx={rx} cy={ry} r={auraR} color={auraColor} />}
-              {USE_GLOW && LOD.isFar && <Circle cx={rx} cy={ry} r={NODE_R * 0.50} style="stroke" strokeWidth={0.9} color={toRGBA(visual.stroke, 0.30)} />}
+              {USE_GLOW && LOD.isFar && <Circle cx={rx} cy={ry} r={NODE_R * 0.52} style="stroke" strokeWidth={1.05} color={toRGBA(visual.stroke, 0.42)} />}
               {LOD.showNodeGlowBlur && !isInteracting && USE_GLOW && isLit && (
                 <Group>
                   <Circle cx={rx} cy={ry} r={NODE_R * 1.10} color={visual.glowOuter}><Blur blur={GLOW_QUALITY === 'high' ? 18 : 12} /></Circle>

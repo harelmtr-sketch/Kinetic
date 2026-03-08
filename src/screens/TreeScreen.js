@@ -10,7 +10,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSharedValue } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import NamePrompt from '../components/tree/NamePrompt';
 import SkillCard from '../components/tree/SkillCard';
 import GlowText from '../components/common/GlowText';
@@ -149,6 +150,63 @@ export default function TreeScreen({ onTreeChange }) {
       glowDebounceRef.current = null;
     }, 90);
   };
+
+  const handleViewTap = (pageX, pageY) => {
+    const hit = hitNode(pageX, pageY);
+    if (hit) setSel({ ...hit });
+  };
+
+  const navGesture = useMemo(() => {
+    const panStart = { tx: 0, ty: 0, sc: 1 };
+    const pinchStart = {
+      tx: 0, ty: 0, sc: 1, svgFx: 0, svgFy: 0,
+    };
+
+    const pan = Gesture.Pan()
+      .onBegin(() => {
+        panStart.tx = txN.current;
+        panStart.ty = tyN.current;
+        panStart.sc = scN.current;
+        runOnJS(beginInteraction)();
+      })
+      .onUpdate((evt) => {
+        runOnJS(setLiveXform)(panStart.tx + evt.translationX, panStart.ty + evt.translationY, panStart.sc);
+      })
+      .onFinalize(() => {
+        runOnJS(commitLiveXform)();
+        runOnJS(endInteraction)();
+      });
+
+    const pinch = Gesture.Pinch()
+      .onBegin((evt) => {
+        pinchStart.sc = scN.current;
+        pinchStart.tx = txN.current;
+        pinchStart.ty = tyN.current;
+        const fx = evt.focalX - cL.current;
+        const fy = evt.focalY - cT.current;
+        pinchStart.svgFx = (fx - pinchStart.tx) / pinchStart.sc;
+        pinchStart.svgFy = (fy - pinchStart.ty) / pinchStart.sc;
+        runOnJS(beginInteraction)();
+      })
+      .onUpdate((evt) => {
+        const nextSc = Math.min(Math.max(pinchStart.sc * evt.scale, MIN_SC), MAX_SC);
+        const fx = evt.focalX - cL.current;
+        const fy = evt.focalY - cT.current;
+        runOnJS(setLiveXform)(fx - pinchStart.svgFx * nextSc, fy - pinchStart.svgFy * nextSc, nextSc);
+      })
+      .onFinalize(() => {
+        runOnJS(commitLiveXform)();
+        runOnJS(endInteraction)();
+      });
+
+    const tap = Gesture.Tap()
+      .maxDistance(7)
+      .onEnd((evt, success) => {
+        if (success) runOnJS(handleViewTap)(evt.absoluteX, evt.absoluteY);
+      });
+
+    return Gesture.Exclusive(tap, Gesture.Simultaneous(pan, pinch));
+  }, []);
 
   const panR = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -486,7 +544,7 @@ export default function TreeScreen({ onTreeChange }) {
         map[n.id] = {
           fill: '#080E18', innerFill: '#050A10', outerRim: '#131D2A',
           stroke: toRGBA(bc.main, 0.34), ring: toRGBA(bc.ring, 0.20),
-          glowInner: toRGBA(bc.ring, 0.10), glowOuter: toRGBA(bc.main, 0.08), sw: 1.25, opacity: 0.84,
+          glowInner: toRGBA(bc.ring, 0.18), glowOuter: toRGBA(bc.main, 0.14), sw: 1.3, opacity: 0.86,
         };
       }
     }
@@ -576,39 +634,76 @@ export default function TreeScreen({ onTreeChange }) {
       )}
       {bld && <View style={styles.hintRow}><Text style={styles.hintT}>{hints[tool]}</Text></View>}
 
-      <View
-        ref={cRef}
-        style={styles.canvas}
-        onLayout={(evt) => {
-          const { width, height } = evt.nativeEvent.layout;
-          setCanvasSize({ width, height });
-          setTimeout(measureC, 50);
-        }}
-        {...panR.panHandlers}
-      >
-        {!!canvasSize.width && !!canvasSize.height && (
-          <SkiaTreeCanvas
-            nodes={tree.nodes}
-            visibleNodes={visibleNodes}
-            visibleEdges={visibleEdges}
-            nodeStatusMap={nodeStatusMap}
-            wrappedLabels={wrappedLabels}
-            txV={txV}
-            tyV={tyV}
-            scV={scV}
-            dragId={dragId}
-            dragXV={dragXV}
-            dragYV={dragYV}
-            LOD={LOD}
-            edgeVisual={edgeVisual}
-            bld={bld}
-            connA={connA}
-            isInteracting={isInteracting}
-            canvasSize={canvasSize}
-            nodeStyles={nodeStyles}
-          />
-        )}
-      </View>
+      {bld ? (
+        <View
+          ref={cRef}
+          style={styles.canvas}
+          onLayout={(evt) => {
+            const { width, height } = evt.nativeEvent.layout;
+            setCanvasSize({ width, height });
+            setTimeout(measureC, 50);
+          }}
+          {...panR.panHandlers}
+        >
+          {!!canvasSize.width && !!canvasSize.height && (
+            <SkiaTreeCanvas
+              nodes={tree.nodes}
+              visibleNodes={visibleNodes}
+              visibleEdges={visibleEdges}
+              nodeStatusMap={nodeStatusMap}
+              wrappedLabels={wrappedLabels}
+              txV={txV}
+              tyV={tyV}
+              scV={scV}
+              dragId={dragId}
+              dragXV={dragXV}
+              dragYV={dragYV}
+              LOD={LOD}
+              edgeVisual={edgeVisual}
+              bld={bld}
+              connA={connA}
+              isInteracting={isInteracting}
+              canvasSize={canvasSize}
+              nodeStyles={nodeStyles}
+            />
+          )}
+        </View>
+      ) : (
+        <GestureDetector gesture={navGesture}>
+          <View
+            ref={cRef}
+            style={styles.canvas}
+            onLayout={(evt) => {
+              const { width, height } = evt.nativeEvent.layout;
+              setCanvasSize({ width, height });
+              setTimeout(measureC, 50);
+            }}
+          >
+            {!!canvasSize.width && !!canvasSize.height && (
+              <SkiaTreeCanvas
+                nodes={tree.nodes}
+                visibleNodes={visibleNodes}
+                visibleEdges={visibleEdges}
+                nodeStatusMap={nodeStatusMap}
+                wrappedLabels={wrappedLabels}
+                txV={txV}
+                tyV={tyV}
+                scV={scV}
+                dragId={dragId}
+                dragXV={dragXV}
+                dragYV={dragYV}
+                LOD={LOD}
+                edgeVisual={edgeVisual}
+                bld={bld}
+                connA={connA}
+                isInteracting={isInteracting}
+                canvasSize={canvasSize}
+                nodeStyles={nodeStyles}
+              />
+            )}
+          </View>
+        </GestureDetector>
+      )}
 
       {!bld && (
         <View style={styles.legend}>
