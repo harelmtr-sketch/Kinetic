@@ -451,7 +451,7 @@ export default function TreeScreen({ onTreeChange }) {
 
   const visibleBounds = useMemo(() => {
     if (!canvasSize.width || !canvasSize.height) return null;
-    const interactionPad = isInteracting ? Math.max(360 / xform.sc, 260) : 0;
+    const interactionPad = isInteracting ? Math.max(520 / xform.sc, 320) : 0;
     return {
       left: (-xform.tx) / xform.sc - interactionPad,
       top: (-xform.ty) / xform.sc - interactionPad,
@@ -536,29 +536,29 @@ export default function TreeScreen({ onTreeChange }) {
     const nb = BRANCH_COLORS.neutral;
     const map = {};
     const makeVisual = (branch, bc, status) => {
-      const baseFill = status === 'mastered' ? toRGBA(bc.main, 0.22) : status === 'ready' ? toRGBA(bc.main, 0.17) : toRGBA(bc.main, 0.11);
-      const innerFill = status === 'mastered' ? toRGBA(bc.main, 0.32) : status === 'ready' ? toRGBA(bc.main, 0.24) : toRGBA(bc.main, 0.15);
-      const core = status === 'mastered' ? toRGBA(bc.ring, 0.24) : status === 'ready' ? toRGBA(bc.ring, 0.18) : toRGBA(bc.ring, 0.12);
+      const baseFill = status === 'mastered' ? toRGBA(bc.main, 0.20) : status === 'ready' ? toRGBA(bc.main, 0.15) : toRGBA(bc.main, 0.08);
+      const innerFill = status === 'mastered' ? toRGBA(bc.main, 0.28) : status === 'ready' ? toRGBA(bc.main, 0.2) : toRGBA(bc.main, 0.12);
+      const core = status === 'mastered' ? toRGBA(bc.ring, 0.2) : status === 'ready' ? toRGBA(bc.ring, 0.15) : toRGBA(bc.ring, 0.09);
       const strokeAlpha = status === 'mastered' ? 0.96 : status === 'ready' ? 0.88 : 0.48;
       const ringAlpha = status === 'mastered' ? 0.94 : status === 'ready' ? 0.82 : 0.46;
       const glowOuterBase = status === 'mastered' ? 0.24 : status === 'ready' ? 0.19 : 0.12;
       const glowInnerBase = status === 'mastered' ? 0.44 : status === 'ready' ? 0.34 : 0.20;
-      const branchBoost = branch === 'push' ? 1.08 : branch === 'pull' ? 1.12 : branch === 'core' ? 0.82 : 1;
+      const branchBoost = branch === 'push' ? 1.16 : branch === 'pull' ? 1.24 : branch === 'core' ? 0.72 : 1;
       const glowOuterAlpha = glowOuterBase * branchBoost;
       const glowInnerAlpha = glowInnerBase * branchBoost;
       return {
         fill: baseFill,
         innerFill,
         core,
-        outerRim: toRGBA(bc.ring, status === 'locked' ? 0.22 : 0.33),
+        outerRim: toRGBA(bc.ring, status === 'locked' ? 0.16 : 0.3),
         stroke: toRGBA(bc.main, strokeAlpha),
-        ring: toRGBA(bc.ring, ringAlpha),
+        ring: toRGBA(bc.ring, branch === 'core' ? ringAlpha * 0.88 : ringAlpha),
         glowInner: toRGBA(bc.ring, glowInnerAlpha),
         glowOuter: toRGBA(bc.main, glowOuterAlpha),
-        ambient: toRGBA(bc.main, status === 'mastered' ? (branch === 'core' ? 0.075 : 0.11) : status === 'ready' ? (branch === 'core' ? 0.06 : 0.082) : 0.05),
-        farAura: toRGBA(bc.main, status === 'locked' ? (branch === 'core' ? 0.1 : 0.14) : status === 'ready' ? 0.2 : 0.22),
-        farBody: toRGBA(bc.main, status === 'locked' ? (branch === 'core' ? 0.24 : 0.32) : status === 'ready' ? 0.42 : 0.5),
-        farCore: toRGBA(bc.ring, status === 'locked' ? (branch === 'core' ? 0.36 : 0.46) : status === 'ready' ? 0.6 : 0.7),
+        ambient: toRGBA(bc.main, status === 'mastered' ? (branch === 'core' ? 0.052 : 0.088) : status === 'ready' ? (branch === 'core' ? 0.04 : 0.065) : 0.03),
+        farAura: toRGBA(bc.main, status === 'locked' ? (branch === 'core' ? 0.07 : 0.12) : status === 'ready' ? (branch === 'core' ? 0.14 : 0.2) : (branch === 'core' ? 0.15 : 0.22)),
+        farBody: toRGBA(bc.main, status === 'locked' ? (branch === 'core' ? 0.18 : 0.28) : status === 'ready' ? (branch === 'core' ? 0.32 : 0.43) : (branch === 'core' ? 0.36 : 0.52)),
+        farCore: toRGBA(bc.ring, status === 'locked' ? (branch === 'core' ? 0.28 : 0.44) : status === 'ready' ? (branch === 'core' ? 0.48 : 0.62) : (branch === 'core' ? 0.54 : 0.72)),
         innerRing: toRGBA(bc.main, status === 'locked' ? 0.22 : 0.34),
         innerRingSoft: toRGBA(bc.ring, status === 'locked' ? 0.24 : 0.42),
         specular: status === 'locked' ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.2)',
@@ -609,13 +609,13 @@ export default function TreeScreen({ onTreeChange }) {
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {
-      masteredW: 1.2, readyW: 1.05, lockedW: 0.86, masteredO: 0.64, readyO: 0.52, lockedO: 0.22,
+      masteredW: 1.24, readyW: 1.0, lockedW: 0.72, masteredO: 0.68, readyO: 0.44, lockedO: 0.14,
     };
     if (LOD.isMid) return {
-      masteredW: 1.9, readyW: 1.55, lockedW: 1.1, masteredO: 0.76, readyO: 0.64, lockedO: 0.27,
+      masteredW: 2.0, readyW: 1.45, lockedW: 0.95, masteredO: 0.8, readyO: 0.56, lockedO: 0.18,
     };
     return {
-      masteredW: 2.8, readyW: 2.3, lockedW: 1.35, masteredO: 0.86, readyO: 0.76, lockedO: 0.35,
+      masteredW: 3.0, readyW: 2.1, lockedW: 1.08, masteredO: 0.9, readyO: 0.66, lockedO: 0.23,
     };
   }, [LOD.isFar, LOD.isMid]);
 
