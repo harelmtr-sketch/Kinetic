@@ -646,12 +646,12 @@ export default function TreeScreen({ onTreeChange }) {
       isMid,
       isNear,
       interactionTier,
-      showLabels: isNear && interactionTier === 'idle',
+      showLabels: isNear,
       showInnerRing: !isFar && !forceCheap,
       showOuterRing: !isFar && interactionTier !== 'heavy',
       useDashedReady: isNear && interactionTier === 'idle',
       showEdgeGlow: isNear && interactionTier === 'idle',
-      showNodeGlowBlur: isNear && interactionTier === 'idle',
+      showNodeGlowBlur: isNear && interactionTier !== 'heavy',
       simplifyNodeStack: isFar || interactionTier === 'heavy',
       showNodeHighlight: !isFar && interactionTier !== 'heavy',
       showDust: interactionTier === 'idle' && !isFar,
@@ -686,13 +686,13 @@ export default function TreeScreen({ onTreeChange }) {
       }
 
       const isMastered = status === 'mastered';
-      const baseFill = isMastered ? toRGBA(bc.main, 0.2) : toRGBA(bc.main, 0.15);
-      const innerFill = isMastered ? toRGBA(bc.main, 0.28) : toRGBA(bc.main, 0.22);
+      const baseFill = isMastered ? toRGBA(bc.main, 0.22) : toRGBA(bc.main, 0.17);
+      const innerFill = isMastered ? toRGBA(bc.main, 0.3) : toRGBA(bc.main, 0.24);
       const core = isMastered ? toRGBA(bc.ring, 0.28) : toRGBA(bc.ring, 0.22);
       const strokeAlpha = isMastered ? 0.94 : 0.86;
       const ringAlpha = isMastered ? 0.84 : 0.72;
-      const glowOuterBase = isMastered ? 0.24 : 0.2;
-      const glowInnerBase = isMastered ? 0.38 : 0.32;
+      const glowOuterBase = isMastered ? 0.3 : 0.25;
+      const glowInnerBase = isMastered ? 0.46 : 0.39;
       const branchBoost = branch === 'push' ? 1.08 : branch === 'pull' ? 1.1 : 1;
       const glowOuterAlpha = glowOuterBase * branchBoost;
       const glowInnerAlpha = glowInnerBase * branchBoost;
@@ -706,7 +706,7 @@ export default function TreeScreen({ onTreeChange }) {
         ring: toRGBA(bc.ring, ringAlpha),
         glowInner: toRGBA(bc.ring, glowInnerAlpha),
         glowOuter: toRGBA(bc.main, glowOuterAlpha),
-        ambient: toRGBA(bc.main, isMastered ? 0.078 : 0.064),
+        ambient: toRGBA(bc.main, isMastered ? 0.1 : 0.082),
         farAura: toRGBA(bc.main, isMastered ? 0.2 : 0.17),
         farBody: toRGBA(bc.main, isMastered ? 0.5 : 0.42),
         farCore: toRGBA(bc.ring, isMastered ? 0.72 : 0.6),
