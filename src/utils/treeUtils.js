@@ -7,6 +7,11 @@ const BRANCH_KEYWORDS = {
   pull: ['pull', 'chin', 'row', 'hang', 'front lever', 'back lever', 'muscle up', 'scap'],
   core: ['core', 'abs', 'hollow', 'l-sit', 'plank', 'dragon', 'v-up'],
 };
+const INIT_BRANCH_BY_ID = new Map(
+  (INIT?.nodes || [])
+    .filter((n) => typeof n?.id === 'string')
+    .map((n) => [n.id, n.branch]),
+);
 
 const normalizeBranchValue = (branch) => {
   if (typeof branch !== 'string') return null;
@@ -32,6 +37,15 @@ const resolveLegacyBranchFromId = (id) => {
   return null;
 };
 
+const resolveInitBranchFromId = (id) => {
+  if (typeof id !== 'string' || !id) return null;
+  const direct = normalizeBranchValue(INIT_BRANCH_BY_ID.get(id));
+  if (direct) return direct;
+  const baseId = stripLegacySuffix(id);
+  if (!baseId) return null;
+  return normalizeBranchValue(INIT_BRANCH_BY_ID.get(baseId));
+};
+
 const inferBranchFromName = (name) => {
   if (typeof name !== 'string' || !name.trim()) return null;
   const key = name.toLowerCase();
@@ -47,6 +61,9 @@ export const resolveBranch = (node) => {
 
   const legacyBranch = resolveLegacyBranchFromId(node?.id);
   if (legacyBranch) return legacyBranch;
+
+  const initBranch = resolveInitBranchFromId(node?.id);
+  if (initBranch) return initBranch;
 
   const nameBranch = inferBranchFromName(node?.name);
   if (nameBranch) return nameBranch;
@@ -73,26 +90,39 @@ const inferBranchFromNeighbors = (nodeId, incomingByNode, outgoingByNode, byId) 
   const collectBranch = (neighborId, weight = 1) => {
     const b = byId.get(neighborId)?.branch;
     if (!b || b === 'neutral') return;
+    if (b === 'core') {
+      score.core += weight * 0.35;
+      return;
+    }
     score[b] += weight;
   };
 
-  (incomingByNode.get(nodeId) || []).forEach((nid) => collectBranch(nid, 1.15));
+  (incomingByNode.get(nodeId) || []).forEach((nid) => collectBranch(nid, 1.2));
   (outgoingByNode.get(nodeId) || []).forEach((nid) => collectBranch(nid, 1));
+
+  const altTop = score.push >= score.pull ? 'push' : 'pull';
+  const altBottom = altTop === 'push' ? 'pull' : 'push';
+
+  if (score[altTop] >= 0.65 && score[altTop] - score[altBottom] >= 0.22) return altTop;
 
   const ranked = Object.entries(score).sort((a, b) => b[1] - a[1]);
   if (!ranked[0] || ranked[0][1] === 0) return null;
-  if (ranked[1] && ranked[0][1] - ranked[1][1] < 0.9) return null;
+  if (ranked[0][0] === 'core' && score[altTop] > 0) return altTop;
+  if (ranked[1] && ranked[0][1] - ranked[1][1] < 0.6) return null;
   return ranked[0][0];
 };
 
 const normalizeNodesWithBranch = (nodes, edges) => {
   const fallbackNodes = [];
+  let initSeedCount = 0;
   const byId = new Map(nodes.map((n) => {
     const explicit = normalizeBranchValue(n.branch);
     const legacy = resolveLegacyBranchFromId(n.id);
+    const initBranch = resolveInitBranchFromId(n.id);
     const byName = inferBranchFromName(n.name);
 
-    let branch = explicit || legacy || byName || (n.isStart ? 'neutral' : null);
+    let branch = explicit || legacy || initBranch || byName || (n.isStart ? 'neutral' : null);
+    if (!explicit && !legacy && initBranch) initSeedCount += 1;
     if (!branch && !n.isStart) fallbackNodes.push(n.id);
 
     return [n.id, {
@@ -140,6 +170,7 @@ const normalizeNodesWithBranch = (nodes, edges) => {
     console.log('[tree] branch distribution', counts, {
       coreFallbackCount: fallbackNodes.length,
       coreFallbackSample: fallbackNodes.slice(0, 8),
+      fromInitSeeded: initSeedCount,
     });
   }
 
