@@ -6,6 +6,9 @@ export const DEV_PERF_LOG = false;
 export const USE_GLOW = true;
 export const GLOW_QUALITY = 'low'; // 'low' | 'high'
 
+export const BRANCH_TYPES = ['push', 'pull', 'core'];
+export const ALL_BRANCH_TYPES = ['neutral', ...BRANCH_TYPES];
+
 export const BRANCH_MAP = {
   dead_hang: 'pull',
   active_hang: 'pull',

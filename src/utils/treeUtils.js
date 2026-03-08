@@ -1,7 +1,68 @@
 import { INIT } from '../data/initialTree';
-import { BRANCH_MAP } from '../constants/tree';
+import { ALL_BRANCH_TYPES, BRANCH_MAP } from '../constants/tree';
 
-export const resolveBranch = (node) => node.branch || BRANCH_MAP[node.id] || (node.isStart ? 'neutral' : 'core');
+const VALID_BRANCHES = new Set(ALL_BRANCH_TYPES);
+
+const isValidBranch = (branch) => typeof branch === 'string' && VALID_BRANCHES.has(branch);
+
+export const resolveBranch = (node) => {
+  if (isValidBranch(node?.branch)) return node.branch;
+  if (node?.id && BRANCH_MAP[node.id]) return BRANCH_MAP[node.id];
+  return node?.isStart ? 'neutral' : 'core';
+};
+
+const inferBranchFromNeighbors = (nodeId, incomingByNode, outgoingByNode, byId) => {
+  const candidates = new Set();
+  const collectBranch = (neighborId) => {
+    const b = byId.get(neighborId)?.branch;
+    if (b && b !== 'neutral') candidates.add(b);
+  };
+
+  (incomingByNode.get(nodeId) || []).forEach(collectBranch);
+  (outgoingByNode.get(nodeId) || []).forEach(collectBranch);
+  if (candidates.size !== 1) return null;
+  return candidates.values().next().value;
+};
+
+const normalizeNodesWithBranch = (nodes, edges) => {
+  const byId = new Map(nodes.map((n) => [n.id, {
+    ...n,
+    branch: isValidBranch(n.branch)
+      ? n.branch
+      : (BRANCH_MAP[n.id] || (n.isStart ? 'neutral' : null)),
+  }]));
+
+  const incomingByNode = new Map();
+  const outgoingByNode = new Map();
+  for (const e of edges || []) {
+    if (!incomingByNode.has(e.to)) incomingByNode.set(e.to, []);
+    incomingByNode.get(e.to).push(e.from);
+    if (!outgoingByNode.has(e.from)) outgoingByNode.set(e.from, []);
+    outgoingByNode.get(e.from).push(e.to);
+  }
+
+  // Conservative migration: only infer when all known neighboring branch evidence agrees.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const node of byId.values()) {
+      if (node.branch) continue;
+      const inferred = inferBranchFromNeighbors(node.id, incomingByNode, outgoingByNode, byId);
+      if (inferred) {
+        node.branch = inferred;
+        changed = true;
+      }
+    }
+  }
+
+  return nodes.map((n) => {
+    const normalized = byId.get(n.id);
+    return {
+      ...normalized,
+      branch: normalized.branch || (normalized.isStart ? 'neutral' : 'core'),
+    };
+  });
+};
 
 export const toRGBA = (hex, alpha = 1) => {
   const m = hex.replace('#', '');
@@ -54,12 +115,16 @@ export function segmentIntersectsRect(ax, ay, bx, by, rect) {
 }
 
 export function normalizeTree(rawTree) {
-  return {
+  const withDefaults = {
     ...INIT,
     ...rawTree,
-    nodes: (rawTree?.nodes || INIT.nodes).map((n) => (
-      { ...n, branch: resolveBranch(n) }
-    )),
+    nodes: rawTree?.nodes || INIT.nodes,
+    edges: rawTree?.edges || INIT.edges,
+  };
+
+  return {
+    ...withDefaults,
+    nodes: normalizeNodesWithBranch(withDefaults.nodes, withDefaults.edges),
     info: { ...INIT.info, ...(rawTree?.info || {}) },
   };
 }

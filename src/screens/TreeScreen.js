@@ -273,12 +273,12 @@ export default function TreeScreen({ onTreeChange }) {
     },
   })).current;
 
-  const addNode = (name) => {
+  const addNode = ({ name, branch = 'core' }) => {
     const id = `${name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}_${Date.now()}`;
     commit({
       ...tR.current,
       nodes: [...tR.current.nodes, {
-        id, name, x: pendingPos.current.x, y: pendingPos.current.y, unlocked: false, isStart: false, branch: 'core',
+        id, name, x: pendingPos.current.x, y: pendingPos.current.y, unlocked: false, isStart: false, branch,
       }],
       info: { ...tR.current.info, [id]: { desc: 'No description yet.', str: 5, bal: 5, tec: 5 } },
     });
