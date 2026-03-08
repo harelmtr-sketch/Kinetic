@@ -551,7 +551,7 @@ function buildEdgePath(fromPos, toPos) {
 }
 
 const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
-  tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
+  nodes, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
   dragVisual, LOD, edgeVisual,
   bld, connA, isInteracting,
@@ -564,7 +564,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     { scale: scV.value },
   ]),[]);
 
-  const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+  const nodeMap = useMemo(()=>new Map(nodes.map(n=>[n.id,n])),[nodes]);
 
   const dustAtlas = useMemo(() => {
     const W = 3600;
@@ -657,9 +657,9 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const w = edge.status==='mastered' ? edgeVisual.masteredW : edge.status==='ready' ? edgeVisual.readyW : edgeVisual.lockedW;
           const o = edge.status==='mastered' ? edgeVisual.masteredO : edge.status==='ready' ? edgeVisual.readyO : edgeVisual.lockedO;
           const boostedO = Math.min(0.95, o + (edge.status==='locked' ? 0.06 : 0.12));
-          // Use brighter edgeHex for lines, main for softer glow
+          // Use brighter edgeHex for lines, main for softer glow; locked uses slate[500]
           const color = edge.status==='locked'
-            ? `rgba(100,116,139,${boostedO})`
+            ? toRGBA(Colors.slate[500], boostedO)
             : toRGBA(edge.branchColor.edgeHex, boostedO);
           return (
             <Group key={edge.id}>
@@ -1082,53 +1082,6 @@ function TreeScreen({ onTreeChange }){
     return status;
   },[tree.nodes,bld,incomingByNode,nodeMap]);
 
-  // ── Node styles — memoized map so identity is stable across renders ──────────
-  // Only recomputes when visible nodes, status, or edit state actually changes.
-  const nodeStyles = useMemo(()=>{
-    const nb = BRANCH_COLORS.neutral;
-    const map = {};
-    for(const n of visibleNodes){
-      const branch = resolveBranch(n);
-      const bc = BRANCH_COLORS[branch] || nb;
-      const status = nodeStatusMap[n.id] || 'locked';
-      if(bld && connA===n.id){
-        map[n.id]={
-          fill:'#132238', innerFill:'#0C1728', outerRim:'#2B3C55',
-          stroke:nb.main, ring:toRGBA(nb.ring,0.88),
-          glowInner:toRGBA(nb.main,0.38), glowOuter:toRGBA(nb.main,0.20), sw:2.7, opacity:1,
-        };
-      } else if(status==='start'){
-        // Neutral branch — use neutral BRANCH_COLORS for consistency
-        map[n.id]={
-          fill:'#172A43', innerFill:'#0F1D30', outerRim:'#2C4060',
-          stroke:nb.main, ring:toRGBA(nb.ring,0.82),
-          glowInner:toRGBA(nb.main,0.36), glowOuter:toRGBA(nb.main,0.18), sw:2.5, opacity:1,
-        };
-      } else if(status==='mastered'){
-        // Slightly brighter outerRim to signal achievement, branch color throughout
-        map[n.id]={
-          fill:'#131B28', innerFill:'#0B1220', outerRim:'#243444',
-          stroke:bc.main, ring:toRGBA(bc.ring,0.92),
-          glowInner:toRGBA(bc.ring,0.42), glowOuter:toRGBA(bc.main,0.24), sw:2.55, opacity:1,
-        };
-      } else if(status==='ready'){
-        map[n.id]={
-          fill:'#19212F', innerFill:'#101826', outerRim:'#2A3848',
-          stroke:bc.main, ring:toRGBA(bc.ring,0.84),
-          glowInner:toRGBA(bc.ring,0.32), glowOuter:toRGBA(bc.main,0.17), sw:2.25, opacity:0.97,
-        };
-      } else {
-        // Locked — more muted to clearly separate from active states
-        map[n.id]={
-          fill:'#080E18', innerFill:'#050A10', outerRim:'#131D2A',
-          stroke:'rgba(85,100,125,0.30)', ring:'rgba(85,100,125,0.18)',
-          glowInner:'rgba(85,100,125,0.05)', glowOuter:'rgba(85,100,125,0.03)', sw:1.2, opacity:0.82,
-        };
-      }
-    }
-    return map;
-  },[visibleNodes,nodeStatusMap,bld,connA]);
-
   const wrap=name=>{
     const words=name.split(' ');const lines=[];let cur='';
     for(const w of words){const next=cur?cur+' '+w:w;if(next.length>10&&cur){lines.push(cur);cur=w;}else cur=next;}
@@ -1159,6 +1112,50 @@ function TreeScreen({ onTreeChange }){
       n.y>=visibleBounds.top-margin&&n.y<=visibleBounds.bottom+margin
     );
   },[tree.nodes,visibleBounds,xform.sc]);
+
+  // ── Node styles — declared after visibleNodes so deps are fully initialized ──
+  const nodeStyles = useMemo(()=>{
+    const nb = BRANCH_COLORS.neutral;
+    const map = {};
+    for(const n of visibleNodes){
+      const branch = resolveBranch(n);
+      const bc = BRANCH_COLORS[branch] || nb;
+      const status = nodeStatusMap[n.id] || 'locked';
+      if(bld && connA===n.id){
+        map[n.id]={
+          fill:'#132238', innerFill:'#0C1728', outerRim:'#2B3C55',
+          stroke:nb.main, ring:toRGBA(nb.ring,0.88),
+          glowInner:toRGBA(nb.main,0.38), glowOuter:toRGBA(nb.main,0.20), sw:2.7, opacity:1,
+        };
+      } else if(status==='start'){
+        map[n.id]={
+          fill:'#172A43', innerFill:'#0F1D30', outerRim:'#2C4060',
+          stroke:nb.main, ring:toRGBA(nb.ring,0.82),
+          glowInner:toRGBA(nb.main,0.36), glowOuter:toRGBA(nb.main,0.18), sw:2.5, opacity:1,
+        };
+      } else if(status==='mastered'){
+        map[n.id]={
+          fill:'#131B28', innerFill:'#0B1220', outerRim:'#243444',
+          stroke:bc.main, ring:toRGBA(bc.ring,0.92),
+          glowInner:toRGBA(bc.ring,0.42), glowOuter:toRGBA(bc.main,0.24), sw:2.55, opacity:1,
+        };
+      } else if(status==='ready'){
+        map[n.id]={
+          fill:'#19212F', innerFill:'#101826', outerRim:'#2A3848',
+          stroke:bc.main, ring:toRGBA(bc.ring,0.84),
+          glowInner:toRGBA(bc.ring,0.32), glowOuter:toRGBA(bc.main,0.17), sw:2.25, opacity:0.97,
+        };
+      } else {
+        // Locked — muted to clearly separate from active states
+        map[n.id]={
+          fill:'#080E18', innerFill:'#050A10', outerRim:'#131D2A',
+          stroke:'rgba(85,100,125,0.30)', ring:'rgba(85,100,125,0.18)',
+          glowInner:'rgba(85,100,125,0.05)', glowOuter:'rgba(85,100,125,0.03)', sw:1.2, opacity:0.82,
+        };
+      }
+    }
+    return map;
+  },[visibleNodes,nodeStatusMap,bld,connA]);
 
   const visibleNodeIds=useMemo(()=>new Set(visibleNodes.map(n=>n.id)),[visibleNodes]);
 
@@ -1286,7 +1283,7 @@ function TreeScreen({ onTreeChange }){
         {...panR.panHandlers}>
         {!!canvasSize.width&&!!canvasSize.height&&(
           <SkiaTreeCanvas
-            tree={tree}
+            nodes={tree.nodes}
             visibleNodes={visibleNodes}
             visibleEdges={visibleEdges}
             nodeStatusMap={nodeStatusMap}
