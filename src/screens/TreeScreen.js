@@ -72,6 +72,15 @@ export default function TreeScreen({ onTreeChange }) {
   const setLiveXform = (tx, ty, sc) => {
     txN.current = tx; tyN.current = ty; scN.current = sc;
     txV.value = tx; tyV.value = ty; scV.value = sc;
+
+    const now = Date.now();
+    if (isInteractingRef.current && now - lastXformSyncRef.current > 90) {
+      lastXformSyncRef.current = now;
+      setXform((prev) => {
+        if (Math.abs(prev.tx - tx) < 0.5 && Math.abs(prev.ty - ty) < 0.5 && Math.abs(prev.sc - sc) < 0.003) return prev;
+        return { tx, ty, sc };
+      });
+    }
   };
   const commitLiveXform = () => {
     const next = { tx: txN.current, ty: tyN.current, sc: scN.current };
@@ -106,6 +115,8 @@ export default function TreeScreen({ onTreeChange }) {
   const dId = useRef(null); const dNx = useRef(0); const dNy = useRef(0); const dPx = useRef(0); const dPy = useRef(0);
   const dragLive = useRef({ id: null, x: 0, y: 0 });
   const [isInteracting, setIsInteracting] = useState(false);
+  const isInteractingRef = useRef(false);
+  const lastXformSyncRef = useRef(0);
   const interactionTier = useMemo(() => {
     if (!isInteracting) return 'idle';
     if (xform.sc < 0.4) return 'heavy';
@@ -127,11 +138,13 @@ export default function TreeScreen({ onTreeChange }) {
       clearTimeout(glowDebounceRef.current);
       glowDebounceRef.current = null;
     }
+    isInteractingRef.current = true;
     setIsInteracting(true);
   };
   const endInteraction = () => {
     if (glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
     glowDebounceRef.current = setTimeout(() => {
+      isInteractingRef.current = false;
       setIsInteracting(false);
       glowDebounceRef.current = null;
     }, 90);
@@ -432,9 +445,9 @@ export default function TreeScreen({ onTreeChange }) {
       useDashedReady: isNear && interactionTier === 'idle',
       showEdgeGlow: isNear && interactionTier === 'idle',
       showNodeGlowBlur: isNear && interactionTier === 'idle',
-      simplifyNodeStack: isFar || interactionTier === 'heavy',
+      simplifyNodeStack: isFar || interactionTier === 'heavy' || interactionTier === 'medium',
       showNodeHighlight: !isFar && interactionTier !== 'heavy',
-      showDust: !forceCheap,
+      showDust: interactionTier === 'idle' && !isFar,
     };
   }, [interactionTier, lodTier]);
 
@@ -472,8 +485,8 @@ export default function TreeScreen({ onTreeChange }) {
       } else {
         map[n.id] = {
           fill: '#080E18', innerFill: '#050A10', outerRim: '#131D2A',
-          stroke: 'rgba(85,100,125,0.30)', ring: 'rgba(85,100,125,0.18)',
-          glowInner: 'rgba(85,100,125,0.05)', glowOuter: 'rgba(85,100,125,0.03)', sw: 1.2, opacity: 0.82,
+          stroke: toRGBA(bc.main, 0.34), ring: toRGBA(bc.ring, 0.20),
+          glowInner: toRGBA(bc.ring, 0.10), glowOuter: toRGBA(bc.main, 0.08), sw: 1.25, opacity: 0.84,
         };
       }
     }

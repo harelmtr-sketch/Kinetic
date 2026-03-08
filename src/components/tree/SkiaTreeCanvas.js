@@ -12,7 +12,7 @@ import {
   matchFont,
 } from '@shopify/react-native-skia';
 import { useDerivedValue } from 'react-native-reanimated';
-import { BRANCH_COLORS, Colors } from '../../theme/colors';
+import { BRANCH_COLORS } from '../../theme/colors';
 import { NODE_R, USE_GLOW, GLOW_QUALITY } from '../../constants/tree';
 import { resolveBranch, toRGBA } from '../../utils/treeUtils';
 import { mulberry32, buildEdgePath } from '../../utils/skiaTreeUtils';
@@ -48,7 +48,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const isLit = status === 'start' || status === 'mastered' || status === 'ready';
     const isReady = status === 'ready';
     const auraColor = status === 'locked'
-      ? 'rgba(80,95,120,0.10)'
+      ? visual.glowOuter
       : toRGBA(visual.stroke, isReady ? 0.24 : 0.18);
     const auraR = isLit ? NODE_R * 1.16 : NODE_R * 1.06;
     return {
@@ -140,7 +140,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const o = edge.status === 'mastered' ? edgeVisual.masteredO : edge.status === 'ready' ? edgeVisual.readyO : edgeVisual.lockedO;
           const boostedO = Math.min(0.95, o + (edge.status === 'locked' ? 0.06 : 0.12));
           const color = edge.status === 'locked'
-            ? toRGBA(Colors.slate[500], boostedO)
+            ? toRGBA(edge.branchColor.edgeHex, Math.min(0.52, boostedO * 0.78))
             : toRGBA(edge.branchColor.edgeHex, boostedO);
           return (
             <Group key={edge.id}>
@@ -169,13 +169,15 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const isReady = status === 'ready';
           const renderR = LOD.isFar ? farNodeR : NODE_R;
           const nodeStrokeWidth = LOD.isFar ? Math.max(0.8, visual.sw - 0.5) : visual.sw;
-          const auraColor = status === 'locked' ? 'rgba(80,95,120,0.10)' : toRGBA(visual.stroke, isReady ? 0.24 : 0.18);
-          const auraR = LOD.isFar ? NODE_R * 0.88 : (isLit ? NODE_R * 1.16 : NODE_R * 1.06);
+          const auraOpacity = status === 'locked' ? (LOD.isFar ? 0.12 : 0.10) : (isReady ? 0.24 : 0.18);
+          const auraColor = toRGBA(visual.stroke, auraOpacity);
+          const auraR = LOD.isFar ? NODE_R * 0.90 : (isLit ? NODE_R * 1.16 : NODE_R * 1.08);
           return (
             <Group key={n.id}>
               {LOD.showOuterRing && <Circle cx={rx} cy={ry} r={NODE_R + 13} style="stroke" strokeWidth={1.1} color={visual.ring} />}
               {LOD.showOuterRing && bld && connA === n.id && <Circle cx={rx} cy={ry} r={NODE_R + 16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />}
               {USE_GLOW && <Circle cx={rx} cy={ry} r={auraR} color={auraColor} />}
+              {USE_GLOW && LOD.isFar && <Circle cx={rx} cy={ry} r={NODE_R * 0.50} style="stroke" strokeWidth={0.9} color={toRGBA(visual.stroke, 0.30)} />}
               {LOD.showNodeGlowBlur && !isInteracting && USE_GLOW && isLit && (
                 <Group>
                   <Circle cx={rx} cy={ry} r={NODE_R * 1.10} color={visual.glowOuter}><Blur blur={GLOW_QUALITY === 'high' ? 18 : 12} /></Circle>
@@ -210,7 +212,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             {USE_GLOW && <Circle cx={0} cy={0} r={draggedNodeMeta.auraR} color={draggedNodeMeta.auraColor} />}
             <Circle cx={0} cy={0} r={NODE_R + 2} color={draggedNodeMeta.visual.outerRim} />
             <Circle cx={0} cy={0} r={NODE_R} color={draggedNodeMeta.visual.fill} opacity={draggedNodeMeta.visual.opacity} />
-            <Circle cx={0} cy={0} r={NODE_R - 3} color={draggedNodeMeta.visual.innerFill} opacity={0.92} />
+            {!LOD.simplifyNodeStack && <Circle cx={0} cy={0} r={NODE_R - 3} color={draggedNodeMeta.visual.innerFill} opacity={0.92} />}
             <Circle cx={0} cy={0} r={NODE_R - 7} style="stroke" strokeWidth={draggedNodeMeta.visual.sw} color={draggedNodeMeta.visual.stroke} opacity={draggedNodeMeta.visual.opacity} />
             {LOD.showInnerRing && <Circle cx={0} cy={0} r={NODE_R - 13} style="stroke" strokeWidth={1} color={draggedNodeMeta.visual.ring} opacity={0.55} />}
             {LOD.showNodeHighlight && <Circle cx={-10} cy={-11} r={NODE_R * 0.13} color="rgba(255,255,255,0.22)" />}
