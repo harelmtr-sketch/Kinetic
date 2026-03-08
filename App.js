@@ -70,10 +70,11 @@ const Colors = {
 };
 
 const BRANCH_COLORS = {
-  neutral: { main: '#60A5FA', glow: 'rgba(96,165,250,0.5)', edge: 'rgba(96,165,250,0.86)', ring: '#BFDBFE' },
-  push: { main: '#22C55E', glow: 'rgba(34,197,94,0.55)', edge: 'rgba(74,222,128,0.9)', ring: '#BBF7D0' },
-  pull: { main: '#4F46E5', glow: 'rgba(99,102,241,0.58)', edge: 'rgba(129,140,248,0.92)', ring: '#C7D2FE' },
-  core: { main: '#FACC15', glow: 'rgba(250,204,21,0.56)', edge: 'rgba(253,224,71,0.94)', ring: '#FEF08A' },
+  // edgeHex: brighter hex variant used for edge line color (toRGBA-compatible)
+  neutral: { main: '#60A5FA', edgeHex: '#93C5FD', glow: 'rgba(96,165,250,0.5)', edge: 'rgba(96,165,250,0.86)', ring: '#BFDBFE' },
+  push:    { main: '#22C55E', edgeHex: '#4ADE80', glow: 'rgba(34,197,94,0.55)',  edge: 'rgba(74,222,128,0.9)',  ring: '#BBF7D0' },
+  pull:    { main: '#4F46E5', edgeHex: '#818CF8', glow: 'rgba(99,102,241,0.58)', edge: 'rgba(129,140,248,0.92)',ring: '#C7D2FE' },
+  core:    { main: '#FACC15', edgeHex: '#FDE047', glow: 'rgba(250,204,21,0.56)', edge: 'rgba(253,224,71,0.94)', ring: '#FEF08A' },
 };
 
 const C = {
@@ -535,12 +536,26 @@ function mulberry32(seed) {
   };
 }
 
-function SkiaTreeCanvas({
+// Stable Skia path builder — extracted so memos can reuse without closure capture
+function buildEdgePath(fromPos, toPos) {
+  const path = Skia.Path.Make();
+  const dx = toPos.x - fromPos.x;
+  const dy = toPos.y - fromPos.y;
+  const mx = (fromPos.x + toPos.x) / 2;
+  const my = (fromPos.y + toPos.y) / 2;
+  const bendX = mx + (Math.abs(dy) > Math.abs(dx) ? (dx > 0 ? 24 : -24) : 0);
+  const bendY = my - Math.min(44, Math.max(14, Math.abs(dx) * 0.09));
+  path.moveTo(fromPos.x, fromPos.y);
+  path.quadTo(bendX, bendY, toPos.x, toPos.y);
+  return path;
+}
+
+const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
   dragVisual, LOD, edgeVisual,
   bld, connA, isInteracting,
-  canvasSize, nStyle,
+  canvasSize, nodeStyles,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
   const sceneTransform = useDerivedValue(()=>([
@@ -585,23 +600,12 @@ function SkiaTreeCanvas({
     return { image, sprites, transforms };
   }, []);
 
-  const edgeSegments = useMemo(()=>{
+  // Phase 1: stable metadata — status & branch color, no drag, no Skia paths
+  const edgeData = useMemo(()=>{
     return visibleEdges.map((e, idx)=>{
       const fn=nodeMap.get(e.from);
       const tn=nodeMap.get(e.to);
       if(!fn||!tn) return null;
-      const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
-      const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
-      const path = Skia.Path.Make();
-      const dx = toPos.x - fromPos.x;
-      const dy = toPos.y - fromPos.y;
-      const mx = (fromPos.x + toPos.x) / 2;
-      const my = (fromPos.y + toPos.y) / 2;
-      const bendX = mx + (Math.abs(dy) > Math.abs(dx) ? (dx > 0 ? 24 : -24) : 0);
-      const bendY = my - Math.min(44, Math.max(14, Math.abs(dx) * 0.09));
-      path.moveTo(fromPos.x,fromPos.y);
-      path.quadTo(bendX, bendY, toPos.x, toPos.y);
-
       const fromState=nodeStatusMap[fn.id] || 'locked';
       const toState=nodeStatusMap[tn.id] || 'locked';
       const fromLit=fromState==='start'||fromState==='mastered';
@@ -610,9 +614,35 @@ function SkiaTreeCanvas({
       const status = bld ? 'locked' : (fromLit&&toLit ? 'mastered' : ((fromLit&&!toLit)||toReady ? 'ready' : 'locked'));
       const branch = resolveBranch(tn);
       const branchColor = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
-      return { id: `${e.from}_${e.to}_${idx}`, path, status, branchColor };
+      return { id: `${e.from}_${e.to}_${idx}`, fn, tn, status, branchColor };
     }).filter(Boolean);
-  },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
+  },[bld,nodeMap,nodeStatusMap,visibleEdges]); // dragVisual intentionally excluded
+
+  // Phase 2: stable Skia paths at rest positions — only rebuilds when structure/status changes
+  const stableEdgePaths = useMemo(()=>{
+    const map = new Map();
+    for (const { id, fn, tn } of edgeData) {
+      map.set(id, buildEdgePath(fn, tn));
+    }
+    return map;
+  },[edgeData]);
+
+  // Phase 3: apply drag offset — only affected edges get new path objects
+  const edgeSegments = useMemo(()=>{
+    const dragId = dragVisual?.id ?? null;
+    return edgeData.map(({ id, fn, tn, status, branchColor })=>{
+      let path;
+      if(dragId && (fn.id === dragId || tn.id === dragId)){
+        // Only dragged-edge paths are reallocated per frame
+        const fromPos = fn.id === dragId ? dragVisual : fn;
+        const toPos   = tn.id === dragId ? dragVisual : tn;
+        path = buildEdgePath(fromPos, toPos);
+      } else {
+        path = stableEdgePaths.get(id);
+      }
+      return { id, path, status, branchColor };
+    });
+  },[edgeData,stableEdgePaths,dragVisual]);
 
   const farNodeR = NODE_R*0.34;
   return(
@@ -627,14 +657,17 @@ function SkiaTreeCanvas({
           const w = edge.status==='mastered' ? edgeVisual.masteredW : edge.status==='ready' ? edgeVisual.readyW : edgeVisual.lockedW;
           const o = edge.status==='mastered' ? edgeVisual.masteredO : edge.status==='ready' ? edgeVisual.readyO : edgeVisual.lockedO;
           const boostedO = Math.min(0.95, o + (edge.status==='locked' ? 0.06 : 0.12));
-          const color = edge.status==='locked' ? `rgba(100,116,139,${boostedO})` : toRGBA(edge.branchColor.main, boostedO);
+          // Use brighter edgeHex for lines, main for softer glow
+          const color = edge.status==='locked'
+            ? `rgba(100,116,139,${boostedO})`
+            : toRGBA(edge.branchColor.edgeHex, boostedO);
           return (
             <Group key={edge.id}>
               {LOD.isNear && !isInteracting && edge.status!=='locked' && (
-                <Path path={edge.path} style="stroke" strokeWidth={w+4.8} color={toRGBA(edge.branchColor.main, edge.status==='mastered'?0.36:0.29)} strokeCap="round" />
+                <Path path={edge.path} style="stroke" strokeWidth={w+4.8} color={toRGBA(edge.branchColor.main, edge.status==='mastered'?0.32:0.22)} strokeCap="round" />
               )}
               {edge.status==='mastered' && (
-                <Path path={edge.path} style="stroke" strokeWidth={w+2} color={toRGBA(edge.branchColor.main,0.44)} strokeCap="round" />
+                <Path path={edge.path} style="stroke" strokeWidth={w+1.5} color={toRGBA(edge.branchColor.main,0.38)} strokeCap="round" />
               )}
               <Path path={edge.path} style="stroke" strokeWidth={w} color={color} strokeCap="round">
                 {LOD.useDashedReady && edge.status==='ready' && !bld && <DashPathEffect intervals={[12,10]} />}
@@ -644,7 +677,8 @@ function SkiaTreeCanvas({
         })}
 
         {visibleNodes.map(n=>{
-          const visual=nStyle(n);
+          const visual=nodeStyles[n.id];
+          if(!visual) return null;
           const rx=dragVisual?.id===n.id?dragVisual.x:n.x;
           const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
           const lines=wrappedLabels[n.id]||[n.name];
@@ -653,62 +687,47 @@ function SkiaTreeCanvas({
           const status=nodeStatusMap[n.id]||'locked';
           const isLit=status==='start'||status==='mastered'||status==='ready';
           const isReady=status==='ready';
-          const isMastered=status==='start'||status==='mastered';
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,visual.sw-0.5):visual.sw;
-          const baseAuraColor =
-            status === 'locked'
-              ? 'rgba(100,116,139,0.18)'
-              : toRGBA(visual.stroke, 0.26);
+          // Unified aura: locked = very subtle, lit = branch-tinted, ready = slightly stronger
+          const auraColor = status==='locked'
+            ? 'rgba(80,95,120,0.10)'
+            : toRGBA(visual.stroke, isReady ? 0.24 : 0.18);
+          const auraR = LOD.isFar ? NODE_R * 0.88 : (isLit ? NODE_R * 1.16 : NODE_R * 1.06);
           return(
             <Group key={n.id}>
-              {LOD.showOuterRing&&<Circle cx={rx} cy={ry} r={NODE_R+13} style="stroke" strokeWidth={1.15} color={visual.ring} />}
-              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edge} />}
+              {/* Outer selection ring — near LOD only */}
+              {LOD.showOuterRing&&<Circle cx={rx} cy={ry} r={NODE_R+13} style="stroke" strokeWidth={1.1} color={visual.ring} />}
+              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />}
 
-              {USE_GLOW && (
-                <Circle
-                  cx={rx}
-                  cy={ry}
-                  r={LOD.isFar ? NODE_R * 0.82 : NODE_R * 1.06}
-                  color={baseAuraColor}
-                />
-              )}
-              {USE_GLOW && isLit && (
-                <Circle
-                  cx={rx}
-                  cy={ry}
-                  r={LOD.isFar ? NODE_R * 0.92 : NODE_R * 1.18}
-                  color={toRGBA(visual.stroke, isReady ? 0.22 : 0.18)}
-                />
-              )}
+              {/* Unified aura — replaces separate base+lit aura circles */}
+              {USE_GLOW && <Circle cx={rx} cy={ry} r={auraR} color={auraColor} />}
 
+              {/* Blur glow — 2 layers (was 3) to reduce overdraw, skipped during interaction */}
               {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
                 <Group>
-                  <Circle cx={rx} cy={ry} r={NODE_R*1.12} color={visual.glowOuter}><Blur blur={GLOW_QUALITY==='high'?20:14} /></Circle>
-                  <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={visual.glowMid}><Blur blur={GLOW_QUALITY==='high'?14:9} /></Circle>
-                  <Circle cx={rx} cy={ry} r={NODE_R*0.8} color={visual.glowInner}><Blur blur={6} /></Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R*1.10} color={visual.glowOuter}><Blur blur={GLOW_QUALITY==='high'?18:12} /></Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R*0.82} color={visual.glowInner}><Blur blur={5} /></Circle>
                 </Group>
               )}
 
-              <Circle cx={rx} cy={ry} r={renderR+3} color={visual.outerRim} />
-              <Circle cx={rx} cy={ry} r={renderR+1} style="stroke" strokeWidth={1.2} color={visual.ring} opacity={0.42} />
+              {/* Node body layers */}
+              <Circle cx={rx} cy={ry} r={renderR+2} color={visual.outerRim} />
               <Circle cx={rx} cy={ry} r={renderR} color={visual.fill} opacity={visual.opacity} />
               <Circle cx={rx} cy={ry} r={renderR-3} color={visual.innerFill} opacity={0.92} />
-              <Circle cx={rx} cy={ry} r={renderR-8} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
-              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-12} style="stroke" strokeWidth={1} color={visual.ring} opacity={0.65} />}
-              {!LOD.isFar&&<Circle cx={rx-11} cy={ry-11} r={NODE_R*0.14} color="rgba(255,255,255,0.28)" />}
-              {!LOD.isFar&&<Circle cx={rx+8} cy={ry+10} r={NODE_R*0.16} color="rgba(0,0,0,0.24)" />}
-              {LOD.isNear && <Circle cx={rx} cy={ry-NODE_R*0.32} r={NODE_R*0.22} color="rgba(255,255,255,0.09)" />}
+              <Circle cx={rx} cy={ry} r={renderR-7} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
+              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-13} style="stroke" strokeWidth={1} color={visual.ring} opacity={0.55} />}
+
+              {/* Specular highlight — one dot only */}
+              {!LOD.isFar&&<Circle cx={rx-10} cy={ry-11} r={NODE_R*0.13} color="rgba(255,255,255,0.22)" />}
 
               {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>{
                 const x = rx-(ln.length*2.8);
                 const y = sy+li*lh;
-                const mainColor = isLit ? '#F8FAFC' : '#B6C2D1';
-                const glow1 = isLit ? toRGBA(visual.stroke, 0.3) : 'rgba(148,163,184,0.12)';
-                const glow2 = isLit ? toRGBA(visual.stroke, 0.18) : 'rgba(148,163,184,0.08)';
+                const mainColor = isLit ? '#F8FAFC' : '#8898AA';
+                const glow1 = isLit ? toRGBA(visual.stroke, 0.28) : 'rgba(100,120,148,0.10)';
                 return (
                   <Group key={`${n.id}_${li}`}>
-                    <SkiaText x={x} y={y} text={ln} font={labelFont} color={glow2} />
                     <SkiaText x={x} y={y} text={ln} font={labelFont} color={glow1} />
                     <SkiaText x={x} y={y} text={ln} font={labelFont} color={mainColor} />
                   </Group>
@@ -720,7 +739,7 @@ function SkiaTreeCanvas({
       </Group>
     </Canvas>
   );
-}
+}); // end React.memo(SkiaTreeCanvas)
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 function TreeScreen({ onTreeChange }){
@@ -1063,32 +1082,52 @@ function TreeScreen({ onTreeChange }){
     return status;
   },[tree.nodes,bld,incomingByNode,nodeMap]);
 
-  // ── SVG node/edge styling ──────────────────────────────────────────────────
-  const nStyle=n=>{
-    const branch = resolveBranch(n);
-    const bc = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
-    const status=nodeStatusMap[n.id] || 'locked';
-    if(bld&&connA===n.id) return{
-      fill:'#132238', innerFill:'#0C1728', outerRim:'#2B3C55', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.88),
-      glowInner:toRGBA(Colors.blue[300],0.4), glowMid:toRGBA(Colors.blue[400],0.28), glowOuter:toRGBA(Colors.blue[500],0.22), sw:2.7, opacity:1,
-    };
-    if(status==='start') return {
-      fill:'#172A43', innerFill:'#0F1D30', outerRim:'#304766', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.82),
-      glowInner:toRGBA(Colors.blue[300],0.4), glowMid:toRGBA(Colors.blue[400],0.3), glowOuter:toRGBA(Colors.blue[500],0.24), sw:2.5, opacity:1,
-    };
-    if(status==='mastered') return {
-      fill:'#141C2A', innerFill:'#0C1320', outerRim:'#2F3E50', stroke:bc.main, ring:toRGBA(bc.ring,0.9),
-      glowInner:toRGBA(bc.ring,0.4), glowMid:toRGBA(bc.main,0.3), glowOuter:toRGBA(bc.main,0.22), sw:2.45, opacity:0.99,
-    };
-    if(status==='ready') return {
-      fill:'#19212F', innerFill:'#101826', outerRim:'#314153', stroke:bc.main, ring:toRGBA(bc.ring,0.84),
-      glowInner:toRGBA(bc.ring,0.33), glowMid:toRGBA(bc.main,0.24), glowOuter:toRGBA(bc.main,0.18), sw:2.25, opacity:0.97,
-    };
-    return {
-      fill:'#0B1220', innerFill:'#070D16', outerRim:'#1C2635', stroke:'rgba(120,138,160,0.38)', ring:'rgba(120,138,160,0.26)',
-      glowInner:'rgba(120,138,160,0.08)', glowMid:'rgba(120,138,160,0.05)', glowOuter:'rgba(120,138,160,0.04)', sw:1.5, opacity:0.9,
-    };
-  };
+  // ── Node styles — memoized map so identity is stable across renders ──────────
+  // Only recomputes when visible nodes, status, or edit state actually changes.
+  const nodeStyles = useMemo(()=>{
+    const nb = BRANCH_COLORS.neutral;
+    const map = {};
+    for(const n of visibleNodes){
+      const branch = resolveBranch(n);
+      const bc = BRANCH_COLORS[branch] || nb;
+      const status = nodeStatusMap[n.id] || 'locked';
+      if(bld && connA===n.id){
+        map[n.id]={
+          fill:'#132238', innerFill:'#0C1728', outerRim:'#2B3C55',
+          stroke:nb.main, ring:toRGBA(nb.ring,0.88),
+          glowInner:toRGBA(nb.main,0.38), glowOuter:toRGBA(nb.main,0.20), sw:2.7, opacity:1,
+        };
+      } else if(status==='start'){
+        // Neutral branch — use neutral BRANCH_COLORS for consistency
+        map[n.id]={
+          fill:'#172A43', innerFill:'#0F1D30', outerRim:'#2C4060',
+          stroke:nb.main, ring:toRGBA(nb.ring,0.82),
+          glowInner:toRGBA(nb.main,0.36), glowOuter:toRGBA(nb.main,0.18), sw:2.5, opacity:1,
+        };
+      } else if(status==='mastered'){
+        // Slightly brighter outerRim to signal achievement, branch color throughout
+        map[n.id]={
+          fill:'#131B28', innerFill:'#0B1220', outerRim:'#243444',
+          stroke:bc.main, ring:toRGBA(bc.ring,0.92),
+          glowInner:toRGBA(bc.ring,0.42), glowOuter:toRGBA(bc.main,0.24), sw:2.55, opacity:1,
+        };
+      } else if(status==='ready'){
+        map[n.id]={
+          fill:'#19212F', innerFill:'#101826', outerRim:'#2A3848',
+          stroke:bc.main, ring:toRGBA(bc.ring,0.84),
+          glowInner:toRGBA(bc.ring,0.32), glowOuter:toRGBA(bc.main,0.17), sw:2.25, opacity:0.97,
+        };
+      } else {
+        // Locked — more muted to clearly separate from active states
+        map[n.id]={
+          fill:'#080E18', innerFill:'#050A10', outerRim:'#131D2A',
+          stroke:'rgba(85,100,125,0.30)', ring:'rgba(85,100,125,0.18)',
+          glowInner:'rgba(85,100,125,0.05)', glowOuter:'rgba(85,100,125,0.03)', sw:1.2, opacity:0.82,
+        };
+      }
+    }
+    return map;
+  },[visibleNodes,nodeStatusMap,bld,connA]);
 
   const wrap=name=>{
     const words=name.split(' ');const lines=[];let cur='';
@@ -1262,7 +1301,7 @@ function TreeScreen({ onTreeChange }){
             connA={connA}
             isInteracting={isInteracting}
             canvasSize={canvasSize}
-            nStyle={nStyle}
+            nodeStyles={nodeStyles}
           />
         )}
       </View>
