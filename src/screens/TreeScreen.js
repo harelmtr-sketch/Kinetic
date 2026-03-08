@@ -3,7 +3,7 @@ import React, {
 } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  PanResponder, Alert,
+  PanResponder, Alert, Modal, TextInput,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
@@ -18,7 +18,7 @@ import GlowText from '../components/common/GlowText';
 import SkiaTreeCanvas from '../components/tree/SkiaTreeCanvas';
 import { BRANCH_COLORS, Colors } from '../theme/colors';
 import {
-  STORAGE_KEY, NODE_R, MIN_SC, MAX_SC, DEV_PERF_LOG,
+  STORAGE_KEY, SAVED_TREES_KEY, SELECTED_TREE_KEY, NODE_R, MIN_SC, MAX_SC, DEV_PERF_LOG,
 } from '../constants/tree';
 import { INIT } from '../data/initialTree';
 import {
@@ -32,19 +32,75 @@ export default function TreeScreen({ onTreeChange }) {
   const setTree = (t) => { tR.current = t; _setTree(t); };
   const hist = useRef([normalizeTree(INIT)]); const hi = useRef(0);
   const [canUndo, setCU] = useState(false); const [canRedo, setCR] = useState(false);
+  const [savedTrees, setSavedTrees] = useState([]);
+  const [selectedTreeId, setSelectedTreeId] = useState(null);
+  const [namePromptVisible, setNamePromptVisible] = useState(false);
+  const [treeNameDraft, setTreeNameDraft] = useState('');
+  const [libraryVisible, setLibraryVisible] = useState(false);
+
+  const resetHistoryWithTree = (nextTree) => {
+    hist.current = [nextTree];
+    hi.current = 0;
+    setTree(nextTree);
+    setCU(false);
+    setCR(false);
+  };
+
+  const persistWorkingTree = (nextTree) => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextTree)).catch(() => {});
+  const persistSelectedTree = (id) => {
+    if (id) {
+      AsyncStorage.setItem(SELECTED_TREE_KEY, id).catch(() => {});
+    } else {
+      AsyncStorage.removeItem(SELECTED_TREE_KEY).catch(() => {});
+    }
+    setSelectedTreeId(id || null);
+  };
+  const persistSavedTrees = (nextSavedTrees) => {
+    setSavedTrees(nextSavedTrees);
+    AsyncStorage.setItem(SAVED_TREES_KEY, JSON.stringify(nextSavedTrees)).catch(() => {});
+  };
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (!raw) return;
+    const boot = async () => {
+      const defaultTree = normalizeTree(INIT);
+      let resolvedTree = defaultTree;
+      let resolvedSelectedId = null;
+      let library = [];
+
       try {
-        const saved = JSON.parse(raw);
-        if (saved?.nodes && saved?.edges) {
-          const t = normalizeTree(saved);
-          hist.current = [t]; hi.current = 0;
-          setTree(t); setCU(false); setCR(false);
+        const rawLibrary = await AsyncStorage.getItem(SAVED_TREES_KEY);
+        if (rawLibrary) {
+          const parsed = JSON.parse(rawLibrary);
+          if (Array.isArray(parsed)) {
+            library = parsed.filter((item) => item && item.id && item.name && item.tree?.nodes && item.tree?.edges);
+          }
         }
       } catch (e) {}
-    });
+
+      try {
+        const savedSelectedId = await AsyncStorage.getItem(SELECTED_TREE_KEY);
+        const selectedTree = savedSelectedId ? library.find((entry) => entry.id === savedSelectedId) : null;
+        if (selectedTree) {
+          resolvedTree = normalizeTree(selectedTree.tree);
+          resolvedSelectedId = selectedTree.id;
+        } else {
+          const rawWorking = await AsyncStorage.getItem(STORAGE_KEY);
+          if (rawWorking) {
+            const parsedWorking = JSON.parse(rawWorking);
+            if (parsedWorking?.nodes && parsedWorking?.edges) resolvedTree = normalizeTree(parsedWorking);
+          }
+        }
+      } catch (e) {}
+
+      setSavedTrees(library);
+      setSelectedTreeId(resolvedSelectedId);
+      resetHistoryWithTree(resolvedTree);
+      persistWorkingTree(resolvedTree);
+      if (resolvedSelectedId) AsyncStorage.setItem(SELECTED_TREE_KEY, resolvedSelectedId).catch(() => {});
+      else AsyncStorage.removeItem(SELECTED_TREE_KEY).catch(() => {});
+    };
+
+    boot();
   }, []);
 
   useEffect(() => { onTreeChange?.(tree); }, [onTreeChange, tree]);
@@ -52,7 +108,7 @@ export default function TreeScreen({ onTreeChange }) {
   const commit = (t) => {
     const h = hist.current.slice(0, hi.current + 1); h.push(t);
     hist.current = h; hi.current = h.length - 1; setTree(t); setCU(true); setCR(false);
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(t)).catch(() => {});
+    persistWorkingTree(t);
   };
   const undo = () => { if (!hi.current) return; hi.current -= 1; const t = hist.current[hi.current]; setTree(t); setCU(hi.current > 0); setCR(true); };
   const redo = () => { if (hi.current >= hist.current.length - 1) return; hi.current += 1; const t = hist.current[hi.current]; setTree(t); setCU(true); setCR(hi.current < hist.current.length - 1); };
@@ -66,6 +122,10 @@ export default function TreeScreen({ onTreeChange }) {
 
   const txN = useRef(0); const tyN = useRef(0); const scN = useRef(1);
   const txV = useSharedValue(0); const tyV = useSharedValue(0); const scV = useSharedValue(1);
+  const panStartTx = useSharedValue(0); const panStartTy = useSharedValue(0); const panStartSc = useSharedValue(1);
+  const pinchStartTx = useSharedValue(0); const pinchStartTy = useSharedValue(0); const pinchStartSc = useSharedValue(1);
+  const pinchStartSvgFx = useSharedValue(0); const pinchStartSvgFy = useSharedValue(0);
+  const canvasLeftV = useSharedValue(0); const canvasTopV = useSharedValue(0);
   const dragXV = useSharedValue(0); const dragYV = useSharedValue(0);
   const [dragId, setDragId] = useState(null);
   const [xform, setXform] = useState({ tx: 0, ty: 0, sc: 1 });
@@ -73,15 +133,6 @@ export default function TreeScreen({ onTreeChange }) {
   const setLiveXform = (tx, ty, sc) => {
     txN.current = tx; tyN.current = ty; scN.current = sc;
     txV.value = tx; tyV.value = ty; scV.value = sc;
-
-    const now = Date.now();
-    if (isInteractingRef.current && now - lastXformSyncRef.current > 90) {
-      lastXformSyncRef.current = now;
-      setXform((prev) => {
-        if (Math.abs(prev.tx - tx) < 0.5 && Math.abs(prev.ty - ty) < 0.5 && Math.abs(prev.sc - sc) < 0.003) return prev;
-        return { tx, ty, sc };
-      });
-    }
   };
   const commitLiveXform = () => {
     const next = { tx: txN.current, ty: tyN.current, sc: scN.current };
@@ -99,7 +150,12 @@ export default function TreeScreen({ onTreeChange }) {
   }, []);
 
   const cL = useRef(0); const cT = useRef(0); const cRef = useRef(null);
-  const measureC = () => cRef.current?.measure((_, __, _w, _h, px, py) => { cL.current = px; cT.current = py; });
+  const measureC = () => cRef.current?.measure((_, __, _w, _h, px, py) => {
+    cL.current = px;
+    cT.current = py;
+    canvasLeftV.value = px;
+    canvasTopV.value = py;
+  });
 
   const toSVG = (px, py) => ({
     x: (px - cL.current - txN.current) / scN.current,
@@ -116,8 +172,6 @@ export default function TreeScreen({ onTreeChange }) {
   const dId = useRef(null); const dNx = useRef(0); const dNy = useRef(0); const dPx = useRef(0); const dPy = useRef(0);
   const dragLive = useRef({ id: null, x: 0, y: 0 });
   const [isInteracting, setIsInteracting] = useState(false);
-  const isInteractingRef = useRef(false);
-  const lastXformSyncRef = useRef(0);
   const interactionTier = useMemo(() => {
     if (!isInteracting) return 'idle';
     if (xform.sc < 0.4) return 'heavy';
@@ -139,13 +193,11 @@ export default function TreeScreen({ onTreeChange }) {
       clearTimeout(glowDebounceRef.current);
       glowDebounceRef.current = null;
     }
-    isInteractingRef.current = true;
     setIsInteracting(true);
   };
   const endInteraction = () => {
     if (glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
     glowDebounceRef.current = setTimeout(() => {
-      isInteractingRef.current = false;
       setIsInteracting(false);
       glowDebounceRef.current = null;
     }, 90);
@@ -156,46 +208,56 @@ export default function TreeScreen({ onTreeChange }) {
     if (hit) setSel({ ...hit });
   };
 
-  const navGesture = useMemo(() => {
-    const panStart = { tx: 0, ty: 0, sc: 1 };
-    const pinchStart = {
-      tx: 0, ty: 0, sc: 1, svgFx: 0, svgFy: 0,
-    };
+  const commitSharedXform = (tx, ty, sc) => {
+    txN.current = tx;
+    tyN.current = ty;
+    scN.current = sc;
+    setXform((prev) => (
+      prev.tx === tx && prev.ty === ty && prev.sc === sc
+        ? prev
+        : { tx, ty, sc }
+    ));
+  };
 
+  const navGesture = useMemo(() => {
     const pan = Gesture.Pan()
       .onBegin(() => {
-        panStart.tx = txN.current;
-        panStart.ty = tyN.current;
-        panStart.sc = scN.current;
+        panStartTx.value = txV.value;
+        panStartTy.value = tyV.value;
+        panStartSc.value = scV.value;
         runOnJS(beginInteraction)();
       })
       .onUpdate((evt) => {
-        runOnJS(setLiveXform)(panStart.tx + evt.translationX, panStart.ty + evt.translationY, panStart.sc);
+        txV.value = panStartTx.value + evt.translationX;
+        tyV.value = panStartTy.value + evt.translationY;
+        scV.value = panStartSc.value;
       })
       .onFinalize(() => {
-        runOnJS(commitLiveXform)();
+        runOnJS(commitSharedXform)(txV.value, tyV.value, scV.value);
         runOnJS(endInteraction)();
       });
 
     const pinch = Gesture.Pinch()
       .onBegin((evt) => {
-        pinchStart.sc = scN.current;
-        pinchStart.tx = txN.current;
-        pinchStart.ty = tyN.current;
-        const fx = evt.focalX - cL.current;
-        const fy = evt.focalY - cT.current;
-        pinchStart.svgFx = (fx - pinchStart.tx) / pinchStart.sc;
-        pinchStart.svgFy = (fy - pinchStart.ty) / pinchStart.sc;
+        pinchStartSc.value = scV.value;
+        pinchStartTx.value = txV.value;
+        pinchStartTy.value = tyV.value;
+        const fx = evt.focalX - canvasLeftV.value;
+        const fy = evt.focalY - canvasTopV.value;
+        pinchStartSvgFx.value = (fx - pinchStartTx.value) / pinchStartSc.value;
+        pinchStartSvgFy.value = (fy - pinchStartTy.value) / pinchStartSc.value;
         runOnJS(beginInteraction)();
       })
       .onUpdate((evt) => {
-        const nextSc = Math.min(Math.max(pinchStart.sc * evt.scale, MIN_SC), MAX_SC);
-        const fx = evt.focalX - cL.current;
-        const fy = evt.focalY - cT.current;
-        runOnJS(setLiveXform)(fx - pinchStart.svgFx * nextSc, fy - pinchStart.svgFy * nextSc, nextSc);
+        const nextSc = Math.min(Math.max(pinchStartSc.value * evt.scale, MIN_SC), MAX_SC);
+        const fx = evt.focalX - canvasLeftV.value;
+        const fy = evt.focalY - canvasTopV.value;
+        scV.value = nextSc;
+        txV.value = fx - pinchStartSvgFx.value * nextSc;
+        tyV.value = fy - pinchStartSvgFy.value * nextSc;
       })
       .onFinalize(() => {
-        runOnJS(commitLiveXform)();
+        runOnJS(commitSharedXform)(txV.value, tyV.value, scV.value);
         runOnJS(endInteraction)();
       });
 
@@ -204,6 +266,9 @@ export default function TreeScreen({ onTreeChange }) {
       .onEnd((evt, success) => {
         if (success) runOnJS(handleViewTap)(evt.absoluteX, evt.absoluteY);
       });
+
+    pan.maxPointers(1).minDistance(1).averageTouches(true);
+    tap.requireExternalGestureToFail(pan, pinch);
 
     return Gesture.Exclusive(tap, Gesture.Simultaneous(pan, pinch));
   }, []);
@@ -386,12 +451,82 @@ export default function TreeScreen({ onTreeChange }) {
           text: 'Import', onPress: () => {
             hist.current = [t]; hi.current = 0;
             setTree(t); setCU(false); setCR(false);
-            AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(t)).catch(() => {});
+            persistWorkingTree(t);
           },
         },
       ]);
     } catch (e) { Alert.alert('Import failed', String(e)); }
   };
+
+  const saveCurrentTreeAs = () => {
+    setTreeNameDraft('');
+    setNamePromptVisible(true);
+  };
+
+  const confirmSaveCurrentTreeAs = () => {
+    const name = treeNameDraft.trim();
+    if (!name) return;
+    const nextEntry = {
+      id: `tree_${Date.now()}`,
+      name,
+      tree: normalizeTree(tR.current),
+      updatedAt: Date.now(),
+    };
+    const nextLibrary = [nextEntry, ...savedTrees];
+    persistSavedTrees(nextLibrary);
+    persistSelectedTree(nextEntry.id);
+    persistWorkingTree(nextEntry.tree);
+    setNamePromptVisible(false);
+    setTreeNameDraft('');
+  };
+
+  const overwriteSelectedTree = () => {
+    if (!selectedTreeId) {
+      Alert.alert('No selected tree', 'Choose a saved tree first or save as a new tree.');
+      return;
+    }
+    const nextLibrary = savedTrees.map((entry) => (
+      entry.id === selectedTreeId
+        ? { ...entry, tree: normalizeTree(tR.current), updatedAt: Date.now() }
+        : entry
+    ));
+    persistSavedTrees(nextLibrary);
+    persistWorkingTree(tR.current);
+  };
+
+  const switchToTree = (treeId) => {
+    const target = savedTrees.find((entry) => entry.id === treeId);
+    if (!target) return;
+    const next = normalizeTree(target.tree);
+    resetHistoryWithTree(next);
+    persistWorkingTree(next);
+    persistSelectedTree(treeId);
+    setLibraryVisible(false);
+  };
+
+  const loadDefaultTree = () => {
+    const next = normalizeTree(INIT);
+    resetHistoryWithTree(next);
+    persistWorkingTree(next);
+    persistSelectedTree(null);
+    setLibraryVisible(false);
+  };
+
+  const deleteSelectedTree = () => {
+    if (!selectedTreeId) return;
+    const entry = savedTrees.find((t) => t.id === selectedTreeId);
+    Alert.alert('Delete tree', `Delete "${entry?.name || 'this tree'}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: () => {
+          const nextLibrary = savedTrees.filter((t) => t.id !== selectedTreeId);
+          persistSavedTrees(nextLibrary);
+          persistSelectedTree(null);
+        },
+      },
+    ]);
+  };
+
 
   const nodeMap = useMemo(() => new Map(tree.nodes.map((n) => [n.id, n])), [tree.nodes]);
   const incomingByNode = useMemo(() => {
@@ -442,13 +577,14 @@ export default function TreeScreen({ onTreeChange }) {
 
   const visibleBounds = useMemo(() => {
     if (!canvasSize.width || !canvasSize.height) return null;
+    const interactionPad = isInteracting ? Math.max(520 / xform.sc, 320) : 0;
     return {
-      left: (-xform.tx) / xform.sc,
-      top: (-xform.ty) / xform.sc,
-      right: (canvasSize.width - xform.tx) / xform.sc,
-      bottom: (canvasSize.height - xform.ty) / xform.sc,
+      left: (-xform.tx) / xform.sc - interactionPad,
+      top: (-xform.ty) / xform.sc - interactionPad,
+      right: (canvasSize.width - xform.tx) / xform.sc + interactionPad,
+      bottom: (canvasSize.height - xform.ty) / xform.sc + interactionPad,
     };
-  }, [canvasSize.height, canvasSize.width, xform.sc, xform.tx, xform.ty]);
+  }, [canvasSize.height, canvasSize.width, isInteracting, xform.sc, xform.tx, xform.ty]);
 
   const visibleNodes = useMemo(() => {
     if (!visibleBounds) return tree.nodes;
@@ -480,10 +616,23 @@ export default function TreeScreen({ onTreeChange }) {
     });
   }, [tree.edges, visibleNodeIds, visibleBounds, xform.sc, nodeMap]);
 
+  const lodTierRef = useRef('near');
   const lodTier = useMemo(() => {
-    if (xform.sc < 0.32) return 'far';
-    if (xform.sc < 0.72) return 'mid';
-    return 'near';
+    const prev = lodTierRef.current;
+    const sc = xform.sc;
+    let next = prev;
+
+    if (prev === 'near') {
+      if (sc < 0.5) next = 'mid';
+    } else if (prev === 'mid') {
+      if (sc < 0.23) next = 'far';
+      else if (sc > 0.58) next = 'near';
+    } else if (prev === 'far' && sc > 0.31) {
+      next = 'mid';
+    }
+
+    lodTierRef.current = next;
+    return next;
   }, [xform.sc]);
 
   const LOD = useMemo(() => {
@@ -497,13 +646,13 @@ export default function TreeScreen({ onTreeChange }) {
       isMid,
       isNear,
       interactionTier,
-      showLabels: isNear && interactionTier === 'idle',
+      showLabels: isNear,
       showInnerRing: !isFar && !forceCheap,
-      showOuterRing: isNear && interactionTier !== 'heavy',
+      showOuterRing: !isFar && interactionTier !== 'heavy',
       useDashedReady: isNear && interactionTier === 'idle',
       showEdgeGlow: isNear && interactionTier === 'idle',
-      showNodeGlowBlur: isNear && interactionTier === 'idle',
-      simplifyNodeStack: isFar || interactionTier === 'heavy' || interactionTier === 'medium',
+      showNodeGlowBlur: isNear && interactionTier !== 'heavy',
+      simplifyNodeStack: isFar || interactionTier === 'heavy',
       showNodeHighlight: !isFar && interactionTier !== 'heavy',
       showDust: interactionTier === 'idle' && !isFar,
     };
@@ -512,40 +661,101 @@ export default function TreeScreen({ onTreeChange }) {
   const nodeStyles = useMemo(() => {
     const nb = BRANCH_COLORS.neutral;
     const map = {};
+    const makeVisual = (branch, bc, status) => {
+      const isLocked = status === 'locked';
+      if (isLocked) {
+        return {
+          fill: 'rgba(36,33,29,0.78)',
+          innerFill: 'rgba(24,22,20,0.88)',
+          core: toRGBA(bc.main, 0.14),
+          outerRim: 'rgba(118,104,89,0.22)',
+          stroke: toRGBA(bc.main, 0.38),
+          ring: 'rgba(124,111,97,0.24)',
+          glowInner: toRGBA(bc.main, 0.11),
+          glowOuter: toRGBA(bc.main, 0.07),
+          ambient: toRGBA(bc.main, 0.04),
+          farAura: toRGBA(bc.main, 0.12),
+          farBody: toRGBA(bc.main, 0.24),
+          farCore: toRGBA(bc.ring, 0.26),
+          innerRing: 'rgba(112,100,86,0.24)',
+          innerRingSoft: 'rgba(80,72,63,0.2)',
+          specular: 'rgba(226,214,198,0.06)',
+          sw: 1.6,
+          opacity: 0.88,
+        };
+      }
+
+      const isMastered = status === 'mastered';
+      const baseFill = isMastered ? toRGBA(bc.main, 0.22) : toRGBA(bc.main, 0.17);
+      const innerFill = isMastered ? toRGBA(bc.main, 0.3) : toRGBA(bc.main, 0.24);
+      const core = isMastered ? toRGBA(bc.ring, 0.28) : toRGBA(bc.ring, 0.22);
+      const strokeAlpha = isMastered ? 0.94 : 0.86;
+      const ringAlpha = isMastered ? 0.84 : 0.72;
+      const glowOuterBase = isMastered ? 0.3 : 0.25;
+      const glowInnerBase = isMastered ? 0.46 : 0.39;
+      const branchBoost = branch === 'push' ? 1.08 : branch === 'pull' ? 1.1 : 1;
+      const glowOuterAlpha = glowOuterBase * branchBoost;
+      const glowInnerAlpha = glowInnerBase * branchBoost;
+
+      return {
+        fill: baseFill,
+        innerFill,
+        core,
+        outerRim: toRGBA(bc.ring, 0.19),
+        stroke: toRGBA(bc.main, strokeAlpha),
+        ring: toRGBA(bc.ring, ringAlpha),
+        glowInner: toRGBA(bc.ring, glowInnerAlpha),
+        glowOuter: toRGBA(bc.main, glowOuterAlpha),
+        ambient: toRGBA(bc.main, isMastered ? 0.1 : 0.082),
+        farAura: toRGBA(bc.main, isMastered ? 0.2 : 0.17),
+        farBody: toRGBA(bc.main, isMastered ? 0.5 : 0.42),
+        farCore: toRGBA(bc.ring, isMastered ? 0.72 : 0.6),
+        innerRing: toRGBA(bc.main, 0.27),
+        innerRingSoft: toRGBA(bc.ring, 0.24),
+        specular: 'rgba(240,246,255,0.12)',
+        sw: isMastered ? 2.35 : 2.05,
+        opacity: 0.98,
+      };
+    };
+
+
     for (const n of visibleNodes) {
       const branch = resolveBranch(n);
       const bc = BRANCH_COLORS[branch] || nb;
       const status = nodeStatusMap[n.id] || 'locked';
+
       if (bld && connA === n.id) {
         map[n.id] = {
-          fill: '#132238', innerFill: '#0C1728', outerRim: '#2B3C55',
-          stroke: nb.main, ring: toRGBA(nb.ring, 0.88),
-          glowInner: toRGBA(nb.main, 0.38), glowOuter: toRGBA(nb.main, 0.20), sw: 2.7, opacity: 1,
+          ...makeVisual('neutral', nb, 'ready'),
+          fill: '#0F1E33',
+          innerFill: '#173250',
+          core: 'rgba(96,165,250,0.2)',
+          outerRim: 'rgba(191,219,254,0.34)',
+          stroke: toRGBA(nb.main, 0.95),
+          ring: toRGBA(nb.ring, 0.92),
+          glowInner: toRGBA(nb.main, 0.46),
+          glowOuter: toRGBA(nb.main, 0.24),
+          ambient: toRGBA(nb.main, 0.08),
+          sw: 2.7,
         };
       } else if (status === 'start') {
+        const startBc = BRANCH_COLORS.neutral;
         map[n.id] = {
-          fill: '#172A43', innerFill: '#0F1D30', outerRim: '#2C4060',
-          stroke: nb.main, ring: toRGBA(nb.ring, 0.82),
-          glowInner: toRGBA(nb.main, 0.36), glowOuter: toRGBA(nb.main, 0.18), sw: 2.5, opacity: 1,
-        };
-      } else if (status === 'mastered') {
-        map[n.id] = {
-          fill: '#131B28', innerFill: '#0B1220', outerRim: '#243444',
-          stroke: bc.main, ring: toRGBA(bc.ring, 0.92),
-          glowInner: toRGBA(bc.ring, 0.42), glowOuter: toRGBA(bc.main, 0.24), sw: 2.55, opacity: 1,
-        };
-      } else if (status === 'ready') {
-        map[n.id] = {
-          fill: '#19212F', innerFill: '#101826', outerRim: '#2A3848',
-          stroke: bc.main, ring: toRGBA(bc.ring, 0.84),
-          glowInner: toRGBA(bc.ring, 0.32), glowOuter: toRGBA(bc.main, 0.17), sw: 2.25, opacity: 0.97,
+          ...makeVisual('neutral', startBc, 'ready'),
+          fill: 'rgba(14,27,44,0.9)',
+          innerFill: 'rgba(22,46,74,0.92)',
+          core: 'rgba(147,197,253,0.2)',
+          stroke: 'rgba(96,165,250,0.92)',
+          ring: 'rgba(191,219,254,0.82)',
+          glowInner: 'rgba(96,165,250,0.34)',
+          glowOuter: 'rgba(59,130,246,0.2)',
+          ambient: 'rgba(59,130,246,0.1)',
+          innerRing: 'rgba(96,165,250,0.3)',
+          innerRingSoft: 'rgba(191,219,254,0.28)',
+          sw: 2.45,
         };
       } else {
-        map[n.id] = {
-          fill: '#080E18', innerFill: '#050A10', outerRim: '#131D2A',
-          stroke: toRGBA(bc.main, 0.34), ring: toRGBA(bc.ring, 0.20),
-          glowInner: toRGBA(bc.ring, 0.18), glowOuter: toRGBA(bc.main, 0.14), sw: 1.3, opacity: 0.86,
-        };
+        map[n.id] = makeVisual(branch, bc, status);
       }
     }
     return map;
@@ -553,13 +763,13 @@ export default function TreeScreen({ onTreeChange }) {
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {
-      masteredW: 1.2, readyW: 1.05, lockedW: 0.9, masteredO: 0.68, readyO: 0.56, lockedO: 0.28,
+      masteredW: 1.4, readyW: 1.05, lockedW: 0.7, masteredO: 0.76, readyO: 0.46, lockedO: 0.14,
     };
     if (LOD.isMid) return {
-      masteredW: 1.9, readyW: 1.55, lockedW: 1.2, masteredO: 0.8, readyO: 0.68, lockedO: 0.34,
+      masteredW: 2.2, readyW: 1.5, lockedW: 0.95, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
     };
     return {
-      masteredW: 2.8, readyW: 2.3, lockedW: 1.5, masteredO: 0.9, readyO: 0.8, lockedO: 0.44,
+      masteredW: 3.0, readyW: 2.0, lockedW: 1.04, masteredO: 0.92, readyO: 0.65, lockedO: 0.2,
     };
   }, [LOD.isFar, LOD.isMid]);
 
@@ -586,7 +796,7 @@ export default function TreeScreen({ onTreeChange }) {
     <View style={styles.root}>
       <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
         <View style={styles.titleWrap}>
-          <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC SKILL TREE</GlowText>
+          <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC</GlowText>
         </View>
         <View style={styles.barRight}>
           {!bld && (
@@ -622,6 +832,22 @@ export default function TreeScreen({ onTreeChange }) {
           <View style={styles.tg}>
             <TouchableOpacity style={[styles.uBtn, !canUndo && styles.dim]} onPress={undo} disabled={!canUndo}><Text style={styles.uT}>Undo</Text></TouchableOpacity>
             <TouchableOpacity style={[styles.uBtn, !canRedo && styles.dim]} onPress={redo} disabled={!canRedo}><Text style={styles.uT}>Redo</Text></TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {bld && (
+        <View style={styles.treeMgrWrap}>
+          <View style={styles.treeMgrHeaderRow}>
+            <Text style={styles.treeMgrTitle}>TREE SLOT</Text>
+            <Text style={styles.treeMgrCurrent}>{selectedTreeId ? (savedTrees.find((t) => t.id === selectedTreeId)?.name || 'Saved') : 'Default'}</Text>
+          </View>
+          <View style={styles.treeMgrActions}>
+            <TouchableOpacity style={styles.miniBtn} onPress={saveCurrentTreeAs}><Text style={styles.miniBtnT}>Save As</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.miniBtn} onPress={overwriteSelectedTree}><Text style={styles.miniBtnT}>Overwrite</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.miniBtn} onPress={() => setLibraryVisible(true)}><Text style={styles.miniBtnT}>Switch</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.miniBtn} onPress={loadDefaultTree}><Text style={styles.miniBtnT}>Default</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.miniBtn, !selectedTreeId && styles.dim]} onPress={deleteSelectedTree} disabled={!selectedTreeId}><Text style={styles.miniBtnT}>Delete</Text></TouchableOpacity>
           </View>
         </View>
       )}
@@ -721,6 +947,45 @@ export default function TreeScreen({ onTreeChange }) {
         </View>
       )}
 
+      <Modal transparent visible={namePromptVisible} animationType="fade" onRequestClose={() => setNamePromptVisible(false)}>
+        <View style={styles.slotModalBack}>
+          <View style={styles.slotModalCard}>
+            <Text style={styles.slotModalTitle}>Save Tree</Text>
+            <TextInput
+              value={treeNameDraft}
+              onChangeText={setTreeNameDraft}
+              placeholder="Tree name"
+              placeholderTextColor={Colors.text.tertiary}
+              style={styles.slotInput}
+              autoFocus
+            />
+            <View style={styles.slotRow}>
+              <TouchableOpacity style={styles.slotBtn} onPress={() => setNamePromptVisible(false)}><Text style={styles.slotBtnT}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.slotBtn, !treeNameDraft.trim() && styles.dim]} onPress={confirmSaveCurrentTreeAs} disabled={!treeNameDraft.trim()}><Text style={styles.slotBtnT}>Save</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal transparent visible={libraryVisible} animationType="fade" onRequestClose={() => setLibraryVisible(false)}>
+        <View style={styles.slotModalBack}>
+          <View style={styles.slotModalCard}>
+            <Text style={styles.slotModalTitle}>Switch Tree</Text>
+            <TouchableOpacity style={styles.slotListItem} onPress={loadDefaultTree}>
+              <Text style={styles.slotListTitle}>Default</Text>
+              <Text style={styles.slotListMeta}>INIT</Text>
+            </TouchableOpacity>
+            {savedTrees.map((entry) => (
+              <TouchableOpacity key={entry.id} style={styles.slotListItem} onPress={() => switchToTree(entry.id)}>
+                <Text style={styles.slotListTitle}>{entry.name}</Text>
+                <Text style={styles.slotListMeta}>{new Date(entry.updatedAt || Date.now()).toLocaleDateString()}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={styles.slotBtn} onPress={() => setLibraryVisible(false)}><Text style={styles.slotBtnT}>Close</Text></TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <NamePrompt visible={prompt} onConfirm={addNode} onCancel={() => showPrompt(false)} />
       {sel && !bld && (
         <SkillCard
@@ -800,7 +1065,39 @@ const styles = StyleSheet.create({
   hintT: {
     color: Colors.text.tertiary, fontSize: 11, textAlign: 'center', letterSpacing: 0.5,
   },
-  canvas: { flex: 1, backgroundColor: '#05080F', overflow: 'hidden' },
+  treeMgrWrap: {
+    backgroundColor: Colors.background.secondary,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: Colors.border.default,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  treeMgrHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  treeMgrTitle: { color: Colors.text.tertiary, fontSize: 10, letterSpacing: 1.4, fontWeight: '700' },
+  treeMgrCurrent: { color: Colors.text.secondary, fontSize: 11, fontWeight: '700' },
+  treeMgrActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  miniBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    backgroundColor: Colors.background.cardAlt,
+  },
+  miniBtnT: { color: Colors.text.secondary, fontSize: 11, fontWeight: '700' },
+  slotModalBack: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', paddingHorizontal: 24 },
+  slotModalCard: { backgroundColor: Colors.background.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border.default, padding: 16, gap: 10 },
+  slotModalTitle: { color: Colors.text.secondary, fontSize: 13, fontWeight: '800', letterSpacing: 1.2 },
+  slotInput: { borderWidth: 1, borderColor: Colors.border.default, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10, color: Colors.text.primary, backgroundColor: Colors.background.cardAlt },
+  slotRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  slotBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.background.cardAlt, alignSelf: 'flex-end' },
+  slotBtnT: { color: Colors.text.secondary, fontWeight: '700' },
+  slotListItem: { borderWidth: 1, borderColor: Colors.border.default, borderRadius: 8, padding: 10, backgroundColor: Colors.background.cardAlt, gap: 2 },
+  slotListTitle: { color: Colors.text.secondary, fontWeight: '700' },
+  slotListMeta: { color: Colors.text.tertiary, fontSize: 11 },
+  canvas: { flex: 1, backgroundColor: '#0A0A0A', overflow: 'hidden' },
   legend: {
     flexDirection: 'row', justifyContent: 'center', gap: 28, paddingVertical: 12,
     backgroundColor: '#060A10', borderTopWidth: 1, borderColor: Colors.border.default,
