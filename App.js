@@ -70,10 +70,11 @@ const Colors = {
 };
 
 const BRANCH_COLORS = {
-  neutral: { main: '#60A5FA', glow: 'rgba(96,165,250,0.5)', edge: 'rgba(96,165,250,0.86)', ring: '#BFDBFE' },
-  push: { main: '#22C55E', glow: 'rgba(34,197,94,0.55)', edge: 'rgba(74,222,128,0.9)', ring: '#BBF7D0' },
-  pull: { main: '#4F46E5', glow: 'rgba(99,102,241,0.58)', edge: 'rgba(129,140,248,0.92)', ring: '#C7D2FE' },
-  core: { main: '#FACC15', glow: 'rgba(250,204,21,0.56)', edge: 'rgba(253,224,71,0.94)', ring: '#FEF08A' },
+  // edgeHex: brighter hex variant used for edge line color (toRGBA-compatible)
+  neutral: { main: '#60A5FA', edgeHex: '#93C5FD', glow: 'rgba(96,165,250,0.5)', edge: 'rgba(96,165,250,0.86)', ring: '#BFDBFE' },
+  push:    { main: '#22C55E', edgeHex: '#4ADE80', glow: 'rgba(34,197,94,0.55)',  edge: 'rgba(74,222,128,0.9)',  ring: '#BBF7D0' },
+  pull:    { main: '#4F46E5', edgeHex: '#818CF8', glow: 'rgba(99,102,241,0.58)', edge: 'rgba(129,140,248,0.92)',ring: '#C7D2FE' },
+  core:    { main: '#FACC15', edgeHex: '#FDE047', glow: 'rgba(250,204,21,0.56)', edge: 'rgba(253,224,71,0.94)', ring: '#FEF08A' },
 };
 
 const C = {
@@ -535,12 +536,27 @@ function mulberry32(seed) {
   };
 }
 
-function SkiaTreeCanvas({
-  tree, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
+// Stable Skia path builder — extracted so memos can reuse without closure capture
+function buildEdgePath(fromPos, toPos) {
+  const path = Skia.Path.Make();
+  const dx = toPos.x - fromPos.x;
+  const dy = toPos.y - fromPos.y;
+  const mx = (fromPos.x + toPos.x) / 2;
+  const my = (fromPos.y + toPos.y) / 2;
+  const bendX = mx + (Math.abs(dy) > Math.abs(dx) ? (dx > 0 ? 24 : -24) : 0);
+  const bendY = my - Math.min(44, Math.max(14, Math.abs(dx) * 0.09));
+  path.moveTo(fromPos.x, fromPos.y);
+  path.quadTo(bendX, bendY, toPos.x, toPos.y);
+  return path;
+}
+
+const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
+  nodes, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
-  dragVisual, LOD, edgeVisual,
+  dragId, dragXV, dragYV,
+  LOD, edgeVisual,
   bld, connA, isInteracting,
-  canvasSize, nStyle,
+  canvasSize, nodeStyles,
 }){
   const labelFont = useMemo(()=>matchFont({ fontSize: 10, fontStyle: 'bold' }),[]);
   const sceneTransform = useDerivedValue(()=>([
@@ -549,7 +565,33 @@ function SkiaTreeCanvas({
     { scale: scV.value },
   ]),[]);
 
-  const nodeMap = useMemo(()=>new Map(tree.nodes.map(n=>[n.id,n])),[tree.nodes]);
+  // Animated Group transform for the dragged node — updates on UI thread, bypasses React entirely.
+  // dragXV/dragYV are written directly from PanResponder with no setState, so this is the only
+  // thing that "re-renders" during active drag movement (Skia evaluates the derived value on UI thread).
+  const draggedTransform = useDerivedValue(()=>[
+    { translateX: dragXV.value },
+    { translateY: dragYV.value },
+  ],[]);
+
+  // Stable visual data for the dragged node — only recomputes at drag start/end, not during movement.
+  const draggedNodeMeta = useMemo(()=>{
+    if(!dragId) return null;
+    const n = nodes.find(nn=>nn.id===dragId);
+    if(!n) return null;
+    const visual = nodeStyles[dragId];
+    if(!visual) return null;
+    const lines = wrappedLabels[dragId] || [n.name];
+    const status = nodeStatusMap[dragId] || 'locked';
+    const isLit = status==='start'||status==='mastered'||status==='ready';
+    const isReady = status==='ready';
+    const auraColor = status==='locked'
+      ? 'rgba(80,95,120,0.10)'
+      : toRGBA(visual.stroke, isReady ? 0.24 : 0.18);
+    const auraR = isLit ? NODE_R*1.16 : NODE_R*1.06;
+    return { visual, lines, status, isLit, auraColor, auraR };
+  },[dragId,nodes,nodeStyles,wrappedLabels,nodeStatusMap]);
+
+  const nodeMap = useMemo(()=>new Map(nodes.map(n=>[n.id,n])),[nodes]);
 
   const dustAtlas = useMemo(() => {
     const W = 3600;
@@ -585,23 +627,12 @@ function SkiaTreeCanvas({
     return { image, sprites, transforms };
   }, []);
 
-  const edgeSegments = useMemo(()=>{
+  // Phase 1: stable metadata — status & branch color, no drag, no Skia paths
+  const edgeData = useMemo(()=>{
     return visibleEdges.map((e, idx)=>{
       const fn=nodeMap.get(e.from);
       const tn=nodeMap.get(e.to);
       if(!fn||!tn) return null;
-      const fromPos=dragVisual?.id===fn.id?{x:dragVisual.x,y:dragVisual.y}:fn;
-      const toPos=dragVisual?.id===tn.id?{x:dragVisual.x,y:dragVisual.y}:tn;
-      const path = Skia.Path.Make();
-      const dx = toPos.x - fromPos.x;
-      const dy = toPos.y - fromPos.y;
-      const mx = (fromPos.x + toPos.x) / 2;
-      const my = (fromPos.y + toPos.y) / 2;
-      const bendX = mx + (Math.abs(dy) > Math.abs(dx) ? (dx > 0 ? 24 : -24) : 0);
-      const bendY = my - Math.min(44, Math.max(14, Math.abs(dx) * 0.09));
-      path.moveTo(fromPos.x,fromPos.y);
-      path.quadTo(bendX, bendY, toPos.x, toPos.y);
-
       const fromState=nodeStatusMap[fn.id] || 'locked';
       const toState=nodeStatusMap[tn.id] || 'locked';
       const fromLit=fromState==='start'||fromState==='mastered';
@@ -610,9 +641,18 @@ function SkiaTreeCanvas({
       const status = bld ? 'locked' : (fromLit&&toLit ? 'mastered' : ((fromLit&&!toLit)||toReady ? 'ready' : 'locked'));
       const branch = resolveBranch(tn);
       const branchColor = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
-      return { id: `${e.from}_${e.to}_${idx}`, path, status, branchColor };
+      return { id: `${e.from}_${e.to}_${idx}`, fn, tn, status, branchColor };
     }).filter(Boolean);
-  },[bld,dragVisual,nodeMap,nodeStatusMap,visibleEdges]);
+  },[bld,nodeMap,nodeStatusMap,visibleEdges]);
+
+  // Edge paths — rebuilt only when tree structure/status changes (not during drag).
+  // Edges stay at rest positions while a node is dragged; they snap to the committed
+  // position on release. This eliminates path reallocation during movement entirely.
+  const edgeSegments = useMemo(()=>
+    edgeData.map(({ id, fn, tn, status, branchColor })=>({
+      id, path: buildEdgePath(fn, tn), status, branchColor,
+    }))
+  ,[edgeData]);
 
   const farNodeR = NODE_R*0.34;
   return(
@@ -627,14 +667,17 @@ function SkiaTreeCanvas({
           const w = edge.status==='mastered' ? edgeVisual.masteredW : edge.status==='ready' ? edgeVisual.readyW : edgeVisual.lockedW;
           const o = edge.status==='mastered' ? edgeVisual.masteredO : edge.status==='ready' ? edgeVisual.readyO : edgeVisual.lockedO;
           const boostedO = Math.min(0.95, o + (edge.status==='locked' ? 0.06 : 0.12));
-          const color = edge.status==='locked' ? `rgba(100,116,139,${boostedO})` : toRGBA(edge.branchColor.main, boostedO);
+          // Use brighter edgeHex for lines, main for softer glow; locked uses slate[500]
+          const color = edge.status==='locked'
+            ? toRGBA(Colors.slate[500], boostedO)
+            : toRGBA(edge.branchColor.edgeHex, boostedO);
           return (
             <Group key={edge.id}>
               {LOD.isNear && !isInteracting && edge.status!=='locked' && (
-                <Path path={edge.path} style="stroke" strokeWidth={w+4.8} color={toRGBA(edge.branchColor.main, edge.status==='mastered'?0.36:0.29)} strokeCap="round" />
+                <Path path={edge.path} style="stroke" strokeWidth={w+4.8} color={toRGBA(edge.branchColor.main, edge.status==='mastered'?0.32:0.22)} strokeCap="round" />
               )}
               {edge.status==='mastered' && (
-                <Path path={edge.path} style="stroke" strokeWidth={w+2} color={toRGBA(edge.branchColor.main,0.44)} strokeCap="round" />
+                <Path path={edge.path} style="stroke" strokeWidth={w+1.5} color={toRGBA(edge.branchColor.main,0.38)} strokeCap="round" />
               )}
               <Path path={edge.path} style="stroke" strokeWidth={w} color={color} strokeCap="round">
                 {LOD.useDashedReady && edge.status==='ready' && !bld && <DashPathEffect intervals={[12,10]} />}
@@ -643,72 +686,60 @@ function SkiaTreeCanvas({
           );
         })}
 
+        {/* Static nodes — dragged node excluded so it doesn't render twice */}
         {visibleNodes.map(n=>{
-          const visual=nStyle(n);
-          const rx=dragVisual?.id===n.id?dragVisual.x:n.x;
-          const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
+          if(n.id===dragId) return null; // rendered separately via animated Group below
+          const visual=nodeStyles[n.id];
+          if(!visual) return null;
+          const rx=n.x;
+          const ry=n.y;
           const lines=wrappedLabels[n.id]||[n.name];
           const lh=13;
           const sy=ry+NODE_R+14;
           const status=nodeStatusMap[n.id]||'locked';
           const isLit=status==='start'||status==='mastered'||status==='ready';
           const isReady=status==='ready';
-          const isMastered=status==='start'||status==='mastered';
           const renderR=LOD.isFar?farNodeR:NODE_R;
           const nodeStrokeWidth=LOD.isFar?Math.max(0.8,visual.sw-0.5):visual.sw;
-          const baseAuraColor =
-            status === 'locked'
-              ? 'rgba(100,116,139,0.18)'
-              : toRGBA(visual.stroke, 0.26);
+          // Unified aura: locked = very subtle, lit = branch-tinted, ready = slightly stronger
+          const auraColor = status==='locked'
+            ? 'rgba(80,95,120,0.10)'
+            : toRGBA(visual.stroke, isReady ? 0.24 : 0.18);
+          const auraR = LOD.isFar ? NODE_R * 0.88 : (isLit ? NODE_R * 1.16 : NODE_R * 1.06);
           return(
             <Group key={n.id}>
-              {LOD.showOuterRing&&<Circle cx={rx} cy={ry} r={NODE_R+13} style="stroke" strokeWidth={1.15} color={visual.ring} />}
-              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edge} />}
+              {/* Outer selection ring — near LOD only */}
+              {LOD.showOuterRing&&<Circle cx={rx} cy={ry} r={NODE_R+13} style="stroke" strokeWidth={1.1} color={visual.ring} />}
+              {LOD.showOuterRing&&bld&&connA===n.id&&<Circle cx={rx} cy={ry} r={NODE_R+16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />}
 
-              {USE_GLOW && (
-                <Circle
-                  cx={rx}
-                  cy={ry}
-                  r={LOD.isFar ? NODE_R * 0.82 : NODE_R * 1.06}
-                  color={baseAuraColor}
-                />
-              )}
-              {USE_GLOW && isLit && (
-                <Circle
-                  cx={rx}
-                  cy={ry}
-                  r={LOD.isFar ? NODE_R * 0.92 : NODE_R * 1.18}
-                  color={toRGBA(visual.stroke, isReady ? 0.22 : 0.18)}
-                />
-              )}
+              {/* Unified aura — replaces separate base+lit aura circles */}
+              {USE_GLOW && <Circle cx={rx} cy={ry} r={auraR} color={auraColor} />}
 
+              {/* Blur glow — 2 layers (was 3) to reduce overdraw, skipped during interaction */}
               {LOD.isNear&&!isInteracting&&USE_GLOW&&isLit&&(
                 <Group>
-                  <Circle cx={rx} cy={ry} r={NODE_R*1.12} color={visual.glowOuter}><Blur blur={GLOW_QUALITY==='high'?20:14} /></Circle>
-                  <Circle cx={rx} cy={ry} r={NODE_R*0.98} color={visual.glowMid}><Blur blur={GLOW_QUALITY==='high'?14:9} /></Circle>
-                  <Circle cx={rx} cy={ry} r={NODE_R*0.8} color={visual.glowInner}><Blur blur={6} /></Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R*1.10} color={visual.glowOuter}><Blur blur={GLOW_QUALITY==='high'?18:12} /></Circle>
+                  <Circle cx={rx} cy={ry} r={NODE_R*0.82} color={visual.glowInner}><Blur blur={5} /></Circle>
                 </Group>
               )}
 
-              <Circle cx={rx} cy={ry} r={renderR+3} color={visual.outerRim} />
-              <Circle cx={rx} cy={ry} r={renderR+1} style="stroke" strokeWidth={1.2} color={visual.ring} opacity={0.42} />
+              {/* Node body layers */}
+              <Circle cx={rx} cy={ry} r={renderR+2} color={visual.outerRim} />
               <Circle cx={rx} cy={ry} r={renderR} color={visual.fill} opacity={visual.opacity} />
               <Circle cx={rx} cy={ry} r={renderR-3} color={visual.innerFill} opacity={0.92} />
-              <Circle cx={rx} cy={ry} r={renderR-8} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
-              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-12} style="stroke" strokeWidth={1} color={visual.ring} opacity={0.65} />}
-              {!LOD.isFar&&<Circle cx={rx-11} cy={ry-11} r={NODE_R*0.14} color="rgba(255,255,255,0.28)" />}
-              {!LOD.isFar&&<Circle cx={rx+8} cy={ry+10} r={NODE_R*0.16} color="rgba(0,0,0,0.24)" />}
-              {LOD.isNear && <Circle cx={rx} cy={ry-NODE_R*0.32} r={NODE_R*0.22} color="rgba(255,255,255,0.09)" />}
+              <Circle cx={rx} cy={ry} r={renderR-7} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
+              {LOD.showInnerRing&&<Circle cx={rx} cy={ry} r={NODE_R-13} style="stroke" strokeWidth={1} color={visual.ring} opacity={0.55} />}
+
+              {/* Specular highlight — one dot only */}
+              {!LOD.isFar&&<Circle cx={rx-10} cy={ry-11} r={NODE_R*0.13} color="rgba(255,255,255,0.22)" />}
 
               {LOD.showLabels&&!isInteracting&&lines.map((ln,li)=>{
                 const x = rx-(ln.length*2.8);
                 const y = sy+li*lh;
-                const mainColor = isLit ? '#F8FAFC' : '#B6C2D1';
-                const glow1 = isLit ? toRGBA(visual.stroke, 0.3) : 'rgba(148,163,184,0.12)';
-                const glow2 = isLit ? toRGBA(visual.stroke, 0.18) : 'rgba(148,163,184,0.08)';
+                const mainColor = isLit ? '#F8FAFC' : '#8898AA';
+                const glow1 = isLit ? toRGBA(visual.stroke, 0.28) : 'rgba(100,120,148,0.10)';
                 return (
                   <Group key={`${n.id}_${li}`}>
-                    <SkiaText x={x} y={y} text={ln} font={labelFont} color={glow2} />
                     <SkiaText x={x} y={y} text={ln} font={labelFont} color={glow1} />
                     <SkiaText x={x} y={y} text={ln} font={labelFont} color={mainColor} />
                   </Group>
@@ -717,10 +748,44 @@ function SkiaTreeCanvas({
             </Group>
           );
         })}
+
+        {/* Dragged node — rendered in a Group whose transform is a useDerivedValue driven by
+            shared values. When dragXV/dragYV change (on every PanResponder move event), Skia
+            evaluates draggedTransform on the UI thread and redraws just this Group — no React
+            render cycle, no JS-thread reconciliation. Node circles are at (0,0) + Group offset. */}
+        {draggedNodeMeta!==null&&(
+          <Group transform={draggedTransform}>
+            {LOD.showOuterRing&&(
+              <Circle cx={0} cy={0} r={NODE_R+13} style="stroke" strokeWidth={1.1} color={draggedNodeMeta.visual.ring} />
+            )}
+            {USE_GLOW&&(
+              <Circle cx={0} cy={0} r={draggedNodeMeta.auraR} color={draggedNodeMeta.auraColor} />
+            )}
+            {/* No blur glow during drag — isInteracting=true already suppresses it in static nodes */}
+            <Circle cx={0} cy={0} r={NODE_R+2} color={draggedNodeMeta.visual.outerRim} />
+            <Circle cx={0} cy={0} r={NODE_R} color={draggedNodeMeta.visual.fill} opacity={draggedNodeMeta.visual.opacity} />
+            <Circle cx={0} cy={0} r={NODE_R-3} color={draggedNodeMeta.visual.innerFill} opacity={0.92} />
+            <Circle cx={0} cy={0} r={NODE_R-7} style="stroke" strokeWidth={draggedNodeMeta.visual.sw} color={draggedNodeMeta.visual.stroke} opacity={draggedNodeMeta.visual.opacity} />
+            {LOD.showInnerRing&&(
+              <Circle cx={0} cy={0} r={NODE_R-13} style="stroke" strokeWidth={1} color={draggedNodeMeta.visual.ring} opacity={0.55} />
+            )}
+            <Circle cx={-10} cy={-11} r={NODE_R*0.13} color="rgba(255,255,255,0.22)" />
+            {LOD.showLabels&&!isInteracting&&draggedNodeMeta.lines.map((ln,li)=>{
+              const glow1=draggedNodeMeta.isLit?toRGBA(draggedNodeMeta.visual.stroke,0.28):'rgba(100,120,148,0.10)';
+              const mainColor=draggedNodeMeta.isLit?'#F8FAFC':'#8898AA';
+              return(
+                <Group key={`dl_${li}`}>
+                  <SkiaText x={-(ln.length*2.8)} y={NODE_R+14+li*13} text={ln} font={labelFont} color={glow1} />
+                  <SkiaText x={-(ln.length*2.8)} y={NODE_R+14+li*13} text={ln} font={labelFont} color={mainColor} />
+                </Group>
+              );
+            })}
+          </Group>
+        )}
       </Group>
     </Canvas>
   );
-}
+}); // end React.memo(SkiaTreeCanvas)
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 function TreeScreen({ onTreeChange }){
@@ -766,6 +831,10 @@ function TreeScreen({ onTreeChange }){
 
   const txN=useRef(0),tyN=useRef(0),scN=useRef(1);
   const txV=useSharedValue(0),tyV=useSharedValue(0),scV=useSharedValue(1);
+  // Drag position as shared values — Skia reads these on UI thread so dragged node
+  // animates at 60 fps without any React rerenders during active movement.
+  const dragXV=useSharedValue(0),dragYV=useSharedValue(0);
+  const [dragId,setDragId]=useState(null); // React state only changes at drag start/end (2 renders/drag)
   const [xform,setXform]=useState({tx:0,ty:0,sc:1});
   const gestureActive=useRef(false);
   const setLiveXform=(tx,ty,sc)=>{
@@ -789,7 +858,6 @@ function TreeScreen({ onTreeChange }){
   },[xform.sc,xform.tx,xform.ty]);
 
   useEffect(()=>()=>{
-    if(dragVisualRaf.current!=null) cancelAnimationFrame(dragVisualRaf.current);
     if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
   },[]);
 
@@ -810,27 +878,20 @@ function TreeScreen({ onTreeChange }){
   const pMx0=useRef(0),pMy0=useRef(0);
   const dId=useRef(null),dNx=useRef(0),dNy=useRef(0),dPx=useRef(0),dPy=useRef(0);
   const dragLive=useRef({id:null,x:0,y:0});
-  const [dragVisual,setDragVisual]=useState(null);
-  const dragVisualRef=useRef(null);
-  const dragVisualRaf=useRef(null);
   const glowDebounceRef=useRef(null);
   const [isInteracting,setIsInteracting]=useState(false);
 
-  const setDragVisualThrottled=next=>{
-    dragVisualRef.current=next;
-    if(dragVisualRaf.current!=null) return;
-    dragVisualRaf.current=requestAnimationFrame(()=>{
-      dragVisualRaf.current=null;
-      setDragVisual(dragVisualRef.current);
-    });
+  // Write drag position directly to shared values — zero React rerenders during drag movement.
+  // setDragId() is called only once at drag START and once at drag END (2 React renders per drag total).
+  const setDragPos=(id,x,y)=>{
+    dragXV.value=x;
+    dragYV.value=y;
+    if(dId.current!==id){ dId.current=id; setDragId(id); }
   };
-  const clearDragVisual=()=>{
-    dragVisualRef.current=null;
-    if(dragVisualRaf.current!=null){
-      cancelAnimationFrame(dragVisualRaf.current);
-      dragVisualRaf.current=null;
-    }
-    setDragVisual(null);
+  const clearDragPos=()=>{
+    dId.current=null;
+    dragLive.current={id:null,x:0,y:0};
+    setDragId(null);
   };
   const beginInteraction=()=>{
     if(glowDebounceRef.current){
@@ -854,9 +915,8 @@ function TreeScreen({ onTreeChange }){
     onMoveShouldSetPanResponderCapture:()=>true,
     onPanResponderGrant:evt=>{
       const ts=evt.nativeEvent.touches;
-      moved.current=false;dId.current=null;pOn.current=false;
-      dragLive.current={id:null,x:0,y:0};
-      clearDragVisual();
+      moved.current=false;pOn.current=false;
+      clearDragPos();
       beginInteraction();
       if(ts.length>=2){
         gestureActive.current=true;
@@ -872,10 +932,10 @@ function TreeScreen({ onTreeChange }){
       if(bR.current&&tR2.current==='move'){
         const hit=hitNode(t.pageX,t.pageY);
         if(hit){
-          dId.current=hit.id;dNx.current=hit.x;dNy.current=hit.y;
+          dNx.current=hit.x;dNy.current=hit.y;
           const p=toSVG(t.pageX,t.pageY);dPx.current=p.x;dPy.current=p.y;
           dragLive.current={id:hit.id,x:hit.x,y:hit.y};
-          setDragVisualThrottled({id:hit.id,x:hit.x,y:hit.y});
+          setDragPos(hit.id,hit.x,hit.y); // sets dId.current + shared values + dragId state (1 React render)
         }
       }
     },
@@ -908,7 +968,8 @@ function TreeScreen({ onTreeChange }){
         const p=toSVG(t.pageX,t.pageY);
         const nx=dNx.current+(p.x-dPx.current),ny=dNy.current+(p.y-dPy.current);
         dragLive.current={id:dId.current,x:nx,y:ny};
-        setDragVisualThrottled({id:dId.current,x:nx,y:ny});
+        // Write directly to shared values — Skia UI thread picks up immediately, no React rerender
+        dragXV.value=nx;dragYV.value=ny;
         gLx.current=t.pageX;gLy.current=t.pageY;return;
       }
       gestureActive.current=true;
@@ -927,14 +988,10 @@ function TreeScreen({ onTreeChange }){
         if(live.id){
           commit({...tR.current,nodes:tR.current.nodes.map(n=>n.id===live.id?{...n,x:live.x,y:live.y}:n)});
         }
-        dId.current=null;
-        dragLive.current={id:null,x:0,y:0};
-        clearDragVisual();
+        clearDragPos(); // resets dId, dragLive, sets dragId→null (1 React render)
         return;
       }
-      dId.current=null;
-      dragLive.current={id:null,x:0,y:0};
-      clearDragVisual();
+      clearDragPos();
       if(moved.current) return;
       const{pageX,pageY}=evt.nativeEvent;
       const hit=hitNode(pageX,pageY);
@@ -982,9 +1039,7 @@ function TreeScreen({ onTreeChange }){
       pOn.current=false;
       if(gestureActive.current){gestureActive.current=false;commitLiveXform();}
       endInteraction();
-      dId.current=null;
-      dragLive.current={id:null,x:0,y:0};
-      clearDragVisual();
+      clearDragPos();
     },
   })).current;
 
@@ -1063,33 +1118,6 @@ function TreeScreen({ onTreeChange }){
     return status;
   },[tree.nodes,bld,incomingByNode,nodeMap]);
 
-  // ── SVG node/edge styling ──────────────────────────────────────────────────
-  const nStyle=n=>{
-    const branch = resolveBranch(n);
-    const bc = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
-    const status=nodeStatusMap[n.id] || 'locked';
-    if(bld&&connA===n.id) return{
-      fill:'#132238', innerFill:'#0C1728', outerRim:'#2B3C55', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.88),
-      glowInner:toRGBA(Colors.blue[300],0.4), glowMid:toRGBA(Colors.blue[400],0.28), glowOuter:toRGBA(Colors.blue[500],0.22), sw:2.7, opacity:1,
-    };
-    if(status==='start') return {
-      fill:'#172A43', innerFill:'#0F1D30', outerRim:'#304766', stroke:Colors.blue[300], ring:toRGBA(Colors.blue[300],0.82),
-      glowInner:toRGBA(Colors.blue[300],0.4), glowMid:toRGBA(Colors.blue[400],0.3), glowOuter:toRGBA(Colors.blue[500],0.24), sw:2.5, opacity:1,
-    };
-    if(status==='mastered') return {
-      fill:'#141C2A', innerFill:'#0C1320', outerRim:'#2F3E50', stroke:bc.main, ring:toRGBA(bc.ring,0.9),
-      glowInner:toRGBA(bc.ring,0.4), glowMid:toRGBA(bc.main,0.3), glowOuter:toRGBA(bc.main,0.22), sw:2.45, opacity:0.99,
-    };
-    if(status==='ready') return {
-      fill:'#19212F', innerFill:'#101826', outerRim:'#314153', stroke:bc.main, ring:toRGBA(bc.ring,0.84),
-      glowInner:toRGBA(bc.ring,0.33), glowMid:toRGBA(bc.main,0.24), glowOuter:toRGBA(bc.main,0.18), sw:2.25, opacity:0.97,
-    };
-    return {
-      fill:'#0B1220', innerFill:'#070D16', outerRim:'#1C2635', stroke:'rgba(120,138,160,0.38)', ring:'rgba(120,138,160,0.26)',
-      glowInner:'rgba(120,138,160,0.08)', glowMid:'rgba(120,138,160,0.05)', glowOuter:'rgba(120,138,160,0.04)', sw:1.5, opacity:0.9,
-    };
-  };
-
   const wrap=name=>{
     const words=name.split(' ');const lines=[];let cur='';
     for(const w of words){const next=cur?cur+' '+w:w;if(next.length>10&&cur){lines.push(cur);cur=w;}else cur=next;}
@@ -1120,6 +1148,50 @@ function TreeScreen({ onTreeChange }){
       n.y>=visibleBounds.top-margin&&n.y<=visibleBounds.bottom+margin
     );
   },[tree.nodes,visibleBounds,xform.sc]);
+
+  // ── Node styles — declared after visibleNodes so deps are fully initialized ──
+  const nodeStyles = useMemo(()=>{
+    const nb = BRANCH_COLORS.neutral;
+    const map = {};
+    for(const n of visibleNodes){
+      const branch = resolveBranch(n);
+      const bc = BRANCH_COLORS[branch] || nb;
+      const status = nodeStatusMap[n.id] || 'locked';
+      if(bld && connA===n.id){
+        map[n.id]={
+          fill:'#132238', innerFill:'#0C1728', outerRim:'#2B3C55',
+          stroke:nb.main, ring:toRGBA(nb.ring,0.88),
+          glowInner:toRGBA(nb.main,0.38), glowOuter:toRGBA(nb.main,0.20), sw:2.7, opacity:1,
+        };
+      } else if(status==='start'){
+        map[n.id]={
+          fill:'#172A43', innerFill:'#0F1D30', outerRim:'#2C4060',
+          stroke:nb.main, ring:toRGBA(nb.ring,0.82),
+          glowInner:toRGBA(nb.main,0.36), glowOuter:toRGBA(nb.main,0.18), sw:2.5, opacity:1,
+        };
+      } else if(status==='mastered'){
+        map[n.id]={
+          fill:'#131B28', innerFill:'#0B1220', outerRim:'#243444',
+          stroke:bc.main, ring:toRGBA(bc.ring,0.92),
+          glowInner:toRGBA(bc.ring,0.42), glowOuter:toRGBA(bc.main,0.24), sw:2.55, opacity:1,
+        };
+      } else if(status==='ready'){
+        map[n.id]={
+          fill:'#19212F', innerFill:'#101826', outerRim:'#2A3848',
+          stroke:bc.main, ring:toRGBA(bc.ring,0.84),
+          glowInner:toRGBA(bc.ring,0.32), glowOuter:toRGBA(bc.main,0.17), sw:2.25, opacity:0.97,
+        };
+      } else {
+        // Locked — muted to clearly separate from active states
+        map[n.id]={
+          fill:'#080E18', innerFill:'#050A10', outerRim:'#131D2A',
+          stroke:'rgba(85,100,125,0.30)', ring:'rgba(85,100,125,0.18)',
+          glowInner:'rgba(85,100,125,0.05)', glowOuter:'rgba(85,100,125,0.03)', sw:1.2, opacity:0.82,
+        };
+      }
+    }
+    return map;
+  },[visibleNodes,nodeStatusMap,bld,connA]);
 
   const visibleNodeIds=useMemo(()=>new Set(visibleNodes.map(n=>n.id)),[visibleNodes]);
 
@@ -1247,7 +1319,7 @@ function TreeScreen({ onTreeChange }){
         {...panR.panHandlers}>
         {!!canvasSize.width&&!!canvasSize.height&&(
           <SkiaTreeCanvas
-            tree={tree}
+            nodes={tree.nodes}
             visibleNodes={visibleNodes}
             visibleEdges={visibleEdges}
             nodeStatusMap={nodeStatusMap}
@@ -1255,14 +1327,16 @@ function TreeScreen({ onTreeChange }){
             txV={txV}
             tyV={tyV}
             scV={scV}
-            dragVisual={dragVisual}
+            dragId={dragId}
+            dragXV={dragXV}
+            dragYV={dragYV}
             LOD={LOD}
             edgeVisual={edgeVisual}
             bld={bld}
             connA={connA}
             isInteracting={isInteracting}
             canvasSize={canvasSize}
-            nStyle={nStyle}
+            nodeStyles={nodeStyles}
           />
         )}
       </View>
