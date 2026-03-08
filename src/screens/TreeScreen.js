@@ -211,7 +211,11 @@ export default function TreeScreen({ onTreeChange }) {
         if (success) runOnJS(handleViewTap)(evt.absoluteX, evt.absoluteY);
       });
 
-    return Gesture.Exclusive(tap, Gesture.Simultaneous(pan, pinch));
+    pan.maxPointers(1).minDistance(1).averageTouches(true);
+    pinch.minPointers(2);
+    tap.requireExternalGestureToFail(pan, pinch);
+
+    return Gesture.Simultaneous(pan, pinch, tap);
   }, []);
 
   const panR = useRef(PanResponder.create({
@@ -448,13 +452,14 @@ export default function TreeScreen({ onTreeChange }) {
 
   const visibleBounds = useMemo(() => {
     if (!canvasSize.width || !canvasSize.height) return null;
+    const interactionPad = isInteracting ? (220 / xform.sc) : 0;
     return {
-      left: (-xform.tx) / xform.sc,
-      top: (-xform.ty) / xform.sc,
-      right: (canvasSize.width - xform.tx) / xform.sc,
-      bottom: (canvasSize.height - xform.ty) / xform.sc,
+      left: (-xform.tx) / xform.sc - interactionPad,
+      top: (-xform.ty) / xform.sc - interactionPad,
+      right: (canvasSize.width - xform.tx) / xform.sc + interactionPad,
+      bottom: (canvasSize.height - xform.ty) / xform.sc + interactionPad,
     };
-  }, [canvasSize.height, canvasSize.width, xform.sc, xform.tx, xform.ty]);
+  }, [canvasSize.height, canvasSize.width, isInteracting, xform.sc, xform.tx, xform.ty]);
 
   const visibleNodes = useMemo(() => {
     if (!visibleBounds) return tree.nodes;
@@ -518,40 +523,66 @@ export default function TreeScreen({ onTreeChange }) {
   const nodeStyles = useMemo(() => {
     const nb = BRANCH_COLORS.neutral;
     const map = {};
+    const makeVisual = (bc, status) => {
+      const baseFill = status === 'mastered' ? toRGBA(bc.main, 0.22) : status === 'ready' ? toRGBA(bc.main, 0.17) : toRGBA(bc.main, 0.11);
+      const innerFill = status === 'mastered' ? toRGBA(bc.main, 0.32) : status === 'ready' ? toRGBA(bc.main, 0.24) : toRGBA(bc.main, 0.15);
+      const core = status === 'mastered' ? toRGBA(bc.ring, 0.24) : status === 'ready' ? toRGBA(bc.ring, 0.18) : toRGBA(bc.ring, 0.12);
+      const strokeAlpha = status === 'mastered' ? 0.96 : status === 'ready' ? 0.88 : 0.48;
+      const ringAlpha = status === 'mastered' ? 0.94 : status === 'ready' ? 0.82 : 0.46;
+      const glowOuterAlpha = status === 'mastered' ? 0.24 : status === 'ready' ? 0.19 : 0.12;
+      const glowInnerAlpha = status === 'mastered' ? 0.44 : status === 'ready' ? 0.34 : 0.20;
+      return {
+        fill: baseFill,
+        innerFill,
+        core,
+        outerRim: toRGBA(bc.ring, status === 'locked' ? 0.22 : 0.33),
+        stroke: toRGBA(bc.main, strokeAlpha),
+        ring: toRGBA(bc.ring, ringAlpha),
+        glowInner: toRGBA(bc.ring, glowInnerAlpha),
+        glowOuter: toRGBA(bc.main, glowOuterAlpha),
+        innerRing: toRGBA(bc.main, status === 'locked' ? 0.22 : 0.34),
+        innerRingSoft: toRGBA(bc.ring, status === 'locked' ? 0.24 : 0.42),
+        specular: status === 'locked' ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.2)',
+        sw: status === 'locked' ? 1.55 : status === 'ready' ? 2.2 : 2.5,
+        opacity: status === 'locked' ? 0.92 : 1,
+      };
+    };
+
     for (const n of visibleNodes) {
       const branch = resolveBranch(n);
       const bc = BRANCH_COLORS[branch] || nb;
       const status = nodeStatusMap[n.id] || 'locked';
+
       if (bld && connA === n.id) {
         map[n.id] = {
-          fill: '#132238', innerFill: '#0C1728', outerRim: '#2B3C55',
-          stroke: nb.main, ring: toRGBA(nb.ring, 0.88),
-          glowInner: toRGBA(nb.main, 0.38), glowOuter: toRGBA(nb.main, 0.20), sw: 2.7, opacity: 1,
+          ...makeVisual(nb, 'ready'),
+          fill: '#0F1E33',
+          innerFill: '#173250',
+          core: 'rgba(96,165,250,0.2)',
+          outerRim: 'rgba(191,219,254,0.34)',
+          stroke: toRGBA(nb.main, 0.95),
+          ring: toRGBA(nb.ring, 0.92),
+          glowInner: toRGBA(nb.main, 0.46),
+          glowOuter: toRGBA(nb.main, 0.24),
+          sw: 2.7,
         };
       } else if (status === 'start') {
+        const startBc = BRANCH_COLORS.push;
         map[n.id] = {
-          fill: '#172A43', innerFill: '#0F1D30', outerRim: '#2C4060',
-          stroke: nb.main, ring: toRGBA(nb.ring, 0.82),
-          glowInner: toRGBA(nb.main, 0.36), glowOuter: toRGBA(nb.main, 0.18), sw: 2.5, opacity: 1,
-        };
-      } else if (status === 'mastered') {
-        map[n.id] = {
-          fill: '#131B28', innerFill: '#0B1220', outerRim: '#243444',
-          stroke: bc.main, ring: toRGBA(bc.ring, 0.92),
-          glowInner: toRGBA(bc.ring, 0.42), glowOuter: toRGBA(bc.main, 0.24), sw: 2.55, opacity: 1,
-        };
-      } else if (status === 'ready') {
-        map[n.id] = {
-          fill: '#19212F', innerFill: '#101826', outerRim: '#2A3848',
-          stroke: bc.main, ring: toRGBA(bc.ring, 0.84),
-          glowInner: toRGBA(bc.ring, 0.32), glowOuter: toRGBA(bc.main, 0.17), sw: 2.25, opacity: 0.97,
+          ...makeVisual(startBc, 'ready'),
+          fill: 'rgba(16,38,30,0.86)',
+          innerFill: 'rgba(20,60,44,0.9)',
+          core: 'rgba(74,222,128,0.2)',
+          stroke: 'rgba(74,222,128,0.94)',
+          ring: 'rgba(134,239,172,0.86)',
+          glowInner: 'rgba(74,222,128,0.44)',
+          glowOuter: 'rgba(34,197,94,0.24)',
+          innerRing: 'rgba(74,222,128,0.34)',
+          innerRingSoft: 'rgba(134,239,172,0.32)',
+          sw: 2.45,
         };
       } else {
-        map[n.id] = {
-          fill: '#080E18', innerFill: '#050A10', outerRim: '#131D2A',
-          stroke: toRGBA(bc.main, 0.34), ring: toRGBA(bc.ring, 0.20),
-          glowInner: toRGBA(bc.ring, 0.18), glowOuter: toRGBA(bc.main, 0.14), sw: 1.3, opacity: 0.86,
-        };
+        map[n.id] = makeVisual(bc, status);
       }
     }
     return map;
@@ -559,13 +590,13 @@ export default function TreeScreen({ onTreeChange }) {
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {
-      masteredW: 1.2, readyW: 1.05, lockedW: 0.9, masteredO: 0.68, readyO: 0.56, lockedO: 0.28,
+      masteredW: 1.2, readyW: 1.05, lockedW: 0.86, masteredO: 0.64, readyO: 0.52, lockedO: 0.22,
     };
     if (LOD.isMid) return {
-      masteredW: 1.9, readyW: 1.55, lockedW: 1.2, masteredO: 0.8, readyO: 0.68, lockedO: 0.34,
+      masteredW: 1.9, readyW: 1.55, lockedW: 1.1, masteredO: 0.76, readyO: 0.64, lockedO: 0.27,
     };
     return {
-      masteredW: 2.8, readyW: 2.3, lockedW: 1.5, masteredO: 0.9, readyO: 0.8, lockedO: 0.44,
+      masteredW: 2.8, readyW: 2.3, lockedW: 1.35, masteredO: 0.86, readyO: 0.76, lockedO: 0.35,
     };
   }, [LOD.isFar, LOD.isMid]);
 
@@ -806,7 +837,7 @@ const styles = StyleSheet.create({
   hintT: {
     color: Colors.text.tertiary, fontSize: 11, textAlign: 'center', letterSpacing: 0.5,
   },
-  canvas: { flex: 1, backgroundColor: '#05080F', overflow: 'hidden' },
+  canvas: { flex: 1, backgroundColor: '#03060D', overflow: 'hidden' },
   legend: {
     flexDirection: 'row', justifyContent: 'center', gap: 28, paddingVertical: 12,
     backgroundColor: '#060A10', borderTopWidth: 1, borderColor: Colors.border.default,

@@ -2,10 +2,10 @@ export const Colors = {
   black: '#000000',
   white: '#FFFFFF',
   background: {
-    primary: '#000000',
-    secondary: '#0F1115',
+    primary: '#04070D',
+    secondary: '#0A0F18',
     card: '#1E2128',
-    cardAlt: '#1A1D23',
+    cardAlt: '#131B27',
     gradient: {
       dark1: '#0F1419',
       dark2: '#161B28',
