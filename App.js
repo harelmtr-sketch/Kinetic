@@ -553,7 +553,8 @@ function buildEdgePath(fromPos, toPos) {
 const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   nodes, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
   txV, tyV, scV,
-  dragVisual, LOD, edgeVisual,
+  dragId, dragXV, dragYV,
+  LOD, edgeVisual,
   bld, connA, isInteracting,
   canvasSize, nodeStyles,
 }){
@@ -563,6 +564,32 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     { translateY: tyV.value },
     { scale: scV.value },
   ]),[]);
+
+  // Animated Group transform for the dragged node — updates on UI thread, bypasses React entirely.
+  // dragXV/dragYV are written directly from PanResponder with no setState, so this is the only
+  // thing that "re-renders" during active drag movement (Skia evaluates the derived value on UI thread).
+  const draggedTransform = useDerivedValue(()=>[
+    { translateX: dragXV.value },
+    { translateY: dragYV.value },
+  ],[]);
+
+  // Stable visual data for the dragged node — only recomputes at drag start/end, not during movement.
+  const draggedNodeMeta = useMemo(()=>{
+    if(!dragId) return null;
+    const n = nodes.find(nn=>nn.id===dragId);
+    if(!n) return null;
+    const visual = nodeStyles[dragId];
+    if(!visual) return null;
+    const lines = wrappedLabels[dragId] || [n.name];
+    const status = nodeStatusMap[dragId] || 'locked';
+    const isLit = status==='start'||status==='mastered'||status==='ready';
+    const isReady = status==='ready';
+    const auraColor = status==='locked'
+      ? 'rgba(80,95,120,0.10)'
+      : toRGBA(visual.stroke, isReady ? 0.24 : 0.18);
+    const auraR = isLit ? NODE_R*1.16 : NODE_R*1.06;
+    return { visual, lines, status, isLit, auraColor, auraR };
+  },[dragId,nodes,nodeStyles,wrappedLabels,nodeStatusMap]);
 
   const nodeMap = useMemo(()=>new Map(nodes.map(n=>[n.id,n])),[nodes]);
 
@@ -616,33 +643,16 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       const branchColor = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
       return { id: `${e.from}_${e.to}_${idx}`, fn, tn, status, branchColor };
     }).filter(Boolean);
-  },[bld,nodeMap,nodeStatusMap,visibleEdges]); // dragVisual intentionally excluded
+  },[bld,nodeMap,nodeStatusMap,visibleEdges]);
 
-  // Phase 2: stable Skia paths at rest positions — only rebuilds when structure/status changes
-  const stableEdgePaths = useMemo(()=>{
-    const map = new Map();
-    for (const { id, fn, tn } of edgeData) {
-      map.set(id, buildEdgePath(fn, tn));
-    }
-    return map;
-  },[edgeData]);
-
-  // Phase 3: apply drag offset — only affected edges get new path objects
-  const edgeSegments = useMemo(()=>{
-    const dragId = dragVisual?.id ?? null;
-    return edgeData.map(({ id, fn, tn, status, branchColor })=>{
-      let path;
-      if(dragId && (fn.id === dragId || tn.id === dragId)){
-        // Only dragged-edge paths are reallocated per frame
-        const fromPos = fn.id === dragId ? dragVisual : fn;
-        const toPos   = tn.id === dragId ? dragVisual : tn;
-        path = buildEdgePath(fromPos, toPos);
-      } else {
-        path = stableEdgePaths.get(id);
-      }
-      return { id, path, status, branchColor };
-    });
-  },[edgeData,stableEdgePaths,dragVisual]);
+  // Edge paths — rebuilt only when tree structure/status changes (not during drag).
+  // Edges stay at rest positions while a node is dragged; they snap to the committed
+  // position on release. This eliminates path reallocation during movement entirely.
+  const edgeSegments = useMemo(()=>
+    edgeData.map(({ id, fn, tn, status, branchColor })=>({
+      id, path: buildEdgePath(fn, tn), status, branchColor,
+    }))
+  ,[edgeData]);
 
   const farNodeR = NODE_R*0.34;
   return(
@@ -676,11 +686,13 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           );
         })}
 
+        {/* Static nodes — dragged node excluded so it doesn't render twice */}
         {visibleNodes.map(n=>{
+          if(n.id===dragId) return null; // rendered separately via animated Group below
           const visual=nodeStyles[n.id];
           if(!visual) return null;
-          const rx=dragVisual?.id===n.id?dragVisual.x:n.x;
-          const ry=dragVisual?.id===n.id?dragVisual.y:n.y;
+          const rx=n.x;
+          const ry=n.y;
           const lines=wrappedLabels[n.id]||[n.name];
           const lh=13;
           const sy=ry+NODE_R+14;
@@ -736,6 +748,40 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             </Group>
           );
         })}
+
+        {/* Dragged node — rendered in a Group whose transform is a useDerivedValue driven by
+            shared values. When dragXV/dragYV change (on every PanResponder move event), Skia
+            evaluates draggedTransform on the UI thread and redraws just this Group — no React
+            render cycle, no JS-thread reconciliation. Node circles are at (0,0) + Group offset. */}
+        {draggedNodeMeta!==null&&(
+          <Group transform={draggedTransform}>
+            {LOD.showOuterRing&&(
+              <Circle cx={0} cy={0} r={NODE_R+13} style="stroke" strokeWidth={1.1} color={draggedNodeMeta.visual.ring} />
+            )}
+            {USE_GLOW&&(
+              <Circle cx={0} cy={0} r={draggedNodeMeta.auraR} color={draggedNodeMeta.auraColor} />
+            )}
+            {/* No blur glow during drag — isInteracting=true already suppresses it in static nodes */}
+            <Circle cx={0} cy={0} r={NODE_R+2} color={draggedNodeMeta.visual.outerRim} />
+            <Circle cx={0} cy={0} r={NODE_R} color={draggedNodeMeta.visual.fill} opacity={draggedNodeMeta.visual.opacity} />
+            <Circle cx={0} cy={0} r={NODE_R-3} color={draggedNodeMeta.visual.innerFill} opacity={0.92} />
+            <Circle cx={0} cy={0} r={NODE_R-7} style="stroke" strokeWidth={draggedNodeMeta.visual.sw} color={draggedNodeMeta.visual.stroke} opacity={draggedNodeMeta.visual.opacity} />
+            {LOD.showInnerRing&&(
+              <Circle cx={0} cy={0} r={NODE_R-13} style="stroke" strokeWidth={1} color={draggedNodeMeta.visual.ring} opacity={0.55} />
+            )}
+            <Circle cx={-10} cy={-11} r={NODE_R*0.13} color="rgba(255,255,255,0.22)" />
+            {LOD.showLabels&&!isInteracting&&draggedNodeMeta.lines.map((ln,li)=>{
+              const glow1=draggedNodeMeta.isLit?toRGBA(draggedNodeMeta.visual.stroke,0.28):'rgba(100,120,148,0.10)';
+              const mainColor=draggedNodeMeta.isLit?'#F8FAFC':'#8898AA';
+              return(
+                <Group key={`dl_${li}`}>
+                  <SkiaText x={-(ln.length*2.8)} y={NODE_R+14+li*13} text={ln} font={labelFont} color={glow1} />
+                  <SkiaText x={-(ln.length*2.8)} y={NODE_R+14+li*13} text={ln} font={labelFont} color={mainColor} />
+                </Group>
+              );
+            })}
+          </Group>
+        )}
       </Group>
     </Canvas>
   );
@@ -785,6 +831,10 @@ function TreeScreen({ onTreeChange }){
 
   const txN=useRef(0),tyN=useRef(0),scN=useRef(1);
   const txV=useSharedValue(0),tyV=useSharedValue(0),scV=useSharedValue(1);
+  // Drag position as shared values — Skia reads these on UI thread so dragged node
+  // animates at 60 fps without any React rerenders during active movement.
+  const dragXV=useSharedValue(0),dragYV=useSharedValue(0);
+  const [dragId,setDragId]=useState(null); // React state only changes at drag start/end (2 renders/drag)
   const [xform,setXform]=useState({tx:0,ty:0,sc:1});
   const gestureActive=useRef(false);
   const setLiveXform=(tx,ty,sc)=>{
@@ -808,7 +858,6 @@ function TreeScreen({ onTreeChange }){
   },[xform.sc,xform.tx,xform.ty]);
 
   useEffect(()=>()=>{
-    if(dragVisualRaf.current!=null) cancelAnimationFrame(dragVisualRaf.current);
     if(glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
   },[]);
 
@@ -829,27 +878,20 @@ function TreeScreen({ onTreeChange }){
   const pMx0=useRef(0),pMy0=useRef(0);
   const dId=useRef(null),dNx=useRef(0),dNy=useRef(0),dPx=useRef(0),dPy=useRef(0);
   const dragLive=useRef({id:null,x:0,y:0});
-  const [dragVisual,setDragVisual]=useState(null);
-  const dragVisualRef=useRef(null);
-  const dragVisualRaf=useRef(null);
   const glowDebounceRef=useRef(null);
   const [isInteracting,setIsInteracting]=useState(false);
 
-  const setDragVisualThrottled=next=>{
-    dragVisualRef.current=next;
-    if(dragVisualRaf.current!=null) return;
-    dragVisualRaf.current=requestAnimationFrame(()=>{
-      dragVisualRaf.current=null;
-      setDragVisual(dragVisualRef.current);
-    });
+  // Write drag position directly to shared values — zero React rerenders during drag movement.
+  // setDragId() is called only once at drag START and once at drag END (2 React renders per drag total).
+  const setDragPos=(id,x,y)=>{
+    dragXV.value=x;
+    dragYV.value=y;
+    if(dId.current!==id){ dId.current=id; setDragId(id); }
   };
-  const clearDragVisual=()=>{
-    dragVisualRef.current=null;
-    if(dragVisualRaf.current!=null){
-      cancelAnimationFrame(dragVisualRaf.current);
-      dragVisualRaf.current=null;
-    }
-    setDragVisual(null);
+  const clearDragPos=()=>{
+    dId.current=null;
+    dragLive.current={id:null,x:0,y:0};
+    setDragId(null);
   };
   const beginInteraction=()=>{
     if(glowDebounceRef.current){
@@ -873,9 +915,8 @@ function TreeScreen({ onTreeChange }){
     onMoveShouldSetPanResponderCapture:()=>true,
     onPanResponderGrant:evt=>{
       const ts=evt.nativeEvent.touches;
-      moved.current=false;dId.current=null;pOn.current=false;
-      dragLive.current={id:null,x:0,y:0};
-      clearDragVisual();
+      moved.current=false;pOn.current=false;
+      clearDragPos();
       beginInteraction();
       if(ts.length>=2){
         gestureActive.current=true;
@@ -891,10 +932,10 @@ function TreeScreen({ onTreeChange }){
       if(bR.current&&tR2.current==='move'){
         const hit=hitNode(t.pageX,t.pageY);
         if(hit){
-          dId.current=hit.id;dNx.current=hit.x;dNy.current=hit.y;
+          dNx.current=hit.x;dNy.current=hit.y;
           const p=toSVG(t.pageX,t.pageY);dPx.current=p.x;dPy.current=p.y;
           dragLive.current={id:hit.id,x:hit.x,y:hit.y};
-          setDragVisualThrottled({id:hit.id,x:hit.x,y:hit.y});
+          setDragPos(hit.id,hit.x,hit.y); // sets dId.current + shared values + dragId state (1 React render)
         }
       }
     },
@@ -927,7 +968,8 @@ function TreeScreen({ onTreeChange }){
         const p=toSVG(t.pageX,t.pageY);
         const nx=dNx.current+(p.x-dPx.current),ny=dNy.current+(p.y-dPy.current);
         dragLive.current={id:dId.current,x:nx,y:ny};
-        setDragVisualThrottled({id:dId.current,x:nx,y:ny});
+        // Write directly to shared values — Skia UI thread picks up immediately, no React rerender
+        dragXV.value=nx;dragYV.value=ny;
         gLx.current=t.pageX;gLy.current=t.pageY;return;
       }
       gestureActive.current=true;
@@ -946,14 +988,10 @@ function TreeScreen({ onTreeChange }){
         if(live.id){
           commit({...tR.current,nodes:tR.current.nodes.map(n=>n.id===live.id?{...n,x:live.x,y:live.y}:n)});
         }
-        dId.current=null;
-        dragLive.current={id:null,x:0,y:0};
-        clearDragVisual();
+        clearDragPos(); // resets dId, dragLive, sets dragId→null (1 React render)
         return;
       }
-      dId.current=null;
-      dragLive.current={id:null,x:0,y:0};
-      clearDragVisual();
+      clearDragPos();
       if(moved.current) return;
       const{pageX,pageY}=evt.nativeEvent;
       const hit=hitNode(pageX,pageY);
@@ -1001,9 +1039,7 @@ function TreeScreen({ onTreeChange }){
       pOn.current=false;
       if(gestureActive.current){gestureActive.current=false;commitLiveXform();}
       endInteraction();
-      dId.current=null;
-      dragLive.current={id:null,x:0,y:0};
-      clearDragVisual();
+      clearDragPos();
     },
   })).current;
 
@@ -1291,7 +1327,9 @@ function TreeScreen({ onTreeChange }){
             txV={txV}
             tyV={tyV}
             scV={scV}
-            dragVisual={dragVisual}
+            dragId={dragId}
+            dragXV={dragXV}
+            dragYV={dragYV}
             LOD={LOD}
             edgeVisual={edgeVisual}
             bld={bld}
