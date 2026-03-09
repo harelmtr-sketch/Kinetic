@@ -1,7 +1,5 @@
 import React, { useMemo, useRef } from 'react';
 import {
-  Blur,
-  Atlas,
   Canvas,
   Circle,
   DashPathEffect,
@@ -14,9 +12,13 @@ import {
 } from '@shopify/react-native-skia';
 import { useDerivedValue } from 'react-native-reanimated';
 import { BRANCH_COLORS } from '../../theme/colors';
-import { NODE_R, USE_GLOW, GLOW_QUALITY } from '../../constants/tree';
+import { NODE_R, USE_GLOW } from '../../constants/tree';
 import { resolveEdgeBranch, toRGBA } from '../../utils/treeUtils';
 import { mulberry32, buildEdgePath } from '../../utils/skiaTreeUtils';
+
+// ===== BACKGROUND COLOR =====
+const BG_COLOR = '#000000';
+// ============================
 
 const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   nodes, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
@@ -26,7 +28,13 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   bld, connA, isInteracting,
   canvasSize, nodeStyles,
 }) {
-  const labelFont = useMemo(() => matchFont({ fontSize: 11, fontStyle: 'bold' }), []);
+  const labelFont = useMemo(() => {
+    try {
+      return matchFont({ fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold' });
+    } catch {
+      return matchFont({ fontSize: 13 });
+    }
+  }, []);
 
   const sceneTransform = useDerivedValue(() => ([
     { translateX: txV.value },
@@ -41,33 +49,80 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
   const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
-  const dustAtlas = useMemo(() => {
-    const W = 3600;
-    const H = 3600;
-    const N = 900;
-    const rand = mulberry32(1337);
-    const spriteSize = 8;
-    const surface = Skia.Surface.MakeOffscreen(spriteSize, spriteSize);
-    const c = surface.getCanvas();
-    c.clear(Skia.Color('rgba(0,0,0,0)'));
-    const p = Skia.Paint();
-    p.setColor(Skia.Color('rgba(255,255,255,0.12)'));
-    c.drawRect(Skia.XYWHRect(0, 0, spriteSize, spriteSize), p);
-    const image = surface.makeImageSnapshot();
-    const spriteRect = Skia.XYWHRect(0, 0, spriteSize, spriteSize);
-    const sprites = new Array(N);
-    const transforms = new Array(N);
+  // --- Space background stars — all live in the scene so they move with pan/zoom ---
+  // Dynamically sized: extends 2000 units beyond the outermost nodes in every direction.
+  const starBounds = useMemo(() => {
+    if (nodes.length === 0) return { cx: 0, cy: 0, w: 4000, h: 4000 };
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      if (n.x < minX) minX = n.x;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.y > maxY) maxY = n.y;
+    }
+    const pad = 2000;
+    return {
+      cx: (minX + maxX) / 2,
+      cy: (minY + maxY) / 2,
+      w: Math.max(6000, maxX - minX + pad * 2),
+      h: Math.max(6000, maxY - minY + pad * 2),
+    };
+  }, [nodes]);
 
-    for (let i = 0; i < N; i += 1) {
-      const x = (rand() - 0.5) * W;
-      const y = (rand() - 0.5) * H;
-      const s = 0.45 + rand() * 0.9;
-      sprites[i] = spriteRect;
-      transforms[i] = Skia.RSXform(s, 0, x, y);
+  const spaceStars = useMemo(() => {
+    const { cx, cy, w: W, h: H } = starBounds;
+    const rand = mulberry32(1337);
+    const stars = [];
+    const colors = [
+      '#ffffff', '#ffffff', '#ffffff',
+      '#d4c8ff', '#b4dcff', '#ffd4d4',
+      '#d4ffe4', '#ffe6c8', '#c8ffff',
+    ];
+
+    // Layer 1: Dim dust — tiny, everywhere
+    for (let i = 0; i < 2700; i++) {
+      stars.push({
+        x: cx + (rand() - 0.5) * W,
+        y: cy + (rand() - 0.5) * H,
+        r: 1 + rand() * 1.5,
+        color: colors[Math.floor(rand() * 3)],
+        opacity: 0.12 + rand() * 0.18,
+      });
     }
 
-    return { image, sprites, transforms };
-  }, []);
+    // Layer 2: Small stars — visible, scattered
+    for (let i = 0; i < 1350; i++) {
+      stars.push({
+        x: cx + (rand() - 0.5) * W,
+        y: cy + (rand() - 0.5) * H,
+        r: 2 + rand() * 2,
+        color: colors[Math.floor(rand() * colors.length)],
+        opacity: 0.25 + rand() * 0.35,
+      });
+    }
+
+    // Layer 3: Medium stars — clearly visible, some color tint
+    for (let i = 0; i < 450; i++) {
+      stars.push({
+        x: cx + (rand() - 0.5) * W,
+        y: cy + (rand() - 0.5) * H,
+        r: 3 + rand() * 2.5,
+        color: colors[Math.floor(rand() * colors.length)],
+        opacity: 0.4 + rand() * 0.35,
+      });
+    }
+
+    // Layer 4: Bright accent stars — rare, colorful, with a glow halo
+    for (let i = 0; i < 135; i++) {
+      const x = cx + (rand() - 0.5) * W;
+      const y = cy + (rand() - 0.5) * H;
+      const color = colors[3 + Math.floor(rand() * (colors.length - 3))];
+      stars.push({ x, y, r: 10 + rand() * 8, color, opacity: 0.04 + rand() * 0.04 });
+      stars.push({ x, y, r: 3.5 + rand() * 2.5, color, opacity: 0.7 + rand() * 0.3 });
+    }
+
+    return stars;
+  }, [starBounds]);
 
   const edgePathCache = useRef(new Map());
 
@@ -140,14 +195,6 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       const isLocked = status === 'locked';
       const isLit = isStart || isMastered || isReady;
 
-      const useRealBlur = !isFarMode
-        && !isInteracting
-        && LOD.showNodeGlowBlur
-        && USE_GLOW
-        && (isStart || isMastered);
-      const useFakeGlow = !isFarMode && USE_GLOW && (isReady || (isLit && !useRealBlur));
-      const showPremiumNearStack = !isFarMode;
-
       return {
         n,
         visual,
@@ -158,12 +205,9 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
         isReady,
         isLocked,
         isLit,
-        useRealBlur,
-        useFakeGlow,
-        showPremiumNearStack,
       };
     }).filter(Boolean);
-  }, [LOD.isFar, LOD.showNodeGlowBlur, dragId, isInteracting, nodeStatusMap, nodeStyles, visibleNodes, wrappedLabels]);
+  }, [LOD.isFar, dragId, nodeStatusMap, nodeStyles, visibleNodes, wrappedLabels]);
 
   const draggedNodeMeta = useMemo(() => {
     if (!dragId) return null;
@@ -187,21 +231,20 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       isMastered,
       isReady,
       isLocked,
-      useRealBlur: !LOD.isFar && !isInteracting && LOD.showNodeGlowBlur && USE_GLOW && (isStart || isMastered),
-      useFakeGlow: !LOD.isFar && USE_GLOW && (isReady || (isLit && !(isStart || isMastered))),
     };
-  }, [LOD.isFar, LOD.showNodeGlowBlur, dragId, isInteracting, nodeStatusMap, nodeStyles, nodes, wrappedLabels]);
+  }, [LOD.isFar, dragId, nodeStatusMap, nodeStyles, nodes, wrappedLabels]);
 
   const farNodeR = NODE_R * 0.34;
 
   return (
     <Canvas style={{ width: canvasSize.width, height: canvasSize.height }}>
-      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="#050505" />
-      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="rgba(20,18,16,0.22)" />
+      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color={BG_COLOR} />
+
       <Group transform={sceneTransform}>
-        {LOD.showDust && !isInteracting && (
-          <Atlas image={dustAtlas.image} sprites={dustAtlas.sprites} transforms={dustAtlas.transforms} />
-        )}
+        {/* Space stars — move with the world */}
+        {spaceStars.map((s, i) => (
+          <Circle key={`s${i}`} cx={s.x} cy={s.y} r={s.r} color={s.color} opacity={s.opacity} />
+        ))}
 
         {edgeSegments.map((edge) => {
           const isMastered = edge.status === 'mastered';
@@ -248,60 +291,17 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             n,
             visual,
             lines,
-            isReady,
             isLocked,
             isLit,
-            useRealBlur,
-            useFakeGlow,
-            showPremiumNearStack,
           } = item;
 
           const rx = n.x;
           const ry = n.y;
-          const lh = 12;
           const isFarNode = LOD.isFar;
           const renderR = isFarNode ? farNodeR : NODE_R;
-          const nodeStrokeWidth = isFarNode ? Math.max(0.8, visual.sw - 0.5) : visual.sw;
-          const auraOpacity = isLocked ? (isFarNode ? 0.18 : 0.11) : (isReady ? 0.26 : 0.22);
-          const auraColor = toRGBA(visual.stroke, auraOpacity);
-          const auraR = isFarNode ? NODE_R * 0.74 : (isLit ? NODE_R * 1.02 : NODE_R * 0.9);
-          const showSpecular = LOD.showNodeHighlight && !isInteracting;
-          const showInnerRing = LOD.showInnerRing && !isInteracting;
 
           return (
             <Group key={n.id}>
-              {showPremiumNearStack && (
-                <Circle cx={rx} cy={ry} r={NODE_R * 1.22} color={visual.ambient || toRGBA(visual.stroke, 0.03)} />
-              )}
-
-              {LOD.showOuterRing && (
-                <Circle cx={rx} cy={ry} r={NODE_R + 13} style="stroke" strokeWidth={1.1} color={visual.ring} />
-              )}
-
-              {LOD.showOuterRing && bld && connA === n.id && (
-                <Circle cx={rx} cy={ry} r={NODE_R + 16} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />
-              )}
-
-              {USE_GLOW && <Circle cx={rx} cy={ry} r={auraR} color={auraColor} />}
-
-              {useFakeGlow && (
-                <Group>
-                  <Circle cx={rx} cy={ry} r={NODE_R * 1.36} color={toRGBA(visual.glowOuter || visual.stroke, 0.15)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 1.04} color={toRGBA(visual.glowInner || visual.stroke, 0.12)} />
-                </Group>
-              )}
-
-              {useRealBlur && (
-                <Group>
-                  <Circle cx={rx} cy={ry} r={NODE_R * 1.04} color={visual.glowOuter}>
-                    <Blur blur={GLOW_QUALITY === 'high' ? 18 : 12} />
-                  </Circle>
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.76} color={visual.glowInner}>
-                    <Blur blur={4.6} />
-                  </Circle>
-                </Group>
-              )}
-
               {isFarNode ? (
                 <Group>
                   <Circle cx={rx} cy={ry} r={NODE_R * 0.43} color={visual.farAura || toRGBA(visual.stroke, 0.16)} />
@@ -311,27 +311,40 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                 </Group>
               ) : (
                 <Group>
-                  <Circle cx={rx} cy={ry} r={renderR + 2.4} color={visual.outerRim} />
-                  <Circle cx={rx} cy={ry} r={renderR + 0.1} color={visual.fill} opacity={visual.opacity} />
-                  <Circle cx={rx} cy={ry} r={renderR - 4.6} color={visual.innerFill} opacity={0.95} />
-                  <Circle cx={rx} cy={ry} r={renderR - 6.7} style="stroke" strokeWidth={nodeStrokeWidth} color={visual.stroke} opacity={visual.opacity} />
-                  {showInnerRing && (
-                    <Circle cx={rx} cy={ry} r={NODE_R - 13.4} style="stroke" strokeWidth={0.95} color={visual.innerRing || visual.ring} opacity={0.58} />
+                  {/* Smooth glow — always on, no flicker */}
+                  {USE_GLOW && !isLocked && (
+                    <Circle cx={rx} cy={ry} r={NODE_R * 1.5} color={toRGBA(visual.stroke, 0.07)} />
                   )}
-                  {showSpecular && (
-                    <Circle cx={rx - 10} cy={ry - 11} r={NODE_R * 0.13} color={visual.specular || 'rgba(255,255,255,0.22)'} />
+                  {USE_GLOW && (
+                    <Circle cx={rx} cy={ry} r={NODE_R * 1.15} color={toRGBA(visual.stroke, isLocked ? 0.06 : 0.12)} />
                   )}
+
+                  {/* Outer ring */}
+                  {LOD.showOuterRing && (
+                    <Circle cx={rx} cy={ry} r={NODE_R + 12} style="stroke" strokeWidth={0.8} color={toRGBA(visual.ring, isLit ? 0.4 : 0.2)} />
+                  )}
+
+                  {/* Build-mode selection ring */}
+                  {LOD.showOuterRing && bld && connA === n.id && (
+                    <Circle cx={rx} cy={ry} r={NODE_R + 17} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />
+                  )}
+
+                  {/* Dark body fill */}
+                  <Circle cx={rx} cy={ry} r={renderR} color={isLocked ? '#181818' : '#141a22'} />
+
+                  {/* Main colored stroke ring */}
+                  <Circle cx={rx} cy={ry} r={renderR - 1} style="stroke" strokeWidth={visual.sw} color={visual.stroke} />
                 </Group>
               )}
 
-              {LOD.showLabels && lines.map((ln, li) => {
-                const x = rx - (ln.length * 3.05);
-                const y = ry + 4 + (li - ((lines.length - 1) / 2)) * lh;
-                const mainColor = isLit ? '#F4F7FF' : '#C7BCAF';
-                const glowColor = isLit ? toRGBA(visual.stroke, 0.46) : 'rgba(96,84,70,0.2)';
+              {LOD.showLabels && labelFont && lines.map((ln, li) => {
+                const tw = labelFont.measureText(ln).width;
+                const x = rx - tw / 2;
+                const y = ry + 5 + (li - ((lines.length - 1) / 2)) * 14;
+                const mainColor = isLit ? '#E2E6EE' : '#8A8580';
                 return (
                   <Group key={`${n.id}_${li}`}>
-                    <SkiaText x={x} y={y} text={ln} font={labelFont} color={glowColor} />
+                    <SkiaText x={x + 0.7} y={y + 0.7} text={ln} font={labelFont} color="rgba(0,0,0,0.9)" />
                     <SkiaText x={x} y={y} text={ln} font={labelFont} color={mainColor} />
                   </Group>
                 );
@@ -342,29 +355,6 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
         {draggedNodeMeta !== null && (
           <Group transform={draggedTransform}>
-            {LOD.showOuterRing && (
-              <Circle cx={0} cy={0} r={NODE_R + 13} style="stroke" strokeWidth={1.1} color={draggedNodeMeta.visual.ring} />
-            )}
-            {USE_GLOW && <Circle cx={0} cy={0} r={NODE_R * 1.04} color={toRGBA(draggedNodeMeta.visual.stroke, 0.2)} />}
-
-            {draggedNodeMeta.useFakeGlow && (
-              <Group>
-                <Circle cx={0} cy={0} r={NODE_R * 1.36} color={toRGBA(draggedNodeMeta.visual.glowOuter || draggedNodeMeta.visual.stroke, 0.15)} />
-                <Circle cx={0} cy={0} r={NODE_R * 1.04} color={toRGBA(draggedNodeMeta.visual.glowInner || draggedNodeMeta.visual.stroke, 0.12)} />
-              </Group>
-            )}
-
-            {draggedNodeMeta.useRealBlur && (
-              <Group>
-                <Circle cx={0} cy={0} r={NODE_R * 1.04} color={draggedNodeMeta.visual.glowOuter}>
-                  <Blur blur={GLOW_QUALITY === 'high' ? 18 : 12} />
-                </Circle>
-                <Circle cx={0} cy={0} r={NODE_R * 0.76} color={draggedNodeMeta.visual.glowInner}>
-                  <Blur blur={4.6} />
-                </Circle>
-              </Group>
-            )}
-
             {LOD.isFar ? (
               <Group>
                 <Circle cx={0} cy={0} r={NODE_R * 0.43} color={draggedNodeMeta.visual.farAura || toRGBA(draggedNodeMeta.visual.stroke, 0.16)} />
@@ -374,27 +364,30 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               </Group>
             ) : (
               <Group>
-                <Circle cx={0} cy={0} r={NODE_R + 2.4} color={draggedNodeMeta.visual.outerRim} />
-                <Circle cx={0} cy={0} r={NODE_R + 0.1} color={draggedNodeMeta.visual.fill} opacity={draggedNodeMeta.visual.opacity} />
-                <Circle cx={0} cy={0} r={NODE_R - 4.6} color={draggedNodeMeta.visual.innerFill} opacity={0.95} />
-                <Circle cx={0} cy={0} r={NODE_R - 6.7} style="stroke" strokeWidth={draggedNodeMeta.visual.sw} color={draggedNodeMeta.visual.stroke} opacity={draggedNodeMeta.visual.opacity} />
-                {LOD.showInnerRing && !isInteracting && (
-                  <Circle cx={0} cy={0} r={NODE_R - 13.4} style="stroke" strokeWidth={0.95} color={draggedNodeMeta.visual.innerRing || draggedNodeMeta.visual.ring} opacity={0.58} />
+                {USE_GLOW && !draggedNodeMeta.isLocked && (
+                  <Circle cx={0} cy={0} r={NODE_R * 1.5} color={toRGBA(draggedNodeMeta.visual.stroke, 0.07)} />
                 )}
-                {LOD.showNodeHighlight && !isInteracting && (
-                  <Circle cx={-10} cy={-11} r={NODE_R * 0.13} color={draggedNodeMeta.visual.specular || 'rgba(255,255,255,0.22)'} />
+                {USE_GLOW && (
+                  <Circle cx={0} cy={0} r={NODE_R * 1.15} color={toRGBA(draggedNodeMeta.visual.stroke, draggedNodeMeta.isLocked ? 0.06 : 0.12)} />
                 )}
+
+                {LOD.showOuterRing && (
+                  <Circle cx={0} cy={0} r={NODE_R + 12} style="stroke" strokeWidth={0.8} color={toRGBA(draggedNodeMeta.visual.ring, draggedNodeMeta.isLit ? 0.4 : 0.2)} />
+                )}
+
+                <Circle cx={0} cy={0} r={NODE_R} color={draggedNodeMeta.isLocked ? '#181818' : '#141a22'} />
+                <Circle cx={0} cy={0} r={NODE_R - 1} style="stroke" strokeWidth={draggedNodeMeta.visual.sw} color={draggedNodeMeta.visual.stroke} />
               </Group>
             )}
 
-            {LOD.showLabels && draggedNodeMeta.lines.map((ln, li) => {
-              const glowColor = draggedNodeMeta.isLit ? toRGBA(draggedNodeMeta.visual.stroke, 0.46) : 'rgba(96,84,70,0.2)';
-              const mainColor = draggedNodeMeta.isLit ? '#F4F7FF' : '#C7BCAF';
-              const y = 4 + (li - ((draggedNodeMeta.lines.length - 1) / 2)) * 12;
-              const x = -(ln.length * 3.05);
+            {LOD.showLabels && labelFont && draggedNodeMeta.lines.map((ln, li) => {
+              const tw = labelFont.measureText(ln).width;
+              const mainColor = draggedNodeMeta.isLit ? '#E2E6EE' : '#8A8580';
+              const y = 5 + (li - ((draggedNodeMeta.lines.length - 1) / 2)) * 14;
+              const x = -tw / 2;
               return (
                 <Group key={`dl_${li}`}>
-                  <SkiaText x={x} y={y} text={ln} font={labelFont} color={glowColor} />
+                  <SkiaText x={x + 0.7} y={y + 0.7} text={ln} font={labelFont} color="rgba(0,0,0,0.9)" />
                   <SkiaText x={x} y={y} text={ln} font={labelFont} color={mainColor} />
                 </Group>
               );

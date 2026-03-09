@@ -211,7 +211,7 @@ export const toRGBA = (hex, alpha = 1) => {
 export function canUnlock(id, nodes, edges) {
   const p = edges.filter((e) => e.to === id).map((e) => e.from);
   if (!p.length) return false;
-  return p.every((pid) => nodes.find((n) => n.id === pid)?.unlocked);
+  return p.some((pid) => nodes.find((n) => n.id === pid)?.unlocked);
 }
 
 export function segDist(px, py, ax, ay, bx, by) {

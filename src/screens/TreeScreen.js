@@ -25,7 +25,7 @@ import {
   normalizeTree, segDist, resolveBranch, segmentIntersectsRect, toRGBA,
 } from '../utils/treeUtils';
 
-export default function TreeScreen({ onTreeChange }) {
+export default function TreeScreen({ onTreeChange, resetRef }) {
   const insets = useSafeAreaInsets();
   const [tree, _setTree] = useState(normalizeTree(INIT));
   const tR = useRef(normalizeTree(INIT));
@@ -113,6 +113,16 @@ export default function TreeScreen({ onTreeChange }) {
   const undo = () => { if (!hi.current) return; hi.current -= 1; const t = hist.current[hi.current]; setTree(t); setCU(hi.current > 0); setCR(true); };
   const redo = () => { if (hi.current >= hist.current.length - 1) return; hi.current += 1; const t = hist.current[hi.current]; setTree(t); setCU(true); setCR(hi.current < hist.current.length - 1); };
 
+  // Expose reset to parent (Settings screen)
+  useEffect(() => {
+    if (resetRef) {
+      resetRef.current = () => {
+        const t = { ...tR.current, nodes: tR.current.nodes.map((n) => (n.isStart ? n : { ...n, unlocked: false })) };
+        commit(t);
+      };
+    }
+  });
+
   const [bld, _setBld] = useState(false); const bR = useRef(false); const setBld = (v) => { bR.current = v; _setBld(v); };
   const [tool, _setTool] = useState('move'); const tR2 = useRef('move'); const setTool = (v) => { tR2.current = v; _setTool(v); };
   const [connA, _setConnA] = useState(null); const cAR = useRef(null); const setConnA = (v) => { cAR.current = v; _setConnA(v); };
@@ -130,9 +140,65 @@ export default function TreeScreen({ onTreeChange }) {
   const [dragId, setDragId] = useState(null);
   const [xform, setXform] = useState({ tx: 0, ty: 0, sc: 1 });
   const gestureActive = useRef(false);
+
+  // Map bounds as shared values so worklets can clamp on UI thread (no snap-back)
+  const boundsMinX = useSharedValue(-2000);
+  const boundsMaxX = useSharedValue(2000);
+  const boundsMinY = useSharedValue(-2000);
+  const boundsMaxY = useSharedValue(2000);
+  const canvasWV = useSharedValue(400);
+  const canvasHV = useSharedValue(800);
+
+  // Keep bounds in sync with tree
+  useEffect(() => {
+    const nodes = tR.current.nodes;
+    if (nodes.length === 0) {
+      boundsMinX.value = -3000; boundsMaxX.value = 3000;
+      boundsMinY.value = -3000; boundsMaxY.value = 3000;
+      return;
+    }
+    let mnX = Infinity, mxX = -Infinity, mnY = Infinity, mxY = -Infinity;
+    for (const n of nodes) {
+      if (n.x < mnX) mnX = n.x; if (n.x > mxX) mxX = n.x;
+      if (n.y < mnY) mnY = n.y; if (n.y > mxY) mxY = n.y;
+    }
+    const pad = 2000;
+    const cx = (mnX + mxX) / 2, cy = (mnY + mxY) / 2;
+    const hw = Math.max(6000, mxX - mnX + pad * 2) / 2;
+    const hh = Math.max(6000, mxY - mnY + pad * 2) / 2;
+    boundsMinX.value = cx - hw; boundsMaxX.value = cx + hw;
+    boundsMinY.value = cy - hh; boundsMaxY.value = cy + hh;
+  }, [tree]);
+
+  const clampTx = (tx, sc) => {
+    'worklet';
+    const cw = canvasWV.value;
+    const minTx = cw - boundsMaxX.value * sc;
+    const maxTx = -boundsMinX.value * sc;
+    // If map fits inside viewport, center it
+    if (minTx > maxTx) return (minTx + maxTx) / 2;
+    return Math.min(Math.max(tx, minTx), maxTx);
+  };
+  const clampTy = (ty, sc) => {
+    'worklet';
+    const ch = canvasHV.value;
+    const minTy = ch - boundsMaxY.value * sc;
+    const maxTy = -boundsMinY.value * sc;
+    if (minTy > maxTy) return (minTy + maxTy) / 2;
+    return Math.min(Math.max(ty, minTy), maxTy);
+  };
+
   const setLiveXform = (tx, ty, sc) => {
-    txN.current = tx; tyN.current = ty; scN.current = sc;
-    txV.value = tx; tyV.value = ty; scV.value = sc;
+    const cw = canvasSize.width || 400;
+    const ch = canvasSize.height || 800;
+    const minTx = cw - boundsMaxX.value * sc;
+    const maxTx = -boundsMinX.value * sc;
+    const minTy = ch - boundsMaxY.value * sc;
+    const maxTy = -boundsMinY.value * sc;
+    const cTx = minTx > maxTx ? (minTx + maxTx) / 2 : Math.min(Math.max(tx, minTx), maxTx);
+    const cTy = minTy > maxTy ? (minTy + maxTy) / 2 : Math.min(Math.max(ty, minTy), maxTy);
+    txN.current = cTx; tyN.current = cTy; scN.current = sc;
+    txV.value = cTx; tyV.value = cTy; scV.value = sc;
   };
   const commitLiveXform = () => {
     const next = { tx: txN.current, ty: tyN.current, sc: scN.current };
@@ -140,9 +206,25 @@ export default function TreeScreen({ onTreeChange }) {
   };
 
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    canvasWV.value = canvasSize.width || 400;
+    canvasHV.value = canvasSize.height || 800;
+  }, [canvasSize.width, canvasSize.height]);
 
-  useEffect(() => { setLiveXform(txN.current, tyN.current, scN.current); }, [tree, bld, tool, connA, sel, prompt]);
-  useEffect(() => { setLiveXform(xform.tx, xform.ty, xform.sc); }, [xform.sc, xform.tx, xform.ty]);
+  // TEMP: Zoom buttons for testing on emulator (remove before release)
+  const handleZoom = (direction) => {
+    const zoomFactor = direction === 'in' ? 1.3 : 0.7;
+    const curSc = scN.current;
+    const nextSc = Math.min(Math.max(curSc * zoomFactor, MIN_SC), MAX_SC);
+    const cx = canvasSize.width / 2;
+    const cy = canvasSize.height / 2;
+    const svgX = (cx - txN.current) / curSc;
+    const svgY = (cy - tyN.current) / curSc;
+    const nextTx = cx - svgX * nextSc;
+    const nextTy = cy - svgY * nextSc;
+    setLiveXform(nextTx, nextTy, nextSc);
+    commitLiveXform();
+  };
 
   const glowDebounceRef = useRef(null);
   useEffect(() => () => {
@@ -208,14 +290,21 @@ export default function TreeScreen({ onTreeChange }) {
     if (hit) setSel({ ...hit });
   };
 
-  const commitSharedXform = (tx, ty, sc) => {
-    txN.current = tx;
-    tyN.current = ty;
-    scN.current = sc;
+  const commitSharedXform = (rawTx, rawTy, sc) => {
+    const cw = canvasSize.width || 400;
+    const ch = canvasSize.height || 800;
+    const minTx = cw - boundsMaxX.value * sc;
+    const maxTx = -boundsMinX.value * sc;
+    const minTy = ch - boundsMaxY.value * sc;
+    const maxTy = -boundsMinY.value * sc;
+    const cTx = minTx > maxTx ? (minTx + maxTx) / 2 : Math.min(Math.max(rawTx, minTx), maxTx);
+    const cTy = minTy > maxTy ? (minTy + maxTy) / 2 : Math.min(Math.max(rawTy, minTy), maxTy);
+    txN.current = cTx; tyN.current = cTy; scN.current = sc;
+    txV.value = cTx; tyV.value = cTy; scV.value = sc;
     setXform((prev) => (
-      prev.tx === tx && prev.ty === ty && prev.sc === sc
+      prev.tx === cTx && prev.ty === cTy && prev.sc === sc
         ? prev
-        : { tx, ty, sc }
+        : { tx: cTx, ty: cTy, sc }
     ));
   };
 
@@ -228,9 +317,10 @@ export default function TreeScreen({ onTreeChange }) {
         runOnJS(beginInteraction)();
       })
       .onUpdate((evt) => {
-        txV.value = panStartTx.value + evt.translationX;
-        tyV.value = panStartTy.value + evt.translationY;
-        scV.value = panStartSc.value;
+        const sc = panStartSc.value;
+        txV.value = clampTx(panStartTx.value + evt.translationX, sc);
+        tyV.value = clampTy(panStartTy.value + evt.translationY, sc);
+        scV.value = sc;
       })
       .onFinalize(() => {
         runOnJS(commitSharedXform)(txV.value, tyV.value, scV.value);
@@ -253,8 +343,8 @@ export default function TreeScreen({ onTreeChange }) {
         const fx = evt.focalX - canvasLeftV.value;
         const fy = evt.focalY - canvasTopV.value;
         scV.value = nextSc;
-        txV.value = fx - pinchStartSvgFx.value * nextSc;
-        tyV.value = fy - pinchStartSvgFy.value * nextSc;
+        txV.value = clampTx(fx - pinchStartSvgFx.value * nextSc, nextSc);
+        tyV.value = clampTy(fy - pinchStartSvgFy.value * nextSc, nextSc);
       })
       .onFinalize(() => {
         runOnJS(commitSharedXform)(txV.value, tyV.value, scV.value);
@@ -623,10 +713,10 @@ export default function TreeScreen({ onTreeChange }) {
     let next = prev;
 
     if (prev === 'near') {
-      if (sc < 0.5) next = 'mid';
+      if (sc < 0.38) next = 'mid';
     } else if (prev === 'mid') {
       if (sc < 0.23) next = 'far';
-      else if (sc > 0.58) next = 'near';
+      else if (sc > 0.46) next = 'near';
     } else if (prev === 'far' && sc > 0.31) {
       next = 'mid';
     }
@@ -647,13 +737,8 @@ export default function TreeScreen({ onTreeChange }) {
       isNear,
       interactionTier,
       showLabels: isNear,
-      showInnerRing: !isFar && !forceCheap,
-      showOuterRing: !isFar && interactionTier !== 'heavy',
-      useDashedReady: isNear && interactionTier === 'idle',
+      showOuterRing: !isFar,
       showEdgeGlow: isNear && interactionTier === 'idle',
-      showNodeGlowBlur: isNear && interactionTier !== 'heavy',
-      simplifyNodeStack: isFar || interactionTier === 'heavy',
-      showNodeHighlight: !isFar && interactionTier !== 'heavy',
       showDust: interactionTier === 'idle' && !isFar,
     };
   }, [interactionTier, lodTier]);
@@ -795,25 +880,11 @@ export default function TreeScreen({ onTreeChange }) {
   return (
     <View style={styles.root}>
       <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
-        <View style={styles.titleWrap}>
-          <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC</GlowText>
+        <View style={styles.barSide}>
+          {/* empty left side for symmetry */}
         </View>
-        <View style={styles.barRight}>
-          {!bld && (
-            <TouchableOpacity style={styles.resetBtn} onPress={() => {
-              Alert.alert('Reset Progress', 'Set all skills back to locked? Your tree structure stays intact.', [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Reset', style: 'destructive', onPress: () => {
-                    const t = { ...tR.current, nodes: tR.current.nodes.map((n) => (n.isStart ? n : { ...n, unlocked: false })) };
-                    commit(t);
-                  },
-                },
-              ]);
-            }}>
-              <Text style={styles.resetT}>RESET</Text>
-            </TouchableOpacity>
-          )}
+        <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC</GlowText>
+        <View style={[styles.barSide, { justifyContent: 'flex-end' }]}>
           <TouchableOpacity style={[styles.modeBtn, bld && styles.modeOn]} onPress={() => { setBld(!bld); setConnA(null); dId.current = null; }}>
             <Text style={[styles.modeT, bld && styles.modeTOn]}>{bld ? 'DONE' : 'EDIT TREE'}</Text>
           </TouchableOpacity>
@@ -931,21 +1002,17 @@ export default function TreeScreen({ onTreeChange }) {
         </GestureDetector>
       )}
 
-      {!bld && (
-        <View style={styles.legend}>
-          {[
-            [BRANCH_COLORS.push.main, 'Push'],
-            [BRANCH_COLORS.pull.main, 'Pull'],
-            [BRANCH_COLORS.core.main, 'Core'],
-            ['#334155', 'Locked'],
-          ].map(([c, l]) => (
-            <View key={l} style={styles.lr}>
-              <View style={[styles.dot, { backgroundColor: c }]} />
-              <Text style={styles.lt}>{l}</Text>
-            </View>
-          ))}
-        </View>
-      )}
+      {/* TEMP: Zoom buttons for emulator testing */}
+      <View style={styles.zoomBtns}>
+        <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('in')}>
+          <Text style={styles.zoomBtnText}>+</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('out')}>
+          <Text style={styles.zoomBtnText}>-</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Legend removed — cleaner UI */}
 
       <Modal transparent visible={namePromptVisible} animationType="fade" onRequestClose={() => setNamePromptVisible(false)}>
         <View style={styles.slotModalBack}>
@@ -1003,28 +1070,29 @@ export default function TreeScreen({ onTreeChange }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background.primary },
+  zoomBtns: {
+    position: 'absolute', right: 16, bottom: 100, gap: 8, zIndex: 50,
+  },
+  zoomBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  zoomBtnText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   bar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, gap: 10,
+    paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10,
     backgroundColor: '#060A10', borderBottomWidth: 1, borderColor: Colors.border.default,
   },
-  barRight: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0, minWidth: 0,
+  barSide: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
   },
-  titleWrap: { flex: 1, minWidth: 0, paddingRight: 4 },
   title: {
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 2.2,
-    flexShrink: 1,
-    paddingRight: 6,
+    textAlign: 'center',
   },
-  resetBtn: {
-    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: '#151922', borderWidth: 1, borderColor: 'rgba(239,68,68,0.6)',
-    shadowColor: '#EF4444', shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
-  },
-  resetT: { color: '#f87171', fontSize: 10.5, fontWeight: '800', letterSpacing: 1.2 },
   modeBtn: {
     paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6,
     backgroundColor: '#151a24', borderWidth: 1, borderColor: Colors.border.default,
