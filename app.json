@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "CalisthenicsApp3",
-    "slug": "CalisthenicsApp3",
+    "name": "Kinetic",
+    "slug": "kinetic",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#080F1A"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.CalisthenicsApp3"
