@@ -1,41 +1,43 @@
+import { palette } from './tokens';
+
 export const Colors = {
-  black: '#000000',
-  white: '#FFFFFF',
+  black: palette.gray[1000],
+  white: palette.gray[0],
   background: {
-    primary: '#080808',
-    secondary: '#111111',
-    card: '#1E2128',
-    cardAlt: '#151515',
+    primary: palette.gray[950],
+    secondary: palette.gray[900],
+    card: palette.accent.surfaceCard,
+    cardAlt: palette.accent.surfaceBlack,
     gradient: {
-      dark1: '#0F1419',
-      dark2: '#161B28',
-      dark3: '#1A1F2E',
-      dark4: '#1E2433',
+      dark1: palette.gray[950],
+      dark2: palette.gray[900],
+      dark3: palette.gray[850],
+      dark4: palette.gray[800],
     },
   },
-  blue: { 300: '#93C5FD', 400: '#60A5FA', 500: '#3B82F6', 600: '#2563EB' },
-  green: { 400: '#4ADE80', 500: '#22C55E' },
-  yellow: { 300: '#FDE047', 400: '#FACC15', 500: '#EAB308' },
-  slate: { 300: '#CBD5E1', 400: '#94A3B8', 500: '#64748B', 700: '#334155', 800: '#1E293B', 900: '#0F172A' },
+  blue: { 300: palette.primary[300], 400: palette.primary[400], 500: palette.primary[500], 600: palette.primary[600] },
+  green: { 400: palette.accent.pushGlow, 500: palette.accent.pushBase },
+  yellow: { 300: palette.secondary[200], 400: palette.secondary[300], 500: palette.secondary[400] },
+  slate: { 300: palette.gray[300], 400: palette.gray[400], 500: palette.gray[500], 700: palette.gray[700], 800: palette.gray[800], 900: palette.gray[900] },
   text: {
-    primary: '#FFFFFF',
-    secondary: '#E5E7EB',
-    tertiary: '#9CA3AF',
-    disabled: 'rgba(156, 163, 175, 0.5)',
+    primary: palette.gray[0],
+    secondary: palette.gray[200],
+    tertiary: palette.gray[400],
+    disabled: 'rgba(148, 163, 184, 0.5)',
   },
   border: {
-    default: 'rgba(60, 65, 75, 0.3)',
-    blue: 'rgba(59, 130, 246, 0.25)',
-    blueActive: 'rgba(59, 130, 246, 0.40)',
-    subtle: 'rgba(229, 231, 235, 0.1)',
+    default: 'rgba(71, 85, 105, 0.3)',
+    blue: 'rgba(78, 141, 255, 0.25)',
+    blueActive: 'rgba(78, 141, 255, 0.40)',
+    subtle: 'rgba(203, 213, 225, 0.1)',
   },
 };
 
 export const BRANCH_COLORS = {
-  neutral: { main: '#4F8DF5', edgeHex: '#93C5FD', glow: 'rgba(79,141,245,0.42)', edge: 'rgba(147,197,253,0.84)', ring: '#BFDBFE' },
-  push: { main: '#22C55E', edgeHex: '#4ADE80', glow: 'rgba(34,197,94,0.46)', edge: 'rgba(74,222,128,0.84)', ring: '#BBF7D0' },
-  pull: { main: '#EAB308', edgeHex: '#FACC15', glow: 'rgba(234,179,8,0.44)', edge: 'rgba(250,204,21,0.86)', ring: '#FDE68A' },
-  core: { main: '#3B82F6', edgeHex: '#60A5FA', glow: 'rgba(59,130,246,0.40)', edge: 'rgba(96,165,250,0.82)', ring: '#93C5FD' },
+  neutral: { main: palette.primary[500], edgeHex: palette.primary[300], glow: 'rgba(47,107,255,0.42)', edge: 'rgba(133,178,255,0.84)', ring: palette.accent.ringWhite },
+  push: { main: palette.accent.pushBase, edgeHex: palette.accent.pushGlow, glow: 'rgba(34,197,94,0.42)', edge: 'rgba(74,222,128,0.84)', ring: palette.accent.ringWhite },
+  pull: { main: palette.secondary[500], edgeHex: palette.secondary[300], glow: 'rgba(132,84,245,0.42)', edge: 'rgba(191,162,255,0.86)', ring: palette.accent.ringWhite },
+  core: { main: palette.primary[500], edgeHex: palette.primary[300], glow: 'rgba(47,107,255,0.42)', edge: 'rgba(133,178,255,0.84)', ring: palette.accent.ringWhite },
 };
 
 export const C = {

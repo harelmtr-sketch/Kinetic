@@ -3,7 +3,7 @@ import React, {
 } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  PanResponder, Alert, Modal, TextInput,
+  PanResponder, Alert, Modal, TextInput, useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
@@ -17,20 +17,23 @@ import SkillCard from '../components/tree/SkillCard';
 import GlowText from '../components/common/GlowText';
 import SkiaTreeCanvas from '../components/tree/SkiaTreeCanvas';
 import { BRANCH_COLORS, Colors } from '../theme/colors';
+import { useAppTheme } from '../theme/useAppTheme';
 import {
   STORAGE_KEY, SAVED_TREES_KEY, SELECTED_TREE_KEY, NODE_R, MIN_SC, MAX_SC, DEV_PERF_LOG,
 } from '../constants/tree';
-import { INIT } from '../data/initialTree';
+import { TREE_MOCK_DATA } from '../data/treeMockData';
 import {
   normalizeTree, segDist, resolveBranch, segmentIntersectsRect, toRGBA,
 } from '../utils/treeUtils';
 
 export default function TreeScreen({ onTreeChange }) {
   const insets = useSafeAreaInsets();
-  const [tree, _setTree] = useState(normalizeTree(INIT));
-  const tR = useRef(normalizeTree(INIT));
+  const { width } = useWindowDimensions();
+  const { mode, treeMetrics, spacing, radii, typography, palette } = useAppTheme();
+  const [tree, _setTree] = useState(normalizeTree(TREE_MOCK_DATA));
+  const tR = useRef(normalizeTree(TREE_MOCK_DATA));
   const setTree = (t) => { tR.current = t; _setTree(t); };
-  const hist = useRef([normalizeTree(INIT)]); const hi = useRef(0);
+  const hist = useRef([normalizeTree(TREE_MOCK_DATA)]); const hi = useRef(0);
   const [canUndo, setCU] = useState(false); const [canRedo, setCR] = useState(false);
   const [savedTrees, setSavedTrees] = useState([]);
   const [selectedTreeId, setSelectedTreeId] = useState(null);
@@ -62,7 +65,7 @@ export default function TreeScreen({ onTreeChange }) {
 
   useEffect(() => {
     const boot = async () => {
-      const defaultTree = normalizeTree(INIT);
+      const defaultTree = normalizeTree(TREE_MOCK_DATA);
       let resolvedTree = defaultTree;
       let resolvedSelectedId = null;
       let library = [];
@@ -665,21 +668,21 @@ export default function TreeScreen({ onTreeChange }) {
       const isLocked = status === 'locked';
       if (isLocked) {
         return {
-          fill: 'rgba(36,33,29,0.78)',
-          innerFill: 'rgba(24,22,20,0.88)',
+          fill: toRGBA(mode.background.nodeInactiveFill, mode.isDark ? 0.78 : 0.9),
+          innerFill: toRGBA(mode.background.nodeInactiveFill, mode.isDark ? 0.88 : 0.96),
           core: toRGBA(bc.main, 0.14),
           outerRim: 'rgba(118,104,89,0.22)',
           stroke: toRGBA(bc.main, 0.38),
-          ring: 'rgba(124,111,97,0.24)',
+          ring: toRGBA(mode.tree.inactiveRing, 0.26),
           glowInner: toRGBA(bc.main, 0.11),
           glowOuter: toRGBA(bc.main, 0.07),
           ambient: toRGBA(bc.main, 0.04),
           farAura: toRGBA(bc.main, 0.12),
           farBody: toRGBA(bc.main, 0.24),
           farCore: toRGBA(bc.ring, 0.26),
-          innerRing: 'rgba(112,100,86,0.24)',
+          innerRing: toRGBA(mode.tree.inactiveRing, 0.24),
           innerRingSoft: 'rgba(80,72,63,0.2)',
-          specular: 'rgba(226,214,198,0.06)',
+          specular: toRGBA(mode.text.primary, 0.06),
           sw: 1.6,
           opacity: 0.88,
         };
@@ -698,12 +701,12 @@ export default function TreeScreen({ onTreeChange }) {
       const glowInnerAlpha = glowInnerBase * branchBoost;
 
       return {
-        fill: baseFill,
-        innerFill,
+        fill: toRGBA(mode.background.nodeActiveFill, 0.95),
+        innerFill: toRGBA(mode.background.nodeActiveFill, 0.84),
         core,
         outerRim: toRGBA(bc.ring, 0.19),
         stroke: toRGBA(bc.main, strokeAlpha),
-        ring: toRGBA(bc.ring, ringAlpha),
+        ring: toRGBA(mode.tree.activeRing, ringAlpha),
         glowInner: toRGBA(bc.ring, glowInnerAlpha),
         glowOuter: toRGBA(bc.main, glowOuterAlpha),
         ambient: toRGBA(bc.main, isMastered ? 0.1 : 0.082),
@@ -712,7 +715,7 @@ export default function TreeScreen({ onTreeChange }) {
         farCore: toRGBA(bc.ring, isMastered ? 0.72 : 0.6),
         innerRing: toRGBA(bc.main, 0.27),
         innerRingSoft: toRGBA(bc.ring, 0.24),
-        specular: 'rgba(240,246,255,0.12)',
+        specular: toRGBA(mode.text.primary, 0.12),
         sw: isMastered ? 2.35 : 2.05,
         opacity: 0.98,
       };
@@ -727,8 +730,8 @@ export default function TreeScreen({ onTreeChange }) {
       if (bld && connA === n.id) {
         map[n.id] = {
           ...makeVisual('neutral', nb, 'ready'),
-          fill: '#0F1E33',
-          innerFill: '#173250',
+          fill: toRGBA(mode.background.nodeActiveFill, 0.96),
+          innerFill: toRGBA(bc.main, 0.22),
           core: 'rgba(96,165,250,0.2)',
           outerRim: 'rgba(191,219,254,0.34)',
           stroke: toRGBA(nb.main, 0.95),
@@ -742,8 +745,8 @@ export default function TreeScreen({ onTreeChange }) {
         const startBc = BRANCH_COLORS.neutral;
         map[n.id] = {
           ...makeVisual('neutral', startBc, 'ready'),
-          fill: 'rgba(14,27,44,0.9)',
-          innerFill: 'rgba(22,46,74,0.92)',
+          fill: toRGBA(mode.background.nodeActiveFill, 0.9),
+          innerFill: toRGBA(startBc.main, 0.24),
           core: 'rgba(147,197,253,0.2)',
           stroke: 'rgba(96,165,250,0.92)',
           ring: 'rgba(191,219,254,0.82)',
@@ -758,20 +761,21 @@ export default function TreeScreen({ onTreeChange }) {
         map[n.id] = makeVisual(branch, bc, status);
       }
     }
+    map.__theme = { mode, treeMetrics };
     return map;
-  }, [visibleNodes, nodeStatusMap, bld, connA]);
+  }, [visibleNodes, nodeStatusMap, bld, connA, mode, treeMetrics]);
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {
-      masteredW: 1.4, readyW: 1.05, lockedW: 0.7, masteredO: 0.76, readyO: 0.46, lockedO: 0.14,
+      masteredW: treeMetrics.edgeWidth.activeFar, readyW: treeMetrics.edgeWidth.inactiveFar + 0.35, lockedW: treeMetrics.edgeWidth.inactiveFar, masteredO: 0.76, readyO: 0.46, lockedO: treeMetrics.opacity.inactiveEdge,
     };
     if (LOD.isMid) return {
-      masteredW: 2.2, readyW: 1.5, lockedW: 0.95, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
+      masteredW: treeMetrics.edgeWidth.activeMid, readyW: treeMetrics.edgeWidth.inactiveMid + 0.4, lockedW: treeMetrics.edgeWidth.inactiveMid, masteredO: 0.86, readyO: 0.56, lockedO: treeMetrics.opacity.inactiveEdge,
     };
     return {
-      masteredW: 3.0, readyW: 2.0, lockedW: 1.04, masteredO: 0.92, readyO: 0.65, lockedO: 0.2,
+      masteredW: treeMetrics.edgeWidth.activeNear, readyW: treeMetrics.edgeWidth.inactiveNear + 0.5, lockedW: treeMetrics.edgeWidth.inactiveNear, masteredO: 0.92, readyO: 0.65, lockedO: treeMetrics.opacity.inactiveEdge,
     };
-  }, [LOD.isFar, LOD.isMid]);
+  }, [LOD.isFar, LOD.isMid, treeMetrics]);
 
   useEffect(() => {
     if (!DEV_PERF_LOG) return;
@@ -792,11 +796,18 @@ export default function TreeScreen({ onTreeChange }) {
     delete: 'Tap a node or line to delete it',
   };
 
+  const isTablet = width >= 768;
+  const dynamicStyles = useMemo(() => StyleSheet.create({
+    root: { ...styles.root, backgroundColor: mode.background.screen },
+    canvasCard: { backgroundColor: mode.background.panel, borderRadius: isTablet ? treeMetrics.cardRadius.md : treeMetrics.cardRadius.base, padding: isTablet ? treeMetrics.cardPadding.md : treeMetrics.cardPadding.base },
+    title: { ...styles.title, ...typography.title, color: mode.text.primary },
+  }), [isTablet, mode, treeMetrics, typography]);
+
   return (
-    <View style={styles.root}>
+    <View style={dynamicStyles.root}>
       <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
         <View style={styles.titleWrap}>
-          <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC</GlowText>
+          <GlowText style={dynamicStyles.title} color={palette.primary[300]} glowColor={toRGBA(palette.primary[300], 0.72)} outerGlowColor={toRGBA(palette.primary[500], 0.38)} numberOfLines={1}>DASHBOARD</GlowText>
         </View>
         <View style={styles.barRight}>
           {!bld && (

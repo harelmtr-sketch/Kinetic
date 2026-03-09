@@ -4,31 +4,33 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import TreeScreen from '../screens/TreeScreen';
+import DashboardScreen from '../screens/DashboardScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import { Colors, C } from '../theme/colors';
-import { INIT } from '../data/initialTree';
+import { useAppTheme } from '../theme/useAppTheme';
+import { TREE_MOCK_DATA } from '../data/treeMockData';
+import { palette } from '../theme/tokens';
 import { normalizeTree } from '../utils/treeUtils';
 
 export default function AppShell() {
-  const [tab, setTab] = useState('Tree');
-  const [treeSnapshot, setTreeSnapshot] = useState(normalizeTree(INIT));
+  const [tab, setTab] = useState('Dashboard');
+  const { mode } = useAppTheme();
+  const [treeSnapshot, setTreeSnapshot] = useState(normalizeTree(TREE_MOCK_DATA));
   const insets = useSafeAreaInsets();
 
   const tabsConfig = [
-    { key: 'Tree', icon: 'git-branch-outline' },
+    { key: 'Dashboard', icon: 'grid-outline' },
     { key: 'Profile', icon: 'person-outline' },
     { key: 'Settings', icon: 'settings-outline' },
     { key: 'Daily', icon: 'lock-closed-outline', locked: true },
   ];
 
   return (
-    <View style={styles.safeRoot}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
-      <View style={styles.root}>
+    <View style={[styles.safeRoot, { backgroundColor: mode.background.screen }]}>
+      <StatusBar barStyle={mode.isDark ? 'light-content' : 'dark-content'} backgroundColor={mode.background.screen} />
+      <View style={[styles.root, { backgroundColor: mode.background.screen }]}>
         <View style={styles.contentWrap}>
-          {tab === 'Tree' && <TreeScreen onTreeChange={setTreeSnapshot} />}
+          {tab === 'Dashboard' && <DashboardScreen onTreeChange={setTreeSnapshot} />}
           {tab === 'Profile' && <ProfileScreen tree={treeSnapshot} />}
           {tab === 'Settings' && <SettingsScreen />}
         </View>
@@ -45,9 +47,9 @@ export default function AppShell() {
                   activeOpacity={0.7}
                 >
                   <View style={styles.navPillInactive}>
-                    <Ionicons name={item.icon} size={22} color="#6B7280" />
+                    <Ionicons name={item.icon} size={22} color={mode.text.tertiary} />
                   </View>
-                  <Text style={[styles.navLabel, styles.navLocked]}>{item.key}</Text>
+                  <Text style={[styles.navLabel, styles.navLocked, { color: mode.text.tertiary }]}>{item.key}</Text>
                 </TouchableOpacity>
               );
             }
@@ -62,19 +64,19 @@ export default function AppShell() {
                       <View style={styles.navPillCore} />
                       <View style={styles.navPillCoreHighlight} />
                       <View style={styles.navPillShine} />
-                      <Ionicons name={item.icon} size={24} color="#FFFFFF" style={styles.navActiveIcon} />
+                      <Ionicons name={item.icon} size={24} color={mode.text.primary} style={styles.navActiveIcon} />
                     </View>
                   </View>
-                  <Text style={[styles.navLabel, styles.navLabelActive]}>{item.key}</Text>
+                  <Text style={[styles.navLabel, styles.navLabelActive, { color: mode.text.primary }]}>{item.key}</Text>
                 </TouchableOpacity>
               );
             }
             return (
               <TouchableOpacity key={item.key} style={styles.navItem} onPress={() => setTab(item.key)}>
                 <View style={styles.navPillInactive}>
-                  <Ionicons name={item.icon} size={22} color="#6B7280" />
+                  <Ionicons name={item.icon} size={22} color={mode.text.tertiary} />
                 </View>
-                <Text style={styles.navLabel}>{item.key}</Text>
+                <Text style={[styles.navLabel, { color: mode.text.tertiary }]}>{item.key}</Text>
               </TouchableOpacity>
             );
           })}
@@ -85,14 +87,14 @@ export default function AppShell() {
 }
 
 const styles = StyleSheet.create({
-  safeRoot: { flex: 1, backgroundColor: Colors.background.primary },
-  root: { flex: 1, backgroundColor: Colors.background.primary },
+  safeRoot: { flex: 1, backgroundColor: palette.gray[950] },
+  root: { flex: 1, backgroundColor: palette.gray[950] },
   contentWrap: { flex: 1 },
   navBar: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderColor: 'rgba(229, 231, 235, 0.1)',
-    backgroundColor: '#1A1D23',
+    borderColor: 'rgba(203, 213, 225, 0.1)',
+    backgroundColor: palette.gray[900],
     paddingTop: 7,
     minHeight: 68,
     overflow: 'visible',
@@ -119,11 +121,11 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     borderWidth: 1.6,
-    borderColor: 'rgba(147, 197, 253, 0.38)',
+    borderColor: 'rgba(133, 178, 255, 0.38)',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    shadowColor: '#60A5FA',
+    shadowColor: palette.primary[400],
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.42,
     shadowRadius: 8,
@@ -131,7 +133,7 @@ const styles = StyleSheet.create({
   },
   navPillCore: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#4C5FD5',
+    backgroundColor: palette.primary[600],
   },
   navPillCoreHighlight: {
     position: 'absolute',
@@ -139,7 +141,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '55%',
-    backgroundColor: 'rgba(91,124,230,0.28)',
+    backgroundColor: 'rgba(133,178,255,0.28)',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
   },
@@ -157,29 +159,29 @@ const styles = StyleSheet.create({
     width: 78,
     height: 78,
     borderRadius: 39,
-    backgroundColor: 'rgba(59,130,246,0.09)',
+    backgroundColor: 'rgba(47,107,255,0.09)',
   },
   navPillGlowMid: {
     position: 'absolute',
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: 'rgba(59,130,246,0.14)',
+    backgroundColor: 'rgba(47,107,255,0.14)',
   },
   navPillGlowInner: {
     position: 'absolute',
     width: 62,
     height: 62,
     borderRadius: 31,
-    backgroundColor: 'rgba(59,130,246,0.21)',
+    backgroundColor: 'rgba(47,107,255,0.21)',
   },
-  navLabel: { color: '#6B7280', fontSize: 12, fontWeight: '500', marginTop: 0 },
+  navLabel: { color: palette.gray[500], fontSize: 12, fontWeight: '500', marginTop: 0 },
   navLabelActive: {
-    color: '#FFFFFF',
+    color: palette.gray[0],
     fontWeight: '700',
     textShadowColor: 'rgba(96,165,250,0.55)',
     textShadowRadius: 8,
     textShadowOffset: { width: 0, height: 0 },
   },
-  navLocked: { color: '#6B7280' },
+  navLocked: { color: palette.gray[500] },
 });

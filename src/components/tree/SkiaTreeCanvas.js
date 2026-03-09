@@ -26,6 +26,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   bld, connA, isInteracting,
   canvasSize, nodeStyles,
 }) {
+  const { mode, treeMetrics } = nodeStyles.__theme;
   const labelFont = useMemo(() => matchFont({ fontSize: 11, fontStyle: 'bold' }), []);
 
   const sceneTransform = useDerivedValue(() => ([
@@ -196,8 +197,10 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
   return (
     <Canvas style={{ width: canvasSize.width, height: canvasSize.height }}>
-      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="#050505" />
-      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color="rgba(20,18,16,0.22)" />
+      <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color={mode.background.panel} />
+      <Circle cx={canvasSize.width / 2} cy={canvasSize.height / 2} r={Math.min(canvasSize.width, canvasSize.height) * 0.36} color={toRGBA(mode.tree.ambientBloom, treeMetrics.opacity.centralBloom * mode.tree.glowStrength)}>
+        {!isInteracting && <Blur blur={LOD.isFar ? 18 : 34} />}
+      </Circle>
       <Group transform={sceneTransform}>
         {LOD.showDust && !isInteracting && (
           <Atlas image={dustAtlas.image} sprites={dustAtlas.sprites} transforms={dustAtlas.transforms} />
@@ -210,8 +213,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const width = isMastered ? edgeVisual.masteredW : isReady ? edgeVisual.readyW : edgeVisual.lockedW;
           const opacityBase = isMastered ? edgeVisual.masteredO : isReady ? edgeVisual.readyO : edgeVisual.lockedO;
           const mainColor = isLocked
-            ? 'rgba(87,78,67,0.34)'
-            : toRGBA(edge.branchColor.edgeHex, Math.min(0.92, opacityBase + (isReady ? 0.06 : 0.08)));
+            ? toRGBA(mode.tree.inactiveEdge, opacityBase)
+            : toRGBA(edge.branchColor.edgeHex, Math.min(treeMetrics.opacity.activeEdge, opacityBase + (isReady ? 0.06 : 0.08)));
           const dashIntervals = LOD.isFar ? [7, 8] : [11, 9];
 
           return (
@@ -319,7 +322,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                     <Circle cx={rx} cy={ry} r={NODE_R - 13.4} style="stroke" strokeWidth={0.95} color={visual.innerRing || visual.ring} opacity={0.58} />
                   )}
                   {showSpecular && (
-                    <Circle cx={rx - 10} cy={ry - 11} r={NODE_R * 0.13} color={visual.specular || 'rgba(255,255,255,0.22)'} />
+                    <Circle cx={rx - 10} cy={ry - 11} r={NODE_R * 0.13} color={visual.specular || toRGBA(mode.text.primary, 0.22)} />
                   )}
                 </Group>
               )}
@@ -327,8 +330,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               {LOD.showLabels && lines.map((ln, li) => {
                 const x = rx - (ln.length * 3.05);
                 const y = ry + 4 + (li - ((lines.length - 1) / 2)) * lh;
-                const mainColor = isLit ? '#F4F7FF' : '#C7BCAF';
-                const glowColor = isLit ? toRGBA(visual.stroke, 0.46) : 'rgba(96,84,70,0.2)';
+                const mainColor = isLit ? mode.tree.labelActive : mode.tree.labelInactive;
+                const glowColor = isLit ? toRGBA(visual.stroke, 0.46) : toRGBA(mode.tree.inactiveEdge, 0.2);
                 return (
                   <Group key={`${n.id}_${li}`}>
                     <SkiaText x={x} y={y} text={ln} font={labelFont} color={glowColor} />
@@ -388,8 +391,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             )}
 
             {LOD.showLabels && draggedNodeMeta.lines.map((ln, li) => {
-              const glowColor = draggedNodeMeta.isLit ? toRGBA(draggedNodeMeta.visual.stroke, 0.46) : 'rgba(96,84,70,0.2)';
-              const mainColor = draggedNodeMeta.isLit ? '#F4F7FF' : '#C7BCAF';
+              const glowColor = draggedNodeMeta.isLit ? toRGBA(draggedNodeMeta.visual.stroke, 0.46) : toRGBA(mode.tree.inactiveEdge, 0.2);
+              const mainColor = draggedNodeMeta.isLit ? mode.tree.labelActive : mode.tree.labelInactive;
               const y = 4 + (li - ((draggedNodeMeta.lines.length - 1) / 2)) * 12;
               const x = -(ln.length * 3.05);
               return (
