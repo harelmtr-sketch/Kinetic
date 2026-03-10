@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import Zap from 'lucide-react-native/dist/esm/icons/zap';
+import { Zap } from 'lucide-react-native/icons';
 import { Colors } from '../theme/colors';
 
 export default function KineticLogo({
