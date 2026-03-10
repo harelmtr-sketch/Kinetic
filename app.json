@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "CalisthenicsApp3",
-    "slug": "CalisthenicsApp3",
+    "name": "Kinetic",
+    "slug": "kinetic",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#080F1A"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.CalisthenicsApp3"
@@ -28,8 +28,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "a3ec77bb-507c-4cc0-8877-8aafd030f60e"
+        "projectId": "c595f20a-a0c3-44fd-b992-c36e025cb55b"
       }
-    }
+    },
+    "owner": "xbam2"
   }
 }

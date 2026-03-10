@@ -15,6 +15,7 @@ import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import NamePrompt from '../components/tree/NamePrompt';
 import SkillCard from '../components/tree/SkillCard';
 import GlowText from '../components/common/GlowText';
+import KineticLogo from '../components/KineticLogo';
 import SkiaTreeCanvas from '../components/tree/SkiaTreeCanvas';
 import { BRANCH_COLORS, Colors } from '../theme/colors';
 import {
@@ -883,7 +884,10 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
         <View style={styles.barSide}>
           {/* empty left side for symmetry */}
         </View>
-        <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC</GlowText>
+        <View style={styles.titleWrap}>
+          <KineticLogo size={18} style={styles.titleLogo} />
+          <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC</GlowText>
+        </View>
         <View style={[styles.barSide, { justifyContent: 'flex-end' }]}>
           <TouchableOpacity style={[styles.modeBtn, bld && styles.modeOn]} onPress={() => { setBld(!bld); setConnA(null); dId.current = null; }}>
             <Text style={[styles.modeT, bld && styles.modeTOn]}>{bld ? 'DONE' : 'EDIT TREE'}</Text>
@@ -1086,6 +1090,14 @@ const styles = StyleSheet.create({
   },
   barSide: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
+  },
+  titleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleLogo: {
+    marginTop: -1,
   },
   title: {
     fontSize: 13,
