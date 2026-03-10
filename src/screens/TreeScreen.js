@@ -26,7 +26,7 @@ import {
   normalizeTree, segDist, resolveBranch, segmentIntersectsRect, toRGBA,
 } from '../utils/treeUtils';
 
-export default function TreeScreen({ onTreeChange, resetRef }) {
+export default function TreeScreen({ onTreeChange, treeActionsRef }) {
   const insets = useSafeAreaInsets();
   const [tree, _setTree] = useState(normalizeTree(INIT));
   const tR = useRef(normalizeTree(INIT));
@@ -116,12 +116,18 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
 
   // Expose reset to parent (Settings screen)
   useEffect(() => {
-    if (resetRef) {
-      resetRef.current = () => {
+    if (!treeActionsRef) return;
+
+    treeActionsRef.current = {
+      reset: () => {
         const t = { ...tR.current, nodes: tR.current.nodes.map((n) => (n.isStart ? n : { ...n, unlocked: false })) };
         commit(t);
-      };
-    }
+      },
+      unlockAll: () => {
+        const t = { ...tR.current, nodes: tR.current.nodes.map((n) => ({ ...n, unlocked: true })) };
+        commit(t);
+      },
+    };
   });
 
   const [bld, _setBld] = useState(false); const bR = useRef(false); const setBld = (v) => { bR.current = v; _setBld(v); };
