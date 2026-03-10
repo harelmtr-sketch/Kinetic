@@ -15,17 +15,23 @@ export default function AppShell() {
   const [tab, setTab] = useState('Tree');
   const [treeSnapshot, setTreeSnapshot] = useState(normalizeTree(INIT));
   const insets = useSafeAreaInsets();
-  const resetRef = useRef(null);
-  const handleResetProgress = useCallback(() => { resetRef.current?.(); }, []);
+  const treeActionsRef = useRef({ reset: null, unlockAll: null });
+  const handleResetProgress = useCallback(() => { treeActionsRef.current?.reset?.(); }, []);
+  const handleUnlockAll = useCallback(() => { treeActionsRef.current?.unlockAll?.(); }, []);
 
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
       <View style={styles.contentWrap}>
-        {tab === 'Tree' && <TreeScreen onTreeChange={setTreeSnapshot} resetRef={resetRef} />}
+        {tab === 'Tree' && <TreeScreen onTreeChange={setTreeSnapshot} treeActionsRef={treeActionsRef} />}
         {tab === 'Profile' && <ProfileScreen tree={treeSnapshot} />}
-        {tab === 'Settings' && <SettingsScreen onResetProgress={handleResetProgress} />}
+        {tab === 'Settings' && (
+          <SettingsScreen
+            onResetProgress={handleResetProgress}
+            onUnlockAll={handleUnlockAll}
+          />
+        )}
       </View>
 
       {/* Overlay nav circles — only show on Tree screen */}
