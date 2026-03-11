@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import GlowText from '../components/common/GlowText';
 import { Colors } from '../theme/colors';
 
-export default function SettingsScreen({ onResetProgress }) {
+export default function SettingsScreen({ onResetProgress, onUnlockAll }) {
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
 
@@ -29,16 +29,28 @@ export default function SettingsScreen({ onResetProgress }) {
           <Text style={styles.cardBody}>Manual</Text>
         </View>
       </View>
-      {onResetProgress && (
-        <TouchableOpacity style={styles.resetBtn} onPress={() => {
-          Alert.alert('Reset Progress', 'Set all skills back to locked? Your tree structure stays intact.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Reset', style: 'destructive', onPress: onResetProgress },
-          ]);
-        }}>
-          <Text style={styles.resetT}>RESET PROGRESS</Text>
-        </TouchableOpacity>
-      )}
+      <View style={styles.actionRow}>
+        {onResetProgress && (
+          <TouchableOpacity style={styles.resetBtn} onPress={() => {
+            Alert.alert('Reset Progress', 'Set all skills back to locked? Your tree structure stays intact.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Reset', style: 'destructive', onPress: onResetProgress },
+            ]);
+          }}>
+            <Text style={styles.resetT}>RESET PROGRESS</Text>
+          </TouchableOpacity>
+        )}
+        {onUnlockAll && (
+          <TouchableOpacity style={styles.unlockBtn} onPress={() => {
+            Alert.alert('Unlock Entire Tree', 'Unlock every skill in the current tree?', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Unlock', onPress: onUnlockAll },
+            ]);
+          }}>
+            <Text style={styles.unlockT}>UNLOCK ALL</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </ScrollView>
   );
 }
@@ -51,9 +63,17 @@ const styles = StyleSheet.create({
   cardBody: { color: Colors.text.tertiary, fontSize: 15 },
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
   settingLabel: { color: Colors.text.secondary, fontSize: 15 },
+  actionRow: { flexDirection: 'row', gap: 10 },
   resetBtn: {
+    flex: 1,
     paddingVertical: 14, borderRadius: 10, alignItems: 'center',
     backgroundColor: '#151922', borderWidth: 1, borderColor: 'rgba(239,68,68,0.6)',
   },
   resetT: { color: '#f87171', fontSize: 13, fontWeight: '800', letterSpacing: 1.2 },
+  unlockBtn: {
+    flex: 1,
+    paddingVertical: 14, borderRadius: 10, alignItems: 'center',
+    backgroundColor: '#101B14', borderWidth: 1, borderColor: 'rgba(74,222,128,0.55)',
+  },
+  unlockT: { color: Colors.green[400], fontSize: 13, fontWeight: '800', letterSpacing: 1.2 },
 });

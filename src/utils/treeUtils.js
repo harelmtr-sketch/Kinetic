@@ -198,17 +198,19 @@ const normalizeNodesWithBranch = (nodes, edges) => {
   return normalized;
 };
 
-export const toRGBA = (color, alpha = 1) => {
-  if (!color) return `rgba(0,0,0,${alpha})`;
-  // Handle rgba(...) input — extract rgb and replace alpha
-  const rgbaMatch = color.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+export const toRGBA = (hex, alpha = 1) => {
+  if (typeof hex !== 'string') return `rgba(255,255,255,${alpha})`;
+
+  const rgbaMatch = hex.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*[\d.]+\s*)?\)$/i);
   if (rgbaMatch) {
-    return `rgba(${rgbaMatch[1]},${rgbaMatch[2]},${rgbaMatch[3]},${alpha})`;
+    const [, r, g, b] = rgbaMatch;
+    return `rgba(${r},${g},${b},${alpha})`;
   }
-  // Handle hex input
-  const m = color.replace('#', '');
+
+  const m = hex.replace('#', '');
   const n = m.length === 3 ? m.split('').map((c) => c + c).join('') : m;
   const int = parseInt(n, 16);
+  if (Number.isNaN(int)) return `rgba(255,255,255,${alpha})`;
   const r = (int >> 16) & 255;
   const g = (int >> 8) & 255;
   const b = int & 255;

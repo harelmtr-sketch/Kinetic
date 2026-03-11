@@ -15,6 +15,9 @@ import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import NamePrompt from '../components/tree/NamePrompt';
 import SkillCard from '../components/tree/SkillCard';
 import GlowText from '../components/common/GlowText';
+import NeonControl from '../components/common/NeonControl';
+import KineticLogo from '../components/KineticLogo';
+import StreakBadge from '../components/StreakBadge.js';
 import SkiaTreeCanvas from '../components/tree/SkiaTreeCanvas';
 import { BRANCH_COLORS, Colors } from '../theme/colors';
 import {
@@ -25,7 +28,7 @@ import {
   normalizeTree, segDist, resolveBranch, segmentIntersectsRect, toRGBA,
 } from '../utils/treeUtils';
 
-export default function TreeScreen({ onTreeChange, resetRef }) {
+export default function TreeScreen({ onTreeChange, treeActionsRef }) {
   const insets = useSafeAreaInsets();
   const [tree, _setTree] = useState(normalizeTree(INIT));
   const tR = useRef(normalizeTree(INIT));
@@ -115,12 +118,18 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
 
   // Expose reset to parent (Settings screen)
   useEffect(() => {
-    if (resetRef) {
-      resetRef.current = () => {
+    if (!treeActionsRef) return;
+
+    treeActionsRef.current = {
+      reset: () => {
         const t = { ...tR.current, nodes: tR.current.nodes.map((n) => (n.isStart ? n : { ...n, unlocked: false })) };
         commit(t);
-      };
-    }
+      },
+      unlockAll: () => {
+        const t = { ...tR.current, nodes: tR.current.nodes.map((n) => ({ ...n, unlocked: true })) };
+        commit(t);
+      },
+    };
   });
 
   const [bld, _setBld] = useState(false); const bR = useRef(false); const setBld = (v) => { bR.current = v; _setBld(v); };
@@ -210,18 +219,6 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
     canvasWV.value = canvasSize.width || 400;
     canvasHV.value = canvasSize.height || 800;
   }, [canvasSize.width, canvasSize.height]);
-
-  const handleGoHome = () => {
-    const startNode = tR.current.nodes.find((n) => n.isStart);
-    if (!startNode) return;
-    const targetSc = 0.6;
-    const cx = canvasSize.width / 2;
-    const cy = canvasSize.height / 2;
-    const nextTx = cx - startNode.x * targetSc;
-    const nextTy = cy - startNode.y * targetSc;
-    setLiveXform(nextTx, nextTy, targetSc);
-    commitLiveXform();
-  };
 
   // TEMP: Zoom buttons for testing on emulator (remove before release)
   const handleZoom = (direction) => {
@@ -741,14 +738,13 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
     const isFar = lodTier === 'far';
     const isMid = lodTier === 'mid';
     const isNear = lodTier === 'near';
-    const forceCheap = interactionTier === 'heavy';
 
     return {
       isFar,
       isMid,
       isNear,
       interactionTier,
-      showLabels: !isFar,
+      showLabels: isNear,
       showOuterRing: !isFar,
       showEdgeGlow: isNear && interactionTier === 'idle',
       showDust: interactionTier === 'idle' && !isFar,
@@ -762,20 +758,54 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
       const isLocked = status === 'locked';
       if (isLocked) {
         return {
-          stroke: toRGBA(bc.main, 0.42),
-          ring: toRGBA(bc.main, 0.15),
+          fill: 'rgba(20,18,16,0.86)',
+          innerFill: 'rgba(9,8,7,0.96)',
+          core: 'rgba(1,1,1,0.94)',
+          outerRim: 'rgba(118,104,89,0.22)',
+          stroke: toRGBA(bc.main, 0.38),
+          ring: 'rgba(124,111,97,0.24)',
+          glowInner: toRGBA(bc.main, 0.06),
+          glowOuter: toRGBA(bc.main, 0.03),
+          ambient: toRGBA(bc.main, 0.015),
+          farAura: toRGBA(bc.main, 0.12),
+          farBody: toRGBA(bc.main, 0.24),
+          farCore: toRGBA(bc.ring, 0.26),
+          innerRing: 'rgba(112,100,86,0.24)',
+          innerRingSoft: 'rgba(80,72,63,0.2)',
+          specular: 'rgba(226,214,198,0.06)',
           sw: 1.6,
+          opacity: 0.88,
         };
       }
 
+      const resolved = bc;
       const isMastered = status === 'mastered';
-      const strokeAlpha = isMastered ? 0.95 : 0.88;
-      const ringAlpha = isMastered ? 0.7 : 0.55;
+      const baseFill = isMastered ? 'rgba(8,14,24,0.96)' : 'rgba(8,13,22,0.94)';
+      const innerFill = isMastered ? 'rgba(7,12,20,0.98)' : 'rgba(6,10,18,0.97)';
+      const core = isMastered ? 'rgba(1,2,4,0.96)' : 'rgba(1,2,4,0.98)';
+      const strokeAlpha = isMastered ? 0.94 : 0.86;
+      const ringAlpha = isMastered ? 0.7 : 0.58;
+      const glowOuterAlpha = isMastered ? 0.12 : 0.08;
+      const glowInnerAlpha = isMastered ? 0.2 : 0.14;
 
       return {
-        stroke: toRGBA(bc.main, strokeAlpha),
-        ring: toRGBA(bc.ring, ringAlpha),
-        sw: isMastered ? 2.4 : 2.1,
+        fill: baseFill,
+        innerFill,
+        core,
+        outerRim: toRGBA(resolved.ring, 0.14),
+        stroke: toRGBA(resolved.main, strokeAlpha),
+        ring: toRGBA(resolved.ring, ringAlpha),
+        glowInner: toRGBA(resolved.ring, glowInnerAlpha),
+        glowOuter: toRGBA(resolved.main, glowOuterAlpha),
+        ambient: toRGBA(resolved.main, isMastered ? 0.045 : 0.03),
+        farAura: toRGBA(resolved.main, isMastered ? 0.18 : 0.13),
+        farBody: toRGBA(resolved.main, isMastered ? 0.44 : 0.32),
+        farCore: toRGBA(resolved.ring, isMastered ? 0.72 : 0.54),
+        innerRing: toRGBA(resolved.main, 0.2),
+        innerRingSoft: toRGBA(resolved.ring, 0.15),
+        specular: 'rgba(240,246,255,0.12)',
+        sw: isMastered ? 2.35 : 2.05,
+        opacity: 0.98,
       };
     };
 
@@ -787,15 +817,33 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
 
       if (bld && connA === n.id) {
         map[n.id] = {
+          ...makeVisual('neutral', nb, 'ready'),
+          fill: '#08111C',
+          innerFill: '#0D1B2C',
+          core: 'rgba(1,2,4,0.96)',
+          outerRim: 'rgba(191,219,254,0.34)',
           stroke: toRGBA(nb.main, 0.95),
-          ring: toRGBA(nb.ring, 0.85),
+          ring: toRGBA(nb.ring, 0.92),
+          glowInner: toRGBA(nb.main, 0.46),
+          glowOuter: toRGBA(nb.main, 0.24),
+          ambient: toRGBA(nb.main, 0.08),
           sw: 2.7,
         };
       } else if (status === 'start') {
+        const startBc = BRANCH_COLORS.neutral;
         map[n.id] = {
-          stroke: 'rgba(240,245,255,0.95)',
-          ring: 'rgba(220,230,255,0.6)',
-          sw: 2.6,
+          ...makeVisual('neutral', startBc, 'mastered'),
+          fill: 'rgba(8,14,24,0.96)',
+          innerFill: 'rgba(10,20,34,0.96)',
+          core: 'rgba(147,197,253,0.08)',
+          stroke: 'rgba(96,165,250,0.98)',
+          ring: 'rgba(191,219,254,0.54)',
+          glowInner: 'rgba(96,165,250,0.18)',
+          glowOuter: 'rgba(59,130,246,0.08)',
+          ambient: 'rgba(59,130,246,0.04)',
+          innerRing: 'rgba(96,165,250,0.18)',
+          innerRingSoft: 'rgba(191,219,254,0.12)',
+          sw: 2.7,
         };
       } else {
         map[n.id] = makeVisual(branch, bc, status);
@@ -806,13 +854,13 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {
-      masteredW: 1.6, readyW: 1.2, lockedW: 0.8, masteredO: 0.76, readyO: 0.46, lockedO: 0.14,
+      masteredW: 1.15, readyW: 0.92, lockedW: 0.62, masteredO: 0.76, readyO: 0.46, lockedO: 0.14,
     };
     if (LOD.isMid) return {
-      masteredW: 2.6, readyW: 1.8, lockedW: 1.1, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
+      masteredW: 1.8, readyW: 1.28, lockedW: 0.82, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
     };
     return {
-      masteredW: 3.5, readyW: 2.4, lockedW: 1.2, masteredO: 0.92, readyO: 0.65, lockedO: 0.2,
+      masteredW: 2.45, readyW: 1.62, lockedW: 0.88, masteredO: 0.92, readyO: 0.65, lockedO: 0.2,
     };
   }, [LOD.isFar, LOD.isMid]);
 
@@ -830,7 +878,7 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
   }, [visibleNodes.length, visibleEdges.length, xform.sc, lodTier]);
 
   const hints = {
-    move: 'Drag nodes to reposition · Tap empty space to add',
+    move: 'Drag nodes to reposition - Tap empty space to add',
     connect: connA ? 'Now tap second node to connect' : 'Tap first node to begin branch',
     delete: 'Tap a node or line to delete it',
   };
@@ -838,14 +886,40 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
   return (
     <View style={styles.root}>
       <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
-        <View style={styles.barSide}>
-          {/* empty left side for symmetry */}
-        </View>
-        <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC</GlowText>
-        <View style={[styles.barSide, { justifyContent: 'flex-end' }]}>
-          <TouchableOpacity style={[styles.modeBtn, bld && styles.modeOn]} onPress={() => { setBld(!bld); setConnA(null); dId.current = null; }}>
-            <Text style={[styles.modeT, bld && styles.modeTOn]}>{bld ? 'DONE' : 'EDIT TREE'}</Text>
-          </TouchableOpacity>
+        <View pointerEvents="none" style={styles.barGlassBase} />
+        <View pointerEvents="none" style={styles.barGlassShade} />
+        <View pointerEvents="none" style={styles.barInnerGlow} />
+        <View pointerEvents="none" style={styles.barInnerHighlight} />
+        <View pointerEvents="none" style={styles.barScanLine} />
+
+        <View style={styles.barContent}>
+          <View style={styles.barSide}>
+            <StreakBadge
+              days={7}
+              size={1.08}
+              style={styles.streakBadge}
+              onPress={() => Alert.alert('Daily Streak', '7 days. Train today to keep it alive.')}
+            />
+          </View>
+          <View pointerEvents="none" style={styles.titleSlot}>
+            <View style={styles.titleWrap}>
+              <KineticLogo size={20} style={styles.titleLogo} />
+              <GlowText style={styles.title} color="#9FD4FF" glowColor="rgba(80,160,255,0.52)" outerGlowColor="rgba(80,160,255,0.26)" numberOfLines={1}>KINETIC</GlowText>
+            </View>
+          </View>
+          <View style={[styles.barSide, styles.barSideRight]}>
+            <NeonControl
+              style={styles.modeBtnWrap}
+              surfaceStyle={[styles.modeBtn, bld && styles.modeOn]}
+              paddingHorizontal={14}
+              paddingVertical={9}
+              radius={10}
+              accentColor={bld ? '#5DB4FF' : '#4BA3FF'}
+              onPress={() => { setBld(!bld); setConnA(null); dId.current = null; }}
+            >
+              <Text style={[styles.modeT, bld && styles.modeTOn]}>{bld ? 'DONE' : 'EDIT TREE'}</Text>
+            </NeonControl>
+          </View>
         </View>
       </View>
 
@@ -883,8 +957,8 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
 
       {bld && (
         <View style={styles.ioRow}>
-          <TouchableOpacity style={styles.ioBtn} onPress={exportTree}><Text style={styles.ioT}>⬆  EXPORT</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.ioBtn} onPress={importTree}><Text style={styles.ioT}>⬇  IMPORT</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.ioBtn} onPress={exportTree}><Text style={styles.ioT}>EXPORT</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.ioBtn} onPress={importTree}><Text style={styles.ioT}>IMPORT</Text></TouchableOpacity>
         </View>
       )}
       {bld && <View style={styles.hintRow}><Text style={styles.hintT}>{hints[tool]}</Text></View>}
@@ -920,6 +994,7 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
               isInteracting={isInteracting}
               canvasSize={canvasSize}
               nodeStyles={nodeStyles}
+              visibleBounds={visibleBounds}
             />
           )}
         </View>
@@ -954,6 +1029,7 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
                 isInteracting={isInteracting}
                 canvasSize={canvasSize}
                 nodeStyles={nodeStyles}
+                visibleBounds={visibleBounds}
               />
             )}
           </View>
@@ -962,18 +1038,27 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
 
       {/* TEMP: Zoom buttons for emulator testing */}
       <View style={styles.zoomBtns}>
-        <TouchableOpacity style={styles.zoomBtn} onPress={handleGoHome}>
-          <Text style={styles.zoomBtnText}>⌂</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('in')}>
+        <NeonControl
+          size={44}
+          radius={22}
+          accentColor="#4BA3FF"
+          surfaceStyle={styles.zoomBtn}
+          onPress={() => handleZoom('in')}
+        >
           <Text style={styles.zoomBtnText}>+</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('out')}>
+        </NeonControl>
+        <NeonControl
+          size={44}
+          radius={22}
+          accentColor="#4BA3FF"
+          surfaceStyle={styles.zoomBtn}
+          onPress={() => handleZoom('out')}
+        >
           <Text style={styles.zoomBtnText}>-</Text>
-        </TouchableOpacity>
+        </NeonControl>
       </View>
 
-      {/* Legend removed — cleaner UI */}
+      {/* Legend removed - cleaner UI */}
 
       <Modal transparent visible={namePromptVisible} animationType="fade" onRequestClose={() => setNamePromptVisible(false)}>
         <View style={styles.slotModalBack}>
@@ -1035,34 +1120,119 @@ const styles = StyleSheet.create({
     position: 'absolute', right: 16, bottom: 100, gap: 8, zIndex: 50,
   },
   zoomBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(15,26,43,0.92)',
+    borderColor: 'rgba(120,180,255,0.32)',
   },
   zoomBtnText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   bar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10,
-    backgroundColor: '#060A10', borderBottomWidth: 1, borderColor: Colors.border.default,
+    position: 'relative',
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+    minHeight: 64,
+    overflow: 'visible',
+    backgroundColor: 'rgba(7, 17, 29, 0.58)',
+    borderBottomWidth: 1,
+    borderColor: 'rgba(120,180,255,0.15)',
+  },
+  barGlassBase: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(6,16,28,0.95)',
+  },
+  barGlassShade: {
+    ...StyleSheet.absoluteFillObject,
+    left: -18,
+    right: -18,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(7,28,48,0.11)',
+  },
+  barInnerGlow: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    top: 6,
+    bottom: 8,
+    borderRadius: 18,
+    backgroundColor: 'rgba(60,120,255,0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(111, 184, 255, 0.06)',
+  },
+  barInnerHighlight: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    top: 0,
+    height: 14,
+    backgroundColor: 'rgba(120,190,255,0.035)',
+  },
+  barScanLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 1,
+    backgroundColor: 'rgba(80,160,255,0.35)',
+  },
+  barContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    position: 'relative',
+    minHeight: 44,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
   },
   barSide: {
-    flex: 1, flexDirection: 'row', alignItems: 'center',
+    flex: 1, minWidth: 108, flexDirection: 'row', alignItems: 'center', zIndex: 1,
+  },
+  barSideRight: { justifyContent: 'flex-end' },
+  streakBadge: {
+    marginLeft: -6,
+  },
+  titleSlot: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  titleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    maxWidth: '62%',
+    paddingHorizontal: 16,
+  },
+  titleLogo: {
+    marginTop: -1,
   },
   title: {
-    fontSize: 13,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 2.2,
     textAlign: 'center',
   },
+  modeBtnWrap: {
+    borderRadius: 10,
+  },
   modeBtn: {
-    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6,
-    backgroundColor: '#151a24', borderWidth: 1, borderColor: Colors.border.default,
+    backgroundColor: 'rgba(15,26,43,0.92)',
+    borderColor: 'rgba(120,180,255,0.26)',
   },
-  modeOn: { backgroundColor: '#12283d', borderColor: 'rgba(59,130,246,0.45)' },
+  modeOn: { backgroundColor: 'rgba(18,40,61,0.96)', borderColor: 'rgba(100,180,255,0.38)' },
   modeT: {
-    color: Colors.text.tertiary, fontSize: 10.5, fontWeight: '800', letterSpacing: 1.2,
+    color: '#E6F2FF',
+    fontSize: 11.5,
+    fontWeight: '700',
+    letterSpacing: 1.1,
   },
-  modeTOn: { color: Colors.green[400] },
+  modeTOn: { color: '#B8E0FF' },
   toolbar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 10, paddingVertical: 10, rowGap: 8,

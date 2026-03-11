@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npx expo start --dev-client --clear)",
       "WebFetch(domain:shopify.github.io)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(grep -n:*)"
     ]
   }
 }
