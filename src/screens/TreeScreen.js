@@ -211,6 +211,18 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
     canvasHV.value = canvasSize.height || 800;
   }, [canvasSize.width, canvasSize.height]);
 
+  const handleGoHome = () => {
+    const startNode = tR.current.nodes.find((n) => n.isStart);
+    if (!startNode) return;
+    const targetSc = 0.6;
+    const cx = canvasSize.width / 2;
+    const cy = canvasSize.height / 2;
+    const nextTx = cx - startNode.x * targetSc;
+    const nextTy = cy - startNode.y * targetSc;
+    setLiveXform(nextTx, nextTy, targetSc);
+    commitLiveXform();
+  };
+
   // TEMP: Zoom buttons for testing on emulator (remove before release)
   const handleZoom = (direction) => {
     const zoomFactor = direction === 'in' ? 1.3 : 0.7;
@@ -736,7 +748,7 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
       isMid,
       isNear,
       interactionTier,
-      showLabels: isNear,
+      showLabels: !isFar,
       showOuterRing: !isFar,
       showEdgeGlow: isNear && interactionTier === 'idle',
       showDust: interactionTier === 'idle' && !isFar,
@@ -750,56 +762,20 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
       const isLocked = status === 'locked';
       if (isLocked) {
         return {
-          fill: 'rgba(36,33,29,0.78)',
-          innerFill: 'rgba(24,22,20,0.88)',
-          core: toRGBA(bc.main, 0.14),
-          outerRim: 'rgba(118,104,89,0.22)',
-          stroke: toRGBA(bc.main, 0.38),
-          ring: 'rgba(124,111,97,0.24)',
-          glowInner: toRGBA(bc.main, 0.11),
-          glowOuter: toRGBA(bc.main, 0.07),
-          ambient: toRGBA(bc.main, 0.04),
-          farAura: toRGBA(bc.main, 0.12),
-          farBody: toRGBA(bc.main, 0.24),
-          farCore: toRGBA(bc.ring, 0.26),
-          innerRing: 'rgba(112,100,86,0.24)',
-          innerRingSoft: 'rgba(80,72,63,0.2)',
-          specular: 'rgba(226,214,198,0.06)',
+          stroke: toRGBA(bc.main, 0.42),
+          ring: toRGBA(bc.main, 0.15),
           sw: 1.6,
-          opacity: 0.88,
         };
       }
 
       const isMastered = status === 'mastered';
-      const baseFill = isMastered ? toRGBA(bc.main, 0.22) : toRGBA(bc.main, 0.17);
-      const innerFill = isMastered ? toRGBA(bc.main, 0.3) : toRGBA(bc.main, 0.24);
-      const core = isMastered ? toRGBA(bc.ring, 0.28) : toRGBA(bc.ring, 0.22);
-      const strokeAlpha = isMastered ? 0.94 : 0.86;
-      const ringAlpha = isMastered ? 0.84 : 0.72;
-      const glowOuterBase = isMastered ? 0.3 : 0.25;
-      const glowInnerBase = isMastered ? 0.46 : 0.39;
-      const branchBoost = branch === 'push' ? 1.08 : branch === 'pull' ? 1.1 : 1;
-      const glowOuterAlpha = glowOuterBase * branchBoost;
-      const glowInnerAlpha = glowInnerBase * branchBoost;
+      const strokeAlpha = isMastered ? 0.95 : 0.88;
+      const ringAlpha = isMastered ? 0.7 : 0.55;
 
       return {
-        fill: baseFill,
-        innerFill,
-        core,
-        outerRim: toRGBA(bc.ring, 0.19),
         stroke: toRGBA(bc.main, strokeAlpha),
         ring: toRGBA(bc.ring, ringAlpha),
-        glowInner: toRGBA(bc.ring, glowInnerAlpha),
-        glowOuter: toRGBA(bc.main, glowOuterAlpha),
-        ambient: toRGBA(bc.main, isMastered ? 0.1 : 0.082),
-        farAura: toRGBA(bc.main, isMastered ? 0.2 : 0.17),
-        farBody: toRGBA(bc.main, isMastered ? 0.5 : 0.42),
-        farCore: toRGBA(bc.ring, isMastered ? 0.72 : 0.6),
-        innerRing: toRGBA(bc.main, 0.27),
-        innerRingSoft: toRGBA(bc.ring, 0.24),
-        specular: 'rgba(240,246,255,0.12)',
-        sw: isMastered ? 2.35 : 2.05,
-        opacity: 0.98,
+        sw: isMastered ? 2.4 : 2.1,
       };
     };
 
@@ -811,33 +787,15 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
 
       if (bld && connA === n.id) {
         map[n.id] = {
-          ...makeVisual('neutral', nb, 'ready'),
-          fill: '#0F1E33',
-          innerFill: '#173250',
-          core: 'rgba(96,165,250,0.2)',
-          outerRim: 'rgba(191,219,254,0.34)',
           stroke: toRGBA(nb.main, 0.95),
-          ring: toRGBA(nb.ring, 0.92),
-          glowInner: toRGBA(nb.main, 0.46),
-          glowOuter: toRGBA(nb.main, 0.24),
-          ambient: toRGBA(nb.main, 0.08),
+          ring: toRGBA(nb.ring, 0.85),
           sw: 2.7,
         };
       } else if (status === 'start') {
-        const startBc = BRANCH_COLORS.neutral;
         map[n.id] = {
-          ...makeVisual('neutral', startBc, 'ready'),
-          fill: 'rgba(14,27,44,0.9)',
-          innerFill: 'rgba(22,46,74,0.92)',
-          core: 'rgba(147,197,253,0.2)',
-          stroke: 'rgba(96,165,250,0.92)',
-          ring: 'rgba(191,219,254,0.82)',
-          glowInner: 'rgba(96,165,250,0.34)',
-          glowOuter: 'rgba(59,130,246,0.2)',
-          ambient: 'rgba(59,130,246,0.1)',
-          innerRing: 'rgba(96,165,250,0.3)',
-          innerRingSoft: 'rgba(191,219,254,0.28)',
-          sw: 2.45,
+          stroke: 'rgba(240,245,255,0.95)',
+          ring: 'rgba(220,230,255,0.6)',
+          sw: 2.6,
         };
       } else {
         map[n.id] = makeVisual(branch, bc, status);
@@ -848,13 +806,13 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {
-      masteredW: 1.4, readyW: 1.05, lockedW: 0.7, masteredO: 0.76, readyO: 0.46, lockedO: 0.14,
+      masteredW: 1.6, readyW: 1.2, lockedW: 0.8, masteredO: 0.76, readyO: 0.46, lockedO: 0.14,
     };
     if (LOD.isMid) return {
-      masteredW: 2.2, readyW: 1.5, lockedW: 0.95, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
+      masteredW: 2.6, readyW: 1.8, lockedW: 1.1, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
     };
     return {
-      masteredW: 3.0, readyW: 2.0, lockedW: 1.04, masteredO: 0.92, readyO: 0.65, lockedO: 0.2,
+      masteredW: 3.5, readyW: 2.4, lockedW: 1.2, masteredO: 0.92, readyO: 0.65, lockedO: 0.2,
     };
   }, [LOD.isFar, LOD.isMid]);
 
@@ -1004,6 +962,9 @@ export default function TreeScreen({ onTreeChange, resetRef }) {
 
       {/* TEMP: Zoom buttons for emulator testing */}
       <View style={styles.zoomBtns}>
+        <TouchableOpacity style={styles.zoomBtn} onPress={handleGoHome}>
+          <Text style={styles.zoomBtnText}>⌂</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('in')}>
           <Text style={styles.zoomBtnText}>+</Text>
         </TouchableOpacity>

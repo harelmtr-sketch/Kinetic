@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx expo start --dev-client --clear)"
+      "Bash(npx expo start --dev-client --clear)",
+      "WebFetch(domain:shopify.github.io)",
+      "WebSearch"
     ]
   }
 }

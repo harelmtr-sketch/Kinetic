@@ -32,10 +32,10 @@ export const Colors = {
 };
 
 export const BRANCH_COLORS = {
-  neutral: { main: '#4F8DF5', edgeHex: '#93C5FD', glow: 'rgba(79,141,245,0.42)', edge: 'rgba(147,197,253,0.84)', ring: '#BFDBFE' },
-  push: { main: '#22C55E', edgeHex: '#4ADE80', glow: 'rgba(34,197,94,0.46)', edge: 'rgba(74,222,128,0.84)', ring: '#BBF7D0' },
-  pull: { main: '#EAB308', edgeHex: '#FACC15', glow: 'rgba(234,179,8,0.44)', edge: 'rgba(250,204,21,0.86)', ring: '#FDE68A' },
-  core: { main: '#3B82F6', edgeHex: '#60A5FA', glow: 'rgba(59,130,246,0.40)', edge: 'rgba(96,165,250,0.82)', ring: '#93C5FD' },
+  neutral: { main: '#4AA8FF', edgeHex: '#4AA8FF', glow: 'rgba(74,168,255,0.42)', edge: 'rgba(74,168,255,0.84)', ring: '#8CC8FF', glowHex: '#3D7BFF' },
+  push:    { main: '#34E17A', edgeHex: '#34E17A', glow: 'rgba(52,225,122,0.46)', edge: 'rgba(52,225,122,0.84)', ring: '#7AEEA8', glowHex: '#1FAE64' },
+  pull:    { main: '#FFD84A', edgeHex: '#FFD84A', glow: 'rgba(255,216,74,0.44)', edge: 'rgba(255,216,74,0.86)', ring: '#FFE88A', glowHex: '#FFB000' },
+  core:    { main: '#4AA8FF', edgeHex: '#60A5FA', glow: 'rgba(74,168,255,0.40)', edge: 'rgba(96,165,250,0.82)', ring: '#8CC8FF', glowHex: '#3D7BFF' },
 };
 
 export const C = {

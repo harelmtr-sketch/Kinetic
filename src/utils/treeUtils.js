@@ -198,8 +198,15 @@ const normalizeNodesWithBranch = (nodes, edges) => {
   return normalized;
 };
 
-export const toRGBA = (hex, alpha = 1) => {
-  const m = hex.replace('#', '');
+export const toRGBA = (color, alpha = 1) => {
+  if (!color) return `rgba(0,0,0,${alpha})`;
+  // Handle rgba(...) input — extract rgb and replace alpha
+  const rgbaMatch = color.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgbaMatch) {
+    return `rgba(${rgbaMatch[1]},${rgbaMatch[2]},${rgbaMatch[3]},${alpha})`;
+  }
+  // Handle hex input
+  const m = color.replace('#', '');
   const n = m.length === 3 ? m.split('').map((c) => c + c).join('') : m;
   const int = parseInt(n, 16);
   const r = (int >> 16) & 255;
