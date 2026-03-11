@@ -15,7 +15,9 @@ import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import NamePrompt from '../components/tree/NamePrompt';
 import SkillCard from '../components/tree/SkillCard';
 import GlowText from '../components/common/GlowText';
+import NeonControl from '../components/common/NeonControl';
 import KineticLogo from '../components/KineticLogo';
+import StreakBadge from '../components/StreakBadge.js';
 import SkiaTreeCanvas from '../components/tree/SkiaTreeCanvas';
 import { BRANCH_COLORS, Colors } from '../theme/colors';
 import {
@@ -887,17 +889,38 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
   return (
     <View style={styles.root}>
       <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
-        <View style={styles.barSide}>
-          {/* empty left side for symmetry */}
-        </View>
-        <View style={styles.titleWrap}>
-          <KineticLogo size={18} style={styles.titleLogo} />
-          <GlowText style={styles.title} color={Colors.blue[300]} glowColor="rgba(96,165,250,0.72)" outerGlowColor="rgba(59,130,246,0.38)" numberOfLines={1}>KINETIC</GlowText>
-        </View>
-        <View style={[styles.barSide, { justifyContent: 'flex-end' }]}>
-          <TouchableOpacity style={[styles.modeBtn, bld && styles.modeOn]} onPress={() => { setBld(!bld); setConnA(null); dId.current = null; }}>
-            <Text style={[styles.modeT, bld && styles.modeTOn]}>{bld ? 'DONE' : 'EDIT TREE'}</Text>
-          </TouchableOpacity>
+        <View pointerEvents="none" style={styles.barGlassBase} />
+        <View pointerEvents="none" style={styles.barGlassShade} />
+        <View pointerEvents="none" style={styles.barInnerGlow} />
+        <View pointerEvents="none" style={styles.barInnerHighlight} />
+        <View pointerEvents="none" style={styles.barScanLine} />
+
+        <View style={styles.barContent}>
+          <View style={styles.barSide}>
+            <StreakBadge
+              days={7}
+              size={1.08}
+              style={styles.streakBadge}
+              onPress={() => Alert.alert('Daily Streak', '7 days. Train today to keep it alive.')}
+            />
+          </View>
+          <View style={styles.titleWrap}>
+            <KineticLogo size={20} style={styles.titleLogo} />
+            <GlowText style={styles.title} color="#9FD4FF" glowColor="rgba(80,160,255,0.52)" outerGlowColor="rgba(80,160,255,0.26)" numberOfLines={1}>KINETIC</GlowText>
+          </View>
+          <View style={[styles.barSide, { justifyContent: 'flex-end' }]}>
+            <NeonControl
+              style={styles.modeBtnWrap}
+              surfaceStyle={[styles.modeBtn, bld && styles.modeOn]}
+              paddingHorizontal={14}
+              paddingVertical={9}
+              radius={10}
+              accentColor={bld ? '#5DB4FF' : '#4BA3FF'}
+              onPress={() => { setBld(!bld); setConnA(null); dId.current = null; }}
+            >
+              <Text style={[styles.modeT, bld && styles.modeTOn]}>{bld ? 'DONE' : 'EDIT TREE'}</Text>
+            </NeonControl>
+          </View>
         </View>
       </View>
 
@@ -972,6 +995,7 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
               isInteracting={isInteracting}
               canvasSize={canvasSize}
               nodeStyles={nodeStyles}
+              visibleBounds={visibleBounds}
             />
           )}
         </View>
@@ -1006,6 +1030,7 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
                 isInteracting={isInteracting}
                 canvasSize={canvasSize}
                 nodeStyles={nodeStyles}
+                visibleBounds={visibleBounds}
               />
             )}
           </View>
@@ -1014,12 +1039,24 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
 
       {/* TEMP: Zoom buttons for emulator testing */}
       <View style={styles.zoomBtns}>
-        <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('in')}>
+        <NeonControl
+          size={44}
+          radius={22}
+          accentColor="#4BA3FF"
+          surfaceStyle={styles.zoomBtn}
+          onPress={() => handleZoom('in')}
+        >
           <Text style={styles.zoomBtnText}>+</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('out')}>
+        </NeonControl>
+        <NeonControl
+          size={44}
+          radius={22}
+          accentColor="#4BA3FF"
+          surfaceStyle={styles.zoomBtn}
+          onPress={() => handleZoom('out')}
+        >
           <Text style={styles.zoomBtnText}>-</Text>
-        </TouchableOpacity>
+        </NeonControl>
       </View>
 
       {/* Legend removed — cleaner UI */}
@@ -1084,42 +1121,106 @@ const styles = StyleSheet.create({
     position: 'absolute', right: 16, bottom: 100, gap: 8, zIndex: 50,
   },
   zoomBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(15,26,43,0.92)',
+    borderColor: 'rgba(120,180,255,0.32)',
   },
   zoomBtnText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   bar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10,
-    backgroundColor: '#060A10', borderBottomWidth: 1, borderColor: Colors.border.default,
+    position: 'relative',
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+    minHeight: 64,
+    overflow: 'visible',
+    backgroundColor: 'rgba(7, 17, 29, 0.58)',
+    borderBottomWidth: 1,
+    borderColor: 'rgba(120,180,255,0.15)',
+  },
+  barGlassBase: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(6,16,28,0.95)',
+  },
+  barGlassShade: {
+    ...StyleSheet.absoluteFillObject,
+    left: -18,
+    right: -18,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(7,28,48,0.11)',
+  },
+  barInnerGlow: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    top: 6,
+    bottom: 8,
+    borderRadius: 18,
+    backgroundColor: 'rgba(60,120,255,0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(111, 184, 255, 0.06)',
+  },
+  barInnerHighlight: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    top: 0,
+    height: 14,
+    backgroundColor: 'rgba(120,190,255,0.035)',
+  },
+  barScanLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 1,
+    backgroundColor: 'rgba(80,160,255,0.35)',
+  },
+  barContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 8,
   },
   barSide: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
   },
+  streakBadge: {
+    marginLeft: 2,
+  },
   titleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
+    paddingHorizontal: 10,
   },
   titleLogo: {
     marginTop: -1,
   },
   title: {
-    fontSize: 13,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 2.2,
     textAlign: 'center',
   },
+  modeBtnWrap: {
+    borderRadius: 10,
+  },
   modeBtn: {
-    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6,
-    backgroundColor: '#151a24', borderWidth: 1, borderColor: Colors.border.default,
+    backgroundColor: 'rgba(15,26,43,0.92)',
+    borderColor: 'rgba(120,180,255,0.26)',
   },
-  modeOn: { backgroundColor: '#12283d', borderColor: 'rgba(59,130,246,0.45)' },
+  modeOn: { backgroundColor: 'rgba(18,40,61,0.96)', borderColor: 'rgba(100,180,255,0.38)' },
   modeT: {
-    color: Colors.text.tertiary, fontSize: 10.5, fontWeight: '800', letterSpacing: 1.2,
+    color: '#E6F2FF',
+    fontSize: 11.5,
+    fontWeight: '700',
+    letterSpacing: 1.1,
   },
-  modeTOn: { color: Colors.green[400] },
+  modeTOn: { color: '#B8E0FF' },
   toolbar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 10, paddingVertical: 10, rowGap: 8,
