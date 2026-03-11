@@ -8,6 +8,7 @@ import {
   Rect,
   Text as SkiaText,
   matchFont,
+  useClock,
 } from '@shopify/react-native-skia';
 import { useDerivedValue } from 'react-native-reanimated';
 import { BRANCH_COLORS } from '../../theme/colors';
@@ -16,6 +17,12 @@ import { resolveEdgeBranch, toRGBA } from '../../utils/treeUtils';
 import { mulberry32, buildEdgePath } from '../../utils/skiaTreeUtils';
 
 const BG_COLOR = '#000000';
+const TAU = Math.PI * 2;
+const FOCUS_PULSE_MIN_SCALE = 0.92;
+const FOCUS_PULSE_MAX_VISIBLE_NODES = 8;
+const FOCUS_PULSE_CYCLE_MS = 3800;
+const FOCUS_PULSE_DRIFT_MS = 1420;
+const STAR_NODE_CULL_RADIUS_SQ = (NODE_R * 0.18) ** 2;
 
 const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   nodes,
@@ -56,6 +63,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     { translateX: dragXV.value },
     { translateY: dragYV.value },
   ]), []);
+  const pulseClock = useClock();
 
   const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
@@ -142,6 +150,77 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     return stars;
   }, [starBounds]);
 
+  const glowFieldSources = useMemo(() => {
+    const mastered = [];
+    const ready = [];
+    const bright = [];
+
+    for (const node of visibleNodes) {
+      const status = nodeStatusMap[node.id];
+      if (status === 'start' || status === 'mastered') {
+        const point = { node, status };
+        mastered.push(point);
+        bright.push(point);
+      } else if (status === 'ready') {
+        const point = { node, status };
+        ready.push(point);
+        bright.push(point);
+      }
+    }
+
+    return { mastered, ready, bright };
+  }, [nodeStatusMap, visibleNodes]);
+  const focusedPulseCandidate = !bld
+    && !isInteracting
+    && LOD.isNear
+    && glowFieldSources.bright.length > 0
+    && glowFieldSources.bright.length <= FOCUS_PULSE_MAX_VISIBLE_NODES;
+  const focusedPulseStrength = useDerivedValue(() => {
+    if (!focusedPulseCandidate || scV.value < FOCUS_PULSE_MIN_SCALE) return 0;
+
+    const cycle = (pulseClock.value % FOCUS_PULSE_CYCLE_MS) / FOCUS_PULSE_CYCLE_MS;
+    const drift = (pulseClock.value % FOCUS_PULSE_DRIFT_MS) / FOCUS_PULSE_DRIFT_MS;
+    const primary = 0.5 - (Math.cos(cycle * TAU) * 0.5);
+    const secondary = 0.5 - (Math.cos((drift * TAU) + 0.72) * 0.5);
+    return (primary * 0.82) + (secondary * 0.18);
+  }, [focusedPulseCandidate]);
+  const focusedPulseFieldOpacity = useDerivedValue(() => {
+    if (!focusedPulseCandidate || scV.value < FOCUS_PULSE_MIN_SCALE) return 1;
+    return 0.58 + (focusedPulseStrength.value * 0.42);
+  }, [focusedPulseCandidate]);
+  const focusedPulseNodeGlowOpacity = useDerivedValue(() => {
+    if (!focusedPulseCandidate || scV.value < FOCUS_PULSE_MIN_SCALE) return 1;
+    return 0.24 + (focusedPulseStrength.value * 0.76);
+  }, [focusedPulseCandidate]);
+  const focusedPulseNodeRingOpacity = useDerivedValue(() => {
+    if (!focusedPulseCandidate || scV.value < FOCUS_PULSE_MIN_SCALE) return 1;
+    return 0.46 + (focusedPulseStrength.value * 0.54);
+  }, [focusedPulseCandidate]);
+  const focusedPulseNodeStrokeOpacity = useDerivedValue(() => {
+    if (!focusedPulseCandidate || scV.value < FOCUS_PULSE_MIN_SCALE) return 1;
+    return 0.76 + (focusedPulseStrength.value * 0.24);
+  }, [focusedPulseCandidate]);
+  const focusedPulseNodeCoreOpacity = useDerivedValue(() => {
+    if (!focusedPulseCandidate || scV.value < FOCUS_PULSE_MIN_SCALE) return 0;
+    return 0.05 + (focusedPulseStrength.value * 0.22);
+  }, [focusedPulseCandidate]);
+  const focusedPulseNodeBloomOpacity = useDerivedValue(() => {
+    if (!focusedPulseCandidate || scV.value < FOCUS_PULSE_MIN_SCALE) return 0;
+    return 0.04 + (focusedPulseStrength.value * 0.18);
+  }, [focusedPulseCandidate]);
+  const focusedPulseHaloBloomOpacity = useDerivedValue(() => {
+    if (!focusedPulseCandidate || scV.value < FOCUS_PULSE_MIN_SCALE) return 0;
+    return 0.06 + (focusedPulseStrength.value * 0.16);
+  }, [focusedPulseCandidate]);
+  const focusedPulseEdgeGlowOpacity = useDerivedValue(() => {
+    if (!focusedPulseCandidate || scV.value < FOCUS_PULSE_MIN_SCALE) return 1;
+    return 0.28 + (focusedPulseStrength.value * 0.72);
+  }, [focusedPulseCandidate]);
+  const focusedPulseEdgeMainOpacity = useDerivedValue(() => {
+    if (!focusedPulseCandidate || scV.value < FOCUS_PULSE_MIN_SCALE) return 1;
+    return 0.84 + (focusedPulseStrength.value * 0.16);
+  }, [focusedPulseCandidate]);
+
   const visibleStars = useMemo(() => {
     if (!visibleBounds) return spaceStars;
 
@@ -150,27 +229,32 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const right = visibleBounds.right + pad;
     const top = visibleBounds.top - pad;
     const bottom = visibleBounds.bottom + pad;
-    const brightNodes = visibleNodes.filter((node) => {
-      const status = nodeStatusMap[node.id];
-      return status === 'start' || status === 'mastered' || status === 'ready';
-    });
+    const brightNodes = glowFieldSources.bright;
 
     return spaceStars.filter((star) => {
       if (!(star.x >= left && star.x <= right && star.y >= top && star.y <= bottom)) return false;
-      return !brightNodes.some((node) => Math.hypot(node.x - star.x, node.y - star.y) < NODE_R * 0.18);
+      if (brightNodes.length === 0) return true;
+
+      for (let i = 0; i < brightNodes.length; i += 1) {
+        const { node } = brightNodes[i];
+        const dx = node.x - star.x;
+        const dy = node.y - star.y;
+        if ((dx * dx) + (dy * dy) < STAR_NODE_CULL_RADIUS_SQ) return false;
+      }
+
+      return true;
     });
-  }, [LOD.isFar, nodeStatusMap, spaceStars, visibleBounds, visibleNodes]);
+  }, [LOD.isFar, glowFieldSources, spaceStars, visibleBounds]);
 
   const regionalGlowFields = useMemo(() => {
-    const buildCluster = (statuses, color, baseRadius, opacityScale) => {
-      const points = visibleNodes.filter((node) => statuses.includes(nodeStatusMap[node.id]));
+    const buildCluster = (points, color, baseRadius, opacityScale) => {
       if (!points.length) return null;
 
       let weightSum = 0;
       let cx = 0;
       let cy = 0;
-      for (const node of points) {
-        const status = nodeStatusMap[node.id];
+      for (const point of points) {
+        const { node, status } = point;
         const weight = status === 'start' ? 1.9 : status === 'mastered' ? 1.35 : 1.1;
         weightSum += weight;
         cx += node.x * weight;
@@ -181,7 +265,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       cy /= weightSum;
 
       let maxDist = 0;
-      for (const node of points) {
+      for (const point of points) {
+        const { node } = point;
         maxDist = Math.max(maxDist, Math.hypot(node.x - cx, node.y - cy));
       }
 
@@ -195,10 +280,10 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     };
 
     return [
-      buildCluster(['start', 'mastered'], '#34D366', 240, 0.42),
-      buildCluster(['ready'], '#FACC15', 220, 0.34),
+      buildCluster(glowFieldSources.mastered, '#34D366', 240, 0.42),
+      buildCluster(glowFieldSources.ready, '#FACC15', 220, 0.34),
     ].filter(Boolean);
-  }, [nodeStatusMap, visibleNodes]);
+  }, [glowFieldSources]);
 
   const edgePathCache = useRef(new Map());
 
@@ -225,15 +310,16 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       toNode,
       status,
       branchColor,
+      useFocusedPulse: focusedPulseCandidate && status !== 'locked',
     };
-  }).filter(Boolean), [bld, nodeMap, nodeStatusMap, visibleEdges]);
+  }).filter(Boolean), [bld, focusedPulseCandidate, nodeMap, nodeStatusMap, visibleEdges]);
 
   const edgeSegments = useMemo(() => {
     const cache = edgePathCache.current;
     const seen = new Set();
 
     const segments = edgeData.map(({
-      id, fromNode, toNode, status, branchColor,
+      id, fromNode, toNode, status, branchColor, useFocusedPulse,
     }) => {
       const key = `${fromNode.id}->${toNode.id}:${fromNode.x},${fromNode.y}|${toNode.x},${toNode.y}`;
       seen.add(key);
@@ -248,6 +334,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
         path,
         status,
         branchColor,
+        useFocusedPulse,
       };
     });
 
@@ -279,8 +366,9 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       isReady,
       isLocked,
       isLit,
+      useFocusedPulse: focusedPulseCandidate && isLit,
     };
-  }).filter(Boolean), [dragId, nodeStatusMap, nodeStyles, visibleNodes, wrappedLabels]);
+  }).filter(Boolean), [dragId, focusedPulseCandidate, nodeStatusMap, nodeStyles, visibleNodes, wrappedLabels]);
 
   const labelMetrics = useMemo(() => {
     if (!labelFont) return {};
@@ -313,8 +401,9 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       isReady,
       isLocked,
       isLit,
+      useFocusedPulse: focusedPulseCandidate && isLit,
     };
-  }, [dragId, nodeStatusMap, nodeStyles, nodes, wrappedLabels]);
+  }, [dragId, focusedPulseCandidate, nodeStatusMap, nodeStyles, nodes, wrappedLabels]);
 
   const farNodeR = NODE_R * 0.34;
   const starOpacityScale = LOD.isNear ? 1.08 : LOD.isMid ? 1 : 0.92;
@@ -328,6 +417,12 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const ambientR = isFarNode ? NODE_R * 0.54 : renderR * (meta.isStart ? 2.08 : 1.64);
     const cx = x;
     const cy = y;
+    const glowOpacity = meta.useFocusedPulse ? focusedPulseNodeGlowOpacity : 1;
+    const ringOpacity = meta.useFocusedPulse ? focusedPulseNodeRingOpacity : 1;
+    const strokeOpacity = meta.useFocusedPulse ? focusedPulseNodeStrokeOpacity : 1;
+    const coreGlowOpacity = meta.useFocusedPulse ? focusedPulseNodeCoreOpacity : 0;
+    const bloomOpacity = meta.useFocusedPulse ? focusedPulseNodeBloomOpacity : 0;
+    const haloBloomOpacity = meta.useFocusedPulse ? focusedPulseHaloBloomOpacity : 0;
 
     if (isFarNode) {
       return (
@@ -342,25 +437,75 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
     return (
       <Group>
-        {USE_GLOW && !meta.isLocked && (
-          <Circle cx={cx} cy={cy} r={ambientR} color={meta.visual.ambient || toRGBA(meta.visual.stroke, meta.isStart ? 0.05 : 0.03)} />
-        )}
-        {USE_GLOW && !meta.isLocked && (
-          <Circle cx={cx} cy={cy} r={outerGlowR} color={meta.visual.glowOuter || toRGBA(meta.visual.stroke, meta.isStart ? 0.1 : 0.07)} />
-        )}
-        {USE_GLOW && !meta.isLocked && (
-          <Circle cx={cx} cy={cy} r={innerGlowR} color={meta.visual.glowInner || toRGBA(meta.visual.ring, meta.isStart ? 0.16 : 0.12)} />
-        )}
-
-        {LOD.showOuterRing && (
+        {meta.useFocusedPulse && USE_GLOW && !meta.isLocked && (
           <Circle
             cx={cx}
             cy={cy}
-            r={haloRingR}
-            style="stroke"
-            strokeWidth={meta.isStart ? 1.12 : 0.82}
-            color={meta.visual.outerRim || toRGBA(meta.visual.ring, meta.isLit ? 0.24 : 0.1)}
+            r={ambientR * 1.16}
+            color={meta.visual.glowOuter || toRGBA(meta.visual.stroke, meta.isStart ? 0.12 : 0.09)}
+            opacity={bloomOpacity}
           />
+        )}
+        {meta.useFocusedPulse && USE_GLOW && !meta.isLocked && (
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={outerGlowR * 1.11}
+            color={meta.visual.glowInner || toRGBA(meta.visual.ring, meta.isStart ? 0.18 : 0.14)}
+            opacity={bloomOpacity}
+          />
+        )}
+        {USE_GLOW && !meta.isLocked && (
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={ambientR}
+            color={meta.visual.ambient || toRGBA(meta.visual.stroke, meta.isStart ? 0.05 : 0.03)}
+            opacity={glowOpacity}
+          />
+        )}
+        {USE_GLOW && !meta.isLocked && (
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={outerGlowR}
+            color={meta.visual.glowOuter || toRGBA(meta.visual.stroke, meta.isStart ? 0.1 : 0.07)}
+            opacity={glowOpacity}
+          />
+        )}
+        {USE_GLOW && !meta.isLocked && (
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={innerGlowR}
+            color={meta.visual.glowInner || toRGBA(meta.visual.ring, meta.isStart ? 0.16 : 0.12)}
+            opacity={glowOpacity}
+          />
+        )}
+
+        {LOD.showOuterRing && (
+          <>
+            {meta.useFocusedPulse && (
+              <Circle
+                cx={cx}
+                cy={cy}
+                r={haloRingR + 4.2}
+                style="stroke"
+                strokeWidth={meta.isStart ? 1.28 : 0.94}
+                color={meta.visual.outerRim || toRGBA(meta.visual.ring, meta.isLit ? 0.3 : 0.12)}
+                opacity={haloBloomOpacity}
+              />
+            )}
+            <Circle
+              cx={cx}
+              cy={cy}
+              r={haloRingR}
+              style="stroke"
+              strokeWidth={meta.isStart ? 1.12 : 0.82}
+              color={meta.visual.outerRim || toRGBA(meta.visual.ring, meta.isLit ? 0.24 : 0.1)}
+              opacity={ringOpacity}
+            />
+          </>
         )}
 
         {LOD.showOuterRing && bld && connA === meta.n?.id && (
@@ -371,10 +516,27 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
         {!meta.isLocked && (
           <Circle cx={cx} cy={cy} r={renderR - 4.2} color={meta.visual.innerFill || '#0B1320'} />
         )}
+        {!meta.isLocked && meta.useFocusedPulse && (
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={Math.max(renderR - 12.5, renderR * 0.32)}
+            color={meta.visual.glowInner || toRGBA(meta.visual.ring, 0.24)}
+            opacity={coreGlowOpacity}
+          />
+        )}
         {!meta.isLocked && (
           <Circle cx={cx} cy={cy} r={Math.max(renderR - 17, renderR * 0.16)} color={meta.visual.core || 'rgba(255,255,255,0.03)'} />
         )}
-        <Circle cx={cx} cy={cy} r={renderR - 4.9} style="stroke" strokeWidth={0.72} color={meta.visual.innerRingSoft || toRGBA(meta.visual.ring, meta.isLocked ? 0.08 : 0.22)} />
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={renderR - 4.9}
+          style="stroke"
+          strokeWidth={0.72}
+          color={meta.visual.innerRingSoft || toRGBA(meta.visual.ring, meta.isLocked ? 0.08 : 0.22)}
+          opacity={ringOpacity}
+        />
         <Circle
           cx={cx}
           cy={cy}
@@ -382,6 +544,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           style="stroke"
           strokeWidth={meta.isStart ? meta.visual.sw + 0.38 : meta.visual.sw}
           color={meta.visual.stroke}
+          opacity={strokeOpacity}
         />
         {!meta.isLocked && (
           <Circle
@@ -391,6 +554,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             style="stroke"
             strokeWidth={meta.isStart ? 0.95 : 0.74}
             color={meta.visual.innerRing || toRGBA(meta.visual.ring, meta.isStart ? 0.32 : 0.22)}
+            opacity={strokeOpacity}
           />
         )}
       </Group>
@@ -403,7 +567,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
       <Group transform={sceneTransform}>
         {regionalGlowFields.map((glow, index) => (
-          <Group key={`glow_${index}`}>
+          <Group key={`glow_${index}`} opacity={focusedPulseCandidate ? focusedPulseFieldOpacity : 1}>
             <Circle cx={glow.cx} cy={glow.cy} r={glow.radius * 1.16} color={toRGBA(glow.color, 0.018 * glow.opacityScale)} />
             <Circle cx={glow.cx} cy={glow.cy} r={glow.radius * 0.82} color={toRGBA(glow.color, 0.03 * glow.opacityScale)} />
           </Group>
@@ -454,6 +618,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             : isReady
               ? toRGBA(edge.branchColor.edgeHex, 0.16)
               : toRGBA(edge.branchColor.edgeHex, 0.05);
+          const edgeGlowOpacity = edge.useFocusedPulse ? focusedPulseEdgeGlowOpacity : 1;
+          const edgeMainOpacity = edge.useFocusedPulse ? focusedPulseEdgeMainOpacity : 1;
 
           return (
             <Group key={edge.id}>
@@ -465,6 +631,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                     strokeWidth={glowOuterWidth}
                     color={glowOuterColor}
                     strokeCap="round"
+                    opacity={edgeGlowOpacity}
                   />
                   <Path
                     path={edge.path}
@@ -472,11 +639,12 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                     strokeWidth={glowInnerWidth}
                     color={glowInnerColor}
                     strokeCap="round"
+                    opacity={edgeGlowOpacity}
                   />
                 </Group>
               )}
 
-              <Path path={edge.path} style="stroke" strokeWidth={width} color={mainColor} strokeCap="round">
+              <Path path={edge.path} style="stroke" strokeWidth={width} color={mainColor} strokeCap="round" opacity={edgeMainOpacity}>
                 {!isMastered && !bld && <DashPathEffect intervals={dashIntervals} />}
               </Path>
             </Group>

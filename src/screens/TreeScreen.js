@@ -738,7 +738,6 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
     const isFar = lodTier === 'far';
     const isMid = lodTier === 'mid';
     const isNear = lodTier === 'near';
-    const forceCheap = interactionTier === 'heavy';
 
     return {
       isFar,
@@ -879,7 +878,7 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
   }, [visibleNodes.length, visibleEdges.length, xform.sc, lodTier]);
 
   const hints = {
-    move: 'Drag nodes to reposition · Tap empty space to add',
+    move: 'Drag nodes to reposition - Tap empty space to add',
     connect: connA ? 'Now tap second node to connect' : 'Tap first node to begin branch',
     delete: 'Tap a node or line to delete it',
   };
@@ -902,11 +901,13 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
               onPress={() => Alert.alert('Daily Streak', '7 days. Train today to keep it alive.')}
             />
           </View>
-          <View style={styles.titleWrap}>
-            <KineticLogo size={20} style={styles.titleLogo} />
-            <GlowText style={styles.title} color="#9FD4FF" glowColor="rgba(80,160,255,0.52)" outerGlowColor="rgba(80,160,255,0.26)" numberOfLines={1}>KINETIC</GlowText>
+          <View pointerEvents="none" style={styles.titleSlot}>
+            <View style={styles.titleWrap}>
+              <KineticLogo size={20} style={styles.titleLogo} />
+              <GlowText style={styles.title} color="#9FD4FF" glowColor="rgba(80,160,255,0.52)" outerGlowColor="rgba(80,160,255,0.26)" numberOfLines={1}>KINETIC</GlowText>
+            </View>
           </View>
-          <View style={[styles.barSide, { justifyContent: 'flex-end' }]}>
+          <View style={[styles.barSide, styles.barSideRight]}>
             <NeonControl
               style={styles.modeBtnWrap}
               surfaceStyle={[styles.modeBtn, bld && styles.modeOn]}
@@ -956,8 +957,8 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
 
       {bld && (
         <View style={styles.ioRow}>
-          <TouchableOpacity style={styles.ioBtn} onPress={exportTree}><Text style={styles.ioT}>⬆  EXPORT</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.ioBtn} onPress={importTree}><Text style={styles.ioT}>⬇  IMPORT</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.ioBtn} onPress={exportTree}><Text style={styles.ioT}>EXPORT</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.ioBtn} onPress={importTree}><Text style={styles.ioT}>IMPORT</Text></TouchableOpacity>
         </View>
       )}
       {bld && <View style={styles.hintRow}><Text style={styles.hintT}>{hints[tool]}</Text></View>}
@@ -1057,7 +1058,7 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
         </NeonControl>
       </View>
 
-      {/* Legend removed — cleaner UI */}
+      {/* Legend removed - cleaner UI */}
 
       <Modal transparent visible={namePromptVisible} animationType="fade" onRequestClose={() => setNamePromptVisible(false)}>
         <View style={styles.slotModalBack}>
@@ -1179,21 +1180,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    position: 'relative',
+    minHeight: 44,
     paddingHorizontal: 4,
     paddingVertical: 8,
   },
   barSide: {
-    flex: 1, flexDirection: 'row', alignItems: 'center',
+    flex: 1, minWidth: 108, flexDirection: 'row', alignItems: 'center', zIndex: 1,
   },
+  barSideRight: { justifyContent: 'flex-end' },
   streakBadge: {
-    marginLeft: 2,
+    marginLeft: -6,
+  },
+  titleSlot: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   titleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingHorizontal: 10,
+    maxWidth: '62%',
+    paddingHorizontal: 16,
   },
   titleLogo: {
     marginTop: -1,
