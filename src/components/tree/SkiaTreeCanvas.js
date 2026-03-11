@@ -6,7 +6,6 @@ import {
   Group,
   Path,
   Rect,
-  Skia,
   Text as SkiaText,
   matchFont,
 } from '@shopify/react-native-skia';
@@ -16,23 +15,34 @@ import { NODE_R, USE_GLOW } from '../../constants/tree';
 import { resolveEdgeBranch, toRGBA } from '../../utils/treeUtils';
 import { mulberry32, buildEdgePath } from '../../utils/skiaTreeUtils';
 
-// ===== BACKGROUND COLOR =====
 const BG_COLOR = '#000000';
-// ============================
 
 const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
-  nodes, visibleNodes, visibleEdges, nodeStatusMap, wrappedLabels,
-  txV, tyV, scV,
-  dragId, dragXV, dragYV,
-  LOD, edgeVisual,
-  bld, connA, isInteracting,
-  canvasSize, nodeStyles, visibleBounds,
+  nodes,
+  visibleNodes,
+  visibleEdges,
+  nodeStatusMap,
+  wrappedLabels,
+  txV,
+  tyV,
+  scV,
+  dragId,
+  dragXV,
+  dragYV,
+  LOD,
+  edgeVisual,
+  bld,
+  connA,
+  isInteracting,
+  canvasSize,
+  nodeStyles,
+  visibleBounds,
 }) {
   const labelFont = useMemo(() => {
     try {
-      return matchFont({ fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold' });
+      return matchFont({ fontFamily: 'sans-serif', fontSize: 15, fontWeight: 'bold' });
     } catch {
-      return matchFont({ fontSize: 13 });
+      return matchFont({ fontSize: 15 });
     }
   }, []);
 
@@ -49,17 +59,20 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
   const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
-  // --- Space background stars — all live in the scene so they move with pan/zoom ---
-  // Dynamically sized: extends 2000 units beyond the outermost nodes in every direction.
   const starBounds = useMemo(() => {
     if (nodes.length === 0) return { cx: 0, cy: 0, w: 4000, h: 4000 };
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
     for (const n of nodes) {
       if (n.x < minX) minX = n.x;
       if (n.x > maxX) maxX = n.x;
       if (n.y < minY) minY = n.y;
       if (n.y > maxY) maxY = n.y;
     }
+
     const pad = 2000;
     return {
       cx: (minX + maxX) / 2,
@@ -70,55 +83,43 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   }, [nodes]);
 
   const spaceStars = useMemo(() => {
-    const { cx, cy, w: W, h: H } = starBounds;
+    const { cx, cy, w: worldWidth, h: worldHeight } = starBounds;
     const rand = mulberry32(1337);
     const stars = [];
-    const colors = [
-      '#ffffff', '#ffffff', '#ffffff',
-      '#d4c8ff', '#b4dcff', '#ffd4d4',
-      '#d4ffe4', '#ffe6c8', '#c8ffff',
-    ];
+    const colors = ['#ffffff', '#ffffff', '#ffffff', '#f8fbff', '#eef5ff', '#fff6e5'];
 
-    // Layer 1: Dim dust — tiny, everywhere
-    for (let i = 0; i < 2700; i++) {
+    for (let i = 0; i < 5200; i++) {
       stars.push({
-        x: cx + (rand() - 0.5) * W,
-        y: cy + (rand() - 0.5) * H,
-        r: 1 + rand() * 1.5,
-        color: colors[Math.floor(rand() * 3)],
-        opacity: 0.12 + rand() * 0.18,
-      });
-    }
-
-    // Layer 2: Small stars — visible, scattered
-    for (let i = 0; i < 1350; i++) {
-      stars.push({
-        x: cx + (rand() - 0.5) * W,
-        y: cy + (rand() - 0.5) * H,
-        r: 2 + rand() * 2,
+        x: cx + (rand() - 0.5) * worldWidth,
+        y: cy + (rand() - 0.5) * worldHeight,
+        r: 0.56 + rand() * 0.62,
         color: colors[Math.floor(rand() * colors.length)],
-        opacity: 0.25 + rand() * 0.35,
+        opacity: 0.18 + rand() * 0.18,
       });
     }
 
-    // Layer 3: Medium stars — clearly visible, some color tint
-    for (let i = 0; i < 450; i++) {
+    for (let i = 0; i < 2100; i++) {
       stars.push({
-        x: cx + (rand() - 0.5) * W,
-        y: cy + (rand() - 0.5) * H,
-        r: 3 + rand() * 2.5,
+        x: cx + (rand() - 0.5) * worldWidth,
+        y: cy + (rand() - 0.5) * worldHeight,
+        r: 0.95 + rand() * 0.72,
         color: colors[Math.floor(rand() * colors.length)],
-        opacity: 0.4 + rand() * 0.35,
+        opacity: 0.3 + rand() * 0.22,
+        glowRadius: 2.1 + rand() * 1.4,
+        glowOpacity: 0.04 + rand() * 0.04,
       });
     }
 
-    // Layer 4: Bright accent stars — rare, colorful, with a glow halo
-    for (let i = 0; i < 135; i++) {
-      const x = cx + (rand() - 0.5) * W;
-      const y = cy + (rand() - 0.5) * H;
-      const color = colors[3 + Math.floor(rand() * (colors.length - 3))];
-      stars.push({ x, y, r: 10 + rand() * 8, color, opacity: 0.04 + rand() * 0.04 });
-      stars.push({ x, y, r: 3.5 + rand() * 2.5, color, opacity: 0.7 + rand() * 0.3 });
+    for (let i = 0; i < 420; i++) {
+      stars.push({
+        x: cx + (rand() - 0.5) * worldWidth,
+        y: cy + (rand() - 0.5) * worldHeight,
+        r: 1.4 + rand() * 0.95,
+        color: colors[Math.floor(rand() * colors.length)],
+        opacity: 0.54 + rand() * 0.22,
+        glowRadius: 3.6 + rand() * 2.2,
+        glowOpacity: 0.07 + rand() * 0.08,
+      });
     }
 
     return stars;
@@ -126,26 +127,71 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
   const visibleStars = useMemo(() => {
     if (!visibleBounds) return spaceStars;
+
     const pad = LOD.isFar ? 220 : 320;
     const left = visibleBounds.left - pad;
     const right = visibleBounds.right + pad;
     const top = visibleBounds.top - pad;
     const bottom = visibleBounds.bottom + pad;
+    const brightNodes = visibleNodes.filter((node) => {
+      const status = nodeStatusMap[node.id];
+      return status === 'start' || status === 'mastered' || status === 'ready';
+    });
 
-    return spaceStars.filter((star) => (
-      star.x >= left && star.x <= right && star.y >= top && star.y <= bottom
-    ));
-  }, [LOD.isFar, spaceStars, visibleBounds]);
+    return spaceStars.filter((star) => {
+      if (!(star.x >= left && star.x <= right && star.y >= top && star.y <= bottom)) return false;
+      return !brightNodes.some((node) => Math.hypot(node.x - star.x, node.y - star.y) < NODE_R * 0.18);
+    });
+  }, [LOD.isFar, nodeStatusMap, spaceStars, visibleBounds, visibleNodes]);
+
+  const regionalGlowFields = useMemo(() => {
+    const buildCluster = (statuses, color, baseRadius, opacityScale) => {
+      const points = visibleNodes.filter((node) => statuses.includes(nodeStatusMap[node.id]));
+      if (!points.length) return null;
+
+      let weightSum = 0;
+      let cx = 0;
+      let cy = 0;
+      for (const node of points) {
+        const status = nodeStatusMap[node.id];
+        const weight = status === 'start' ? 1.9 : status === 'mastered' ? 1.35 : 1.1;
+        weightSum += weight;
+        cx += node.x * weight;
+        cy += node.y * weight;
+      }
+
+      cx /= weightSum;
+      cy /= weightSum;
+
+      let maxDist = 0;
+      for (const node of points) {
+        maxDist = Math.max(maxDist, Math.hypot(node.x - cx, node.y - cy));
+      }
+
+      return {
+        cx,
+        cy,
+        color,
+        radius: Math.max(baseRadius, maxDist + baseRadius * 0.45),
+        opacityScale,
+      };
+    };
+
+    return [
+      buildCluster(['start', 'mastered'], '#34D366', 240, 0.42),
+      buildCluster(['ready'], '#FACC15', 220, 0.34),
+    ].filter(Boolean);
+  }, [nodeStatusMap, visibleNodes]);
 
   const edgePathCache = useRef(new Map());
 
   const edgeData = useMemo(() => visibleEdges.map((e, idx) => {
-    const fn = nodeMap.get(e.from);
-    const tn = nodeMap.get(e.to);
-    if (!fn || !tn) return null;
+    const fromNode = nodeMap.get(e.from);
+    const toNode = nodeMap.get(e.to);
+    if (!fromNode || !toNode) return null;
 
-    const fromState = nodeStatusMap[fn.id] || 'locked';
-    const toState = nodeStatusMap[tn.id] || 'locked';
+    const fromState = nodeStatusMap[fromNode.id] || 'locked';
+    const toState = nodeStatusMap[toNode.id] || 'locked';
     const fromLit = fromState === 'start' || fromState === 'mastered';
     const toLit = toState === 'start' || toState === 'mastered';
     const toReady = toState === 'ready';
@@ -153,13 +199,13 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       ? 'locked'
       : (fromLit && toLit ? 'mastered' : ((fromLit && !toLit) || toReady ? 'ready' : 'locked'));
 
-    const branch = resolveEdgeBranch(fn, tn);
+    const branch = resolveEdgeBranch(fromNode, toNode);
     const branchColor = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
 
     return {
       id: `${e.from}_${e.to}_${idx}`,
-      fn,
-      tn,
+      fromNode,
+      toNode,
       status,
       branchColor,
     };
@@ -170,15 +216,16 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const seen = new Set();
 
     const segments = edgeData.map(({
-      id, fn, tn, status, branchColor,
+      id, fromNode, toNode, status, branchColor,
     }) => {
-      const key = `${fn.id}->${tn.id}:${fn.x},${fn.y}|${tn.x},${tn.y}`;
+      const key = `${fromNode.id}->${toNode.id}:${fromNode.x},${fromNode.y}|${toNode.x},${toNode.y}`;
       seen.add(key);
       let path = cache.get(key);
       if (!path) {
-        path = buildEdgePath(fn, tn);
+        path = buildEdgePath(fromNode, toNode);
         cache.set(key, path);
       }
+
       return {
         id,
         path,
@@ -194,42 +241,36 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     return segments;
   }, [edgeData]);
 
-  const nodeRenderData = useMemo(() => {
-    const isFarMode = LOD.isFar;
-    return visibleNodes.map((n) => {
-      if (n.id === dragId) return null;
-      const visual = nodeStyles[n.id];
-      if (!visual) return null;
+  const nodeRenderData = useMemo(() => visibleNodes.map((n) => {
+    if (n.id === dragId) return null;
+    const visual = nodeStyles[n.id];
+    if (!visual) return null;
 
-      const status = nodeStatusMap[n.id] || 'locked';
-      const isStart = status === 'start';
-      const isMastered = status === 'mastered';
-      const isReady = status === 'ready';
-      const isLocked = status === 'locked';
-      const isLit = isStart || isMastered || isReady;
+    const status = nodeStatusMap[n.id] || 'locked';
+    const isStart = status === 'start';
+    const isMastered = status === 'mastered';
+    const isReady = status === 'ready';
+    const isLocked = status === 'locked';
+    const isLit = isStart || isMastered || isReady;
 
-      return {
-        n,
-        visual,
-        lines: wrappedLabels[n.id] || [n.name],
-        status,
-        isStart,
-        isMastered,
-        isReady,
-        isLocked,
-        isLit,
-      };
-    }).filter(Boolean);
-  }, [LOD.isFar, dragId, nodeStatusMap, nodeStyles, visibleNodes, wrappedLabels]);
+    return {
+      n,
+      visual,
+      lines: wrappedLabels[n.id] || [n.name],
+      isStart,
+      isMastered,
+      isReady,
+      isLocked,
+      isLit,
+    };
+  }).filter(Boolean), [dragId, nodeStatusMap, nodeStyles, visibleNodes, wrappedLabels]);
 
   const labelMetrics = useMemo(() => {
     if (!labelFont) return {};
     const metrics = {};
-
     Object.entries(wrappedLabels).forEach(([nodeId, lines]) => {
       metrics[nodeId] = lines.map((line) => labelFont.measureText(line).width);
     });
-
     return metrics;
   }, [labelFont, wrappedLabels]);
 
@@ -250,24 +291,126 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     return {
       visual,
       lines: wrappedLabels[dragId] || [n.name],
-      isLit,
       isStart,
       isMastered,
       isReady,
       isLocked,
+      isLit,
     };
-  }, [LOD.isFar, dragId, nodeStatusMap, nodeStyles, nodes, wrappedLabels]);
+  }, [dragId, nodeStatusMap, nodeStyles, nodes, wrappedLabels]);
 
   const farNodeR = NODE_R * 0.34;
+  const starOpacityScale = LOD.isNear ? 1.08 : LOD.isMid ? 1 : 0.92;
+
+  const renderNodeShell = (meta, x, y, isFarNode) => {
+    const renderR = isFarNode ? farNodeR : meta.isStart ? NODE_R * 1.14 : NODE_R;
+    const primaryRingR = isFarNode ? NODE_R * 0.3 : renderR - 1.5;
+    const haloRingR = isFarNode ? NODE_R * 0.43 : renderR + (meta.isStart ? 18 : 12);
+    const innerGlowR = isFarNode ? NODE_R * 0.38 : renderR * (meta.isStart ? 1.28 : 1.18);
+    const outerGlowR = isFarNode ? NODE_R * 0.48 : renderR * (meta.isStart ? 1.52 : 1.36);
+    const ambientR = isFarNode ? NODE_R * 0.54 : renderR * (meta.isStart ? 2.08 : 1.64);
+    const cx = x;
+    const cy = y;
+
+    if (isFarNode) {
+      return (
+        <Group>
+          <Circle cx={cx} cy={cy} r={NODE_R * 0.43} color={meta.visual.farAura || toRGBA(meta.visual.stroke, 0.14)} />
+          <Circle cx={cx} cy={cy} r={NODE_R * 0.28} color={meta.visual.farBody || toRGBA(meta.visual.stroke, 0.28)} />
+          <Circle cx={cx} cy={cy} r={NODE_R * 0.13} color={meta.visual.farCore || toRGBA(meta.visual.ring, 0.44)} />
+          <Circle cx={cx} cy={cy} r={NODE_R * 0.30} style="stroke" strokeWidth={0.72} color={toRGBA(meta.visual.stroke, 0.42)} />
+        </Group>
+      );
+    }
+
+    return (
+      <Group>
+        {USE_GLOW && !meta.isLocked && (
+          <Circle cx={cx} cy={cy} r={ambientR} color={meta.visual.ambient || toRGBA(meta.visual.stroke, meta.isStart ? 0.05 : 0.03)} />
+        )}
+        {USE_GLOW && !meta.isLocked && (
+          <Circle cx={cx} cy={cy} r={outerGlowR} color={meta.visual.glowOuter || toRGBA(meta.visual.stroke, meta.isStart ? 0.1 : 0.07)} />
+        )}
+        {USE_GLOW && !meta.isLocked && (
+          <Circle cx={cx} cy={cy} r={innerGlowR} color={meta.visual.glowInner || toRGBA(meta.visual.ring, meta.isStart ? 0.16 : 0.12)} />
+        )}
+
+        {LOD.showOuterRing && (
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={haloRingR}
+            style="stroke"
+            strokeWidth={meta.isStart ? 1.12 : 0.82}
+            color={meta.visual.outerRim || toRGBA(meta.visual.ring, meta.isLit ? 0.24 : 0.1)}
+          />
+        )}
+
+        {LOD.showOuterRing && bld && connA === meta.n?.id && (
+          <Circle cx={cx} cy={cy} r={NODE_R + 17} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />
+        )}
+
+        <Circle cx={cx} cy={cy} r={renderR} color={meta.visual.fill || (meta.isLocked ? '#13100E' : '#091018')} />
+        {!meta.isLocked && (
+          <Circle cx={cx} cy={cy} r={renderR - 4.2} color={meta.visual.innerFill || '#0B1320'} />
+        )}
+        {!meta.isLocked && (
+          <Circle cx={cx} cy={cy} r={Math.max(renderR - 17, renderR * 0.16)} color={meta.visual.core || 'rgba(255,255,255,0.03)'} />
+        )}
+        <Circle cx={cx} cy={cy} r={renderR - 4.9} style="stroke" strokeWidth={0.72} color={meta.visual.innerRingSoft || toRGBA(meta.visual.ring, meta.isLocked ? 0.08 : 0.22)} />
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={primaryRingR}
+          style="stroke"
+          strokeWidth={meta.isStart ? meta.visual.sw + 0.38 : meta.visual.sw}
+          color={meta.visual.stroke}
+        />
+        {!meta.isLocked && (
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={primaryRingR - 4}
+            style="stroke"
+            strokeWidth={meta.isStart ? 0.95 : 0.74}
+            color={meta.visual.innerRing || toRGBA(meta.visual.ring, meta.isStart ? 0.32 : 0.22)}
+          />
+        )}
+      </Group>
+    );
+  };
 
   return (
     <Canvas style={{ width: canvasSize.width, height: canvasSize.height }}>
       <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} color={BG_COLOR} />
 
       <Group transform={sceneTransform}>
-        {/* Space stars — move with the world */}
-        {visibleStars.map((s, i) => (
-          <Circle key={`s${i}`} cx={s.x} cy={s.y} r={s.r} color={s.color} opacity={s.opacity} />
+        {regionalGlowFields.map((glow, index) => (
+          <Group key={`glow_${index}`}>
+            <Circle cx={glow.cx} cy={glow.cy} r={glow.radius * 1.16} color={toRGBA(glow.color, 0.018 * glow.opacityScale)} />
+            <Circle cx={glow.cx} cy={glow.cy} r={glow.radius * 0.82} color={toRGBA(glow.color, 0.03 * glow.opacityScale)} />
+          </Group>
+        ))}
+
+        {visibleStars.map((star, index) => (
+          <Group key={`s${index}`}>
+            {star.glowRadius && (
+              <Circle
+                cx={star.x}
+                cy={star.y}
+                r={star.glowRadius}
+                color={star.color}
+                opacity={star.glowOpacity * starOpacityScale}
+              />
+            )}
+            <Circle
+              cx={star.x}
+              cy={star.y}
+              r={star.r}
+              color={star.color}
+              opacity={star.opacity * starOpacityScale}
+            />
+          </Group>
         ))}
 
         {edgeSegments.map((edge) => {
@@ -275,11 +418,13 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const isReady = edge.status === 'ready';
           const isLocked = edge.status === 'locked';
           const width = isMastered ? edgeVisual.masteredW : isReady ? edgeVisual.readyW : edgeVisual.lockedW;
-          const opacityBase = isMastered ? edgeVisual.masteredO : isReady ? edgeVisual.readyO : edgeVisual.lockedO;
+          const dashIntervals = LOD.isFar ? [8, 9] : [12, 10];
+          const edgeBaseColor = isMastered
+            ? edge.branchColor.main
+            : edge.branchColor.edgeHex;
           const mainColor = isLocked
-            ? 'rgba(87,78,67,0.34)'
-            : toRGBA(edge.branchColor.edgeHex, Math.min(0.92, opacityBase + (isReady ? 0.06 : 0.08)));
-          const dashIntervals = LOD.isFar ? [7, 8] : [11, 9];
+            ? toRGBA(edge.branchColor.main, 0.18)
+            : toRGBA(edgeBaseColor, isMastered ? 0.9 : 0.84);
 
           return (
             <Group key={edge.id}>
@@ -287,18 +432,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                 <Path
                   path={edge.path}
                   style="stroke"
-                  strokeWidth={width + 4.3}
-                  color={toRGBA(edge.branchColor.main, 0.27)}
-                  strokeCap="round"
-                />
-              )}
-
-              {isMastered && LOD.interactionTier !== 'heavy' && (
-                <Path
-                  path={edge.path}
-                  style="stroke"
-                  strokeWidth={width + 1.2}
-                  color={toRGBA(edge.branchColor.main, LOD.interactionTier === 'medium' ? 0.24 : 0.33)}
+                  strokeWidth={width + 3.2}
+                  color={toRGBA(edge.branchColor.main, 0.16)}
                   strokeCap="round"
                 />
               )}
@@ -311,65 +446,25 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
         })}
 
         {nodeRenderData.map((item) => {
-          const {
-            n,
-            visual,
-            lines,
-            isLocked,
-            isLit,
-          } = item;
-
-          const rx = n.x;
-          const ry = n.y;
+          const rx = item.n.x;
+          const ry = item.n.y;
           const isFarNode = LOD.isFar;
-          const renderR = isFarNode ? farNodeR : NODE_R;
 
           return (
-            <Group key={n.id}>
-              {isFarNode ? (
-                <Group>
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.43} color={visual.farAura || toRGBA(visual.stroke, 0.16)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.28} color={visual.farBody || toRGBA(visual.stroke, 0.36)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.13} color={visual.farCore || toRGBA(visual.ring, 0.56)} />
-                  <Circle cx={rx} cy={ry} r={NODE_R * 0.30} style="stroke" strokeWidth={0.72} color={toRGBA(visual.stroke, 0.5)} />
-                </Group>
-              ) : (
-                <Group>
-                  {/* Smooth glow — always on, no flicker */}
-                  {USE_GLOW && !isLocked && (
-                    <Circle cx={rx} cy={ry} r={NODE_R * 1.5} color={toRGBA(visual.stroke, 0.07)} />
-                  )}
-                  {USE_GLOW && (
-                    <Circle cx={rx} cy={ry} r={NODE_R * 1.15} color={toRGBA(visual.stroke, isLocked ? 0.06 : 0.12)} />
-                  )}
+            <Group key={item.n.id}>
+              {renderNodeShell(item, rx, ry, isFarNode)}
 
-                  {/* Outer ring */}
-                  {LOD.showOuterRing && (
-                    <Circle cx={rx} cy={ry} r={NODE_R + 12} style="stroke" strokeWidth={0.8} color={toRGBA(visual.ring, isLit ? 0.4 : 0.2)} />
-                  )}
+              {LOD.showLabels && labelFont && item.lines.map((line, lineIndex) => {
+                const width = labelMetrics[item.n.id]?.[lineIndex] ?? labelFont.measureText(line).width;
+                const x = rx - width / 2;
+                const y = ry + 5 + (lineIndex - ((item.lines.length - 1) / 2)) * 16;
+                const mainColor = item.isLit ? '#F7F2EA' : '#D4CDC4';
 
-                  {/* Build-mode selection ring */}
-                  {LOD.showOuterRing && bld && connA === n.id && (
-                    <Circle cx={rx} cy={ry} r={NODE_R + 17} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />
-                  )}
-
-                  {/* Dark body fill */}
-                  <Circle cx={rx} cy={ry} r={renderR} color={isLocked ? '#181818' : '#141a22'} />
-
-                  {/* Main colored stroke ring */}
-                  <Circle cx={rx} cy={ry} r={renderR - 1} style="stroke" strokeWidth={visual.sw} color={visual.stroke} />
-                </Group>
-              )}
-
-              {LOD.showLabels && labelFont && lines.map((ln, li) => {
-                const tw = labelMetrics[n.id]?.[li] ?? labelFont.measureText(ln).width;
-                const x = rx - tw / 2;
-                const y = ry + 5 + (li - ((lines.length - 1) / 2)) * 14;
-                const mainColor = isLit ? '#E2E6EE' : '#8A8580';
                 return (
-                  <Group key={`${n.id}_${li}`}>
-                    <SkiaText x={x + 0.7} y={y + 0.7} text={ln} font={labelFont} color="rgba(0,0,0,0.9)" />
-                    <SkiaText x={x} y={y} text={ln} font={labelFont} color={mainColor} />
+                  <Group key={`${item.n.id}_${lineIndex}`}>
+                    <SkiaText x={x + 1.45} y={y + 1.45} text={line} font={labelFont} color="rgba(0,0,0,0.99)" />
+                    <SkiaText x={x + 0.75} y={y + 0.75} text={line} font={labelFont} color="rgba(8,12,18,0.96)" />
+                    <SkiaText x={x} y={y} text={line} font={labelFont} color={mainColor} />
                   </Group>
                 );
               })}
@@ -379,40 +474,19 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
         {draggedNodeMeta !== null && (
           <Group transform={draggedTransform}>
-            {LOD.isFar ? (
-              <Group>
-                <Circle cx={0} cy={0} r={NODE_R * 0.43} color={draggedNodeMeta.visual.farAura || toRGBA(draggedNodeMeta.visual.stroke, 0.16)} />
-                <Circle cx={0} cy={0} r={NODE_R * 0.28} color={draggedNodeMeta.visual.farBody || toRGBA(draggedNodeMeta.visual.stroke, 0.36)} />
-                <Circle cx={0} cy={0} r={NODE_R * 0.13} color={draggedNodeMeta.visual.farCore || toRGBA(draggedNodeMeta.visual.ring, 0.56)} />
-                <Circle cx={0} cy={0} r={NODE_R * 0.30} style="stroke" strokeWidth={0.72} color={toRGBA(draggedNodeMeta.visual.stroke, 0.5)} />
-              </Group>
-            ) : (
-              <Group>
-                {USE_GLOW && !draggedNodeMeta.isLocked && (
-                  <Circle cx={0} cy={0} r={NODE_R * 1.5} color={toRGBA(draggedNodeMeta.visual.stroke, 0.07)} />
-                )}
-                {USE_GLOW && (
-                  <Circle cx={0} cy={0} r={NODE_R * 1.15} color={toRGBA(draggedNodeMeta.visual.stroke, draggedNodeMeta.isLocked ? 0.06 : 0.12)} />
-                )}
+            {renderNodeShell(draggedNodeMeta, 0, 0, LOD.isFar)}
 
-                {LOD.showOuterRing && (
-                  <Circle cx={0} cy={0} r={NODE_R + 12} style="stroke" strokeWidth={0.8} color={toRGBA(draggedNodeMeta.visual.ring, draggedNodeMeta.isLit ? 0.4 : 0.2)} />
-                )}
+            {LOD.showLabels && labelFont && draggedNodeMeta.lines.map((line, lineIndex) => {
+              const width = labelMetrics[dragId]?.[lineIndex] ?? labelFont.measureText(line).width;
+              const x = -width / 2;
+              const y = 5 + (lineIndex - ((draggedNodeMeta.lines.length - 1) / 2)) * 16;
+              const mainColor = draggedNodeMeta.isLit ? '#F7F2EA' : '#D4CDC4';
 
-                <Circle cx={0} cy={0} r={NODE_R} color={draggedNodeMeta.isLocked ? '#181818' : '#141a22'} />
-                <Circle cx={0} cy={0} r={NODE_R - 1} style="stroke" strokeWidth={draggedNodeMeta.visual.sw} color={draggedNodeMeta.visual.stroke} />
-              </Group>
-            )}
-
-            {LOD.showLabels && labelFont && draggedNodeMeta.lines.map((ln, li) => {
-              const tw = labelMetrics[dragId]?.[li] ?? labelFont.measureText(ln).width;
-              const mainColor = draggedNodeMeta.isLit ? '#E2E6EE' : '#8A8580';
-              const y = 5 + (li - ((draggedNodeMeta.lines.length - 1) / 2)) * 14;
-              const x = -tw / 2;
               return (
-                <Group key={`dl_${li}`}>
-                  <SkiaText x={x + 0.7} y={y + 0.7} text={ln} font={labelFont} color="rgba(0,0,0,0.9)" />
-                  <SkiaText x={x} y={y} text={ln} font={labelFont} color={mainColor} />
+                <Group key={`drag_label_${lineIndex}`}>
+                  <SkiaText x={x + 1.45} y={y + 1.45} text={line} font={labelFont} color="rgba(0,0,0,0.99)" />
+                  <SkiaText x={x + 0.75} y={y + 0.75} text={line} font={labelFont} color="rgba(8,12,18,0.96)" />
+                  <SkiaText x={x} y={y} text={line} font={labelFont} color={mainColor} />
                 </Group>
               );
             })}

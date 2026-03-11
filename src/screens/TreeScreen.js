@@ -759,15 +759,15 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
       const isLocked = status === 'locked';
       if (isLocked) {
         return {
-          fill: 'rgba(36,33,29,0.78)',
-          innerFill: 'rgba(24,22,20,0.88)',
-          core: toRGBA(bc.main, 0.14),
+          fill: 'rgba(20,18,16,0.86)',
+          innerFill: 'rgba(9,8,7,0.96)',
+          core: 'rgba(1,1,1,0.94)',
           outerRim: 'rgba(118,104,89,0.22)',
           stroke: toRGBA(bc.main, 0.38),
           ring: 'rgba(124,111,97,0.24)',
-          glowInner: toRGBA(bc.main, 0.11),
-          glowOuter: toRGBA(bc.main, 0.07),
-          ambient: toRGBA(bc.main, 0.04),
+          glowInner: toRGBA(bc.main, 0.06),
+          glowOuter: toRGBA(bc.main, 0.03),
+          ambient: toRGBA(bc.main, 0.015),
           farAura: toRGBA(bc.main, 0.12),
           farBody: toRGBA(bc.main, 0.24),
           farCore: toRGBA(bc.ring, 0.26),
@@ -779,33 +779,31 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
         };
       }
 
+      const resolved = bc;
       const isMastered = status === 'mastered';
-      const baseFill = isMastered ? toRGBA(bc.main, 0.22) : toRGBA(bc.main, 0.17);
-      const innerFill = isMastered ? toRGBA(bc.main, 0.3) : toRGBA(bc.main, 0.24);
-      const core = isMastered ? toRGBA(bc.ring, 0.28) : toRGBA(bc.ring, 0.22);
+      const baseFill = isMastered ? 'rgba(8,14,24,0.96)' : 'rgba(8,13,22,0.94)';
+      const innerFill = isMastered ? 'rgba(7,12,20,0.98)' : 'rgba(6,10,18,0.97)';
+      const core = isMastered ? 'rgba(1,2,4,0.96)' : 'rgba(1,2,4,0.98)';
       const strokeAlpha = isMastered ? 0.94 : 0.86;
-      const ringAlpha = isMastered ? 0.84 : 0.72;
-      const glowOuterBase = isMastered ? 0.3 : 0.25;
-      const glowInnerBase = isMastered ? 0.46 : 0.39;
-      const branchBoost = branch === 'push' ? 1.08 : branch === 'pull' ? 1.1 : 1;
-      const glowOuterAlpha = glowOuterBase * branchBoost;
-      const glowInnerAlpha = glowInnerBase * branchBoost;
+      const ringAlpha = isMastered ? 0.7 : 0.58;
+      const glowOuterAlpha = isMastered ? 0.12 : 0.08;
+      const glowInnerAlpha = isMastered ? 0.2 : 0.14;
 
       return {
         fill: baseFill,
         innerFill,
         core,
-        outerRim: toRGBA(bc.ring, 0.19),
-        stroke: toRGBA(bc.main, strokeAlpha),
-        ring: toRGBA(bc.ring, ringAlpha),
-        glowInner: toRGBA(bc.ring, glowInnerAlpha),
-        glowOuter: toRGBA(bc.main, glowOuterAlpha),
-        ambient: toRGBA(bc.main, isMastered ? 0.1 : 0.082),
-        farAura: toRGBA(bc.main, isMastered ? 0.2 : 0.17),
-        farBody: toRGBA(bc.main, isMastered ? 0.5 : 0.42),
-        farCore: toRGBA(bc.ring, isMastered ? 0.72 : 0.6),
-        innerRing: toRGBA(bc.main, 0.27),
-        innerRingSoft: toRGBA(bc.ring, 0.24),
+        outerRim: toRGBA(resolved.ring, 0.14),
+        stroke: toRGBA(resolved.main, strokeAlpha),
+        ring: toRGBA(resolved.ring, ringAlpha),
+        glowInner: toRGBA(resolved.ring, glowInnerAlpha),
+        glowOuter: toRGBA(resolved.main, glowOuterAlpha),
+        ambient: toRGBA(resolved.main, isMastered ? 0.045 : 0.03),
+        farAura: toRGBA(resolved.main, isMastered ? 0.18 : 0.13),
+        farBody: toRGBA(resolved.main, isMastered ? 0.44 : 0.32),
+        farCore: toRGBA(resolved.ring, isMastered ? 0.72 : 0.54),
+        innerRing: toRGBA(resolved.main, 0.2),
+        innerRingSoft: toRGBA(resolved.ring, 0.15),
         specular: 'rgba(240,246,255,0.12)',
         sw: isMastered ? 2.35 : 2.05,
         opacity: 0.98,
@@ -821,9 +819,9 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
       if (bld && connA === n.id) {
         map[n.id] = {
           ...makeVisual('neutral', nb, 'ready'),
-          fill: '#0F1E33',
-          innerFill: '#173250',
-          core: 'rgba(96,165,250,0.2)',
+          fill: '#08111C',
+          innerFill: '#0D1B2C',
+          core: 'rgba(1,2,4,0.96)',
           outerRim: 'rgba(191,219,254,0.34)',
           stroke: toRGBA(nb.main, 0.95),
           ring: toRGBA(nb.ring, 0.92),
@@ -835,18 +833,18 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
       } else if (status === 'start') {
         const startBc = BRANCH_COLORS.neutral;
         map[n.id] = {
-          ...makeVisual('neutral', startBc, 'ready'),
-          fill: 'rgba(14,27,44,0.9)',
-          innerFill: 'rgba(22,46,74,0.92)',
-          core: 'rgba(147,197,253,0.2)',
-          stroke: 'rgba(96,165,250,0.92)',
-          ring: 'rgba(191,219,254,0.82)',
-          glowInner: 'rgba(96,165,250,0.34)',
-          glowOuter: 'rgba(59,130,246,0.2)',
-          ambient: 'rgba(59,130,246,0.1)',
-          innerRing: 'rgba(96,165,250,0.3)',
-          innerRingSoft: 'rgba(191,219,254,0.28)',
-          sw: 2.45,
+          ...makeVisual('neutral', startBc, 'mastered'),
+          fill: 'rgba(8,14,24,0.96)',
+          innerFill: 'rgba(10,20,34,0.96)',
+          core: 'rgba(147,197,253,0.08)',
+          stroke: 'rgba(96,165,250,0.98)',
+          ring: 'rgba(191,219,254,0.54)',
+          glowInner: 'rgba(96,165,250,0.18)',
+          glowOuter: 'rgba(59,130,246,0.08)',
+          ambient: 'rgba(59,130,246,0.04)',
+          innerRing: 'rgba(96,165,250,0.18)',
+          innerRingSoft: 'rgba(191,219,254,0.12)',
+          sw: 2.7,
         };
       } else {
         map[n.id] = makeVisual(branch, bc, status);
@@ -857,13 +855,13 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {
-      masteredW: 1.4, readyW: 1.05, lockedW: 0.7, masteredO: 0.76, readyO: 0.46, lockedO: 0.14,
+      masteredW: 1.15, readyW: 0.92, lockedW: 0.62, masteredO: 0.76, readyO: 0.46, lockedO: 0.14,
     };
     if (LOD.isMid) return {
-      masteredW: 2.2, readyW: 1.5, lockedW: 0.95, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
+      masteredW: 1.8, readyW: 1.28, lockedW: 0.82, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
     };
     return {
-      masteredW: 3.0, readyW: 2.0, lockedW: 1.04, masteredO: 0.92, readyO: 0.65, lockedO: 0.2,
+      masteredW: 2.45, readyW: 1.62, lockedW: 0.88, masteredO: 0.92, readyO: 0.65, lockedO: 0.2,
     };
   }, [LOD.isFar, LOD.isMid]);
 

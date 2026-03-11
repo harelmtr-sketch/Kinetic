@@ -199,9 +199,18 @@ const normalizeNodesWithBranch = (nodes, edges) => {
 };
 
 export const toRGBA = (hex, alpha = 1) => {
+  if (typeof hex !== 'string') return `rgba(255,255,255,${alpha})`;
+
+  const rgbaMatch = hex.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*[\d.]+\s*)?\)$/i);
+  if (rgbaMatch) {
+    const [, r, g, b] = rgbaMatch;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
   const m = hex.replace('#', '');
   const n = m.length === 3 ? m.split('').map((c) => c + c).join('') : m;
   const int = parseInt(n, 16);
+  if (Number.isNaN(int)) return `rgba(255,255,255,${alpha})`;
   const r = (int >> 16) & 255;
   const g = (int >> 8) & 255;
   const b = int & 255;
