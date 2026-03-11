@@ -25,7 +25,7 @@ export default function KineticLogo({
                 bottom: -outerInset,
                 left: -outerInset,
                 borderRadius: radius,
-                backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                backgroundColor: 'rgba(59, 130, 246, 0.2)',
               },
             ]}
           />
@@ -38,19 +38,20 @@ export default function KineticLogo({
                 bottom: -innerInset,
                 left: -innerInset,
                 borderRadius: radius - 4,
-                backgroundColor: 'rgba(96, 165, 250, 0.24)',
+                backgroundColor: 'rgba(96, 165, 250, 0.32)',
               },
             ]}
           />
         </>
       )}
 
-      <View style={styles.iconWrap}>
+      <View style={[styles.iconWrap, { padding: Math.max(6, Math.round(size * 0.22)) }]}>
+        <View style={styles.iconCore} />
         <Zap
           size={size}
-          color={Colors.blue[400]}
+          color="#7BC3FF"
           strokeWidth={2.5}
-          fill={Colors.blue[400]}
+          fill="#7BC3FF"
         />
       </View>
     </View>
@@ -67,13 +68,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   iconWrap: {
-    shadowColor: 'rgba(96, 165, 250, 1)',
+    shadowColor: 'rgba(123, 195, 255, 1)',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 12,
+    shadowOpacity: 0.7,
+    shadowRadius: 14,
     elevation: 10,
-    backgroundColor: Colors.background.primary,
-    borderRadius: 999,
-    padding: 6,
+    backgroundColor: '#0B1B2E',
+    borderColor: 'rgba(111, 184, 255, 0.28)',
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  iconCore: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(84, 160, 255, 0.08)',
   },
 });

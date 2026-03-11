@@ -26,7 +26,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   dragId, dragXV, dragYV,
   LOD, edgeVisual,
   bld, connA, isInteracting,
-  canvasSize, nodeStyles,
+  canvasSize, nodeStyles, visibleBounds,
 }) {
   const labelFont = useMemo(() => {
     try {
@@ -124,6 +124,19 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     return stars;
   }, [starBounds]);
 
+  const visibleStars = useMemo(() => {
+    if (!visibleBounds) return spaceStars;
+    const pad = LOD.isFar ? 220 : 320;
+    const left = visibleBounds.left - pad;
+    const right = visibleBounds.right + pad;
+    const top = visibleBounds.top - pad;
+    const bottom = visibleBounds.bottom + pad;
+
+    return spaceStars.filter((star) => (
+      star.x >= left && star.x <= right && star.y >= top && star.y <= bottom
+    ));
+  }, [LOD.isFar, spaceStars, visibleBounds]);
+
   const edgePathCache = useRef(new Map());
 
   const edgeData = useMemo(() => visibleEdges.map((e, idx) => {
@@ -209,6 +222,17 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     }).filter(Boolean);
   }, [LOD.isFar, dragId, nodeStatusMap, nodeStyles, visibleNodes, wrappedLabels]);
 
+  const labelMetrics = useMemo(() => {
+    if (!labelFont) return {};
+    const metrics = {};
+
+    Object.entries(wrappedLabels).forEach(([nodeId, lines]) => {
+      metrics[nodeId] = lines.map((line) => labelFont.measureText(line).width);
+    });
+
+    return metrics;
+  }, [labelFont, wrappedLabels]);
+
   const draggedNodeMeta = useMemo(() => {
     if (!dragId) return null;
     const n = nodes.find((nn) => nn.id === dragId);
@@ -242,7 +266,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
       <Group transform={sceneTransform}>
         {/* Space stars — move with the world */}
-        {spaceStars.map((s, i) => (
+        {visibleStars.map((s, i) => (
           <Circle key={`s${i}`} cx={s.x} cy={s.y} r={s.r} color={s.color} opacity={s.opacity} />
         ))}
 
@@ -338,7 +362,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
               )}
 
               {LOD.showLabels && labelFont && lines.map((ln, li) => {
-                const tw = labelFont.measureText(ln).width;
+                const tw = labelMetrics[n.id]?.[li] ?? labelFont.measureText(ln).width;
                 const x = rx - tw / 2;
                 const y = ry + 5 + (li - ((lines.length - 1) / 2)) * 14;
                 const mainColor = isLit ? '#E2E6EE' : '#8A8580';
@@ -381,7 +405,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             )}
 
             {LOD.showLabels && labelFont && draggedNodeMeta.lines.map((ln, li) => {
-              const tw = labelFont.measureText(ln).width;
+              const tw = labelMetrics[dragId]?.[li] ?? labelFont.measureText(ln).width;
               const mainColor = draggedNodeMeta.isLit ? '#E2E6EE' : '#8A8580';
               const y = 5 + (li - ((draggedNodeMeta.lines.length - 1) / 2)) * 14;
               const x = -tw / 2;
