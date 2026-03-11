@@ -164,7 +164,6 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       } else if (status === 'ready') {
         const point = { node, status };
         ready.push(point);
-        bright.push(point);
       }
     }
 
@@ -356,7 +355,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const isMastered = status === 'mastered';
     const isReady = status === 'ready';
     const isLocked = status === 'locked';
-    const isLit = isStart || isMastered || isReady;
+    const isLit = isStart || isMastered;
 
     return {
       n,
@@ -392,7 +391,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const isMastered = status === 'mastered';
     const isReady = status === 'ready';
     const isLocked = status === 'locked';
-    const isLit = isStart || isMastered || isReady;
+    const isLit = isStart || isMastered;
 
     return {
       visual,
@@ -438,7 +437,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
     return (
       <Group>
-        {meta.useFocusedPulse && USE_GLOW && !meta.isLocked && (
+        {meta.useFocusedPulse && USE_GLOW && meta.isLit && (
           <Circle
             cx={cx}
             cy={cy}
@@ -447,7 +446,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             opacity={bloomOpacity}
           />
         )}
-        {meta.useFocusedPulse && USE_GLOW && !meta.isLocked && (
+        {meta.useFocusedPulse && USE_GLOW && meta.isLit && (
           <Circle
             cx={cx}
             cy={cy}
@@ -456,7 +455,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             opacity={bloomOpacity}
           />
         )}
-        {USE_GLOW && !meta.isLocked && (
+        {USE_GLOW && meta.isLit && (
           <Circle
             cx={cx}
             cy={cy}
@@ -465,7 +464,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             opacity={glowOpacity}
           />
         )}
-        {USE_GLOW && !meta.isLocked && (
+        {USE_GLOW && meta.isLit && (
           <Circle
             cx={cx}
             cy={cy}
@@ -474,7 +473,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             opacity={glowOpacity}
           />
         )}
-        {USE_GLOW && !meta.isLocked && (
+        {USE_GLOW && meta.isLit && (
           <Circle
             cx={cx}
             cy={cy}
@@ -513,11 +512,11 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           <Circle cx={cx} cy={cy} r={NODE_R + 17} style="stroke" strokeWidth={1.8} color={BRANCH_COLORS.neutral.edgeHex} />
         )}
 
-        <Circle cx={cx} cy={cy} r={renderR} color={meta.visual.fill || (meta.isLocked ? '#13100E' : '#091018')} />
-        {!meta.isLocked && (
+        <Circle cx={cx} cy={cy} r={renderR} color={meta.visual.fill || (!meta.isLit ? '#13100E' : '#091018')} />
+        {meta.isLit && (
           <Circle cx={cx} cy={cy} r={renderR - 4.2} color={meta.visual.innerFill || '#0B1320'} />
         )}
-        {!meta.isLocked && meta.useFocusedPulse && (
+        {meta.isLit && meta.useFocusedPulse && (
           <Circle
             cx={cx}
             cy={cy}
@@ -526,7 +525,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             opacity={coreGlowOpacity}
           />
         )}
-        {!meta.isLocked && (
+        {meta.isLit && (
           <Circle cx={cx} cy={cy} r={Math.max(renderR - 17, renderR * 0.16)} color={meta.visual.core || 'rgba(255,255,255,0.03)'} />
         )}
         <Circle
@@ -535,7 +534,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           r={renderR - 4.9}
           style="stroke"
           strokeWidth={0.72}
-          color={meta.visual.innerRingSoft || toRGBA(meta.visual.ring, meta.isLocked ? 0.08 : 0.22)}
+          color={meta.visual.innerRingSoft || toRGBA(meta.visual.ring, !meta.isLit ? 0.08 : 0.22)}
           opacity={ringOpacity}
         />
         <Circle
@@ -547,7 +546,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           color={meta.visual.stroke}
           opacity={strokeOpacity}
         />
-        {!meta.isLocked && (
+        {meta.isLit && (
           <Circle
             cx={cx}
             cy={cy}
@@ -663,7 +662,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             <Group key={item.n.id}>
               {renderNodeShell(item, rx, ry, isFarNode)}
 
-              {LOD.showLabels && labelFont && item.lines.map((line, lineIndex) => {
+              {LOD.showLabels && labelFont && !item.isLocked && item.lines.map((line, lineIndex) => {
                 const width = labelMetrics[item.n.id]?.[lineIndex] ?? labelFont.measureText(line).width;
                 const x = rx - width / 2;
                 const y = ry + 5 + (lineIndex - ((item.lines.length - 1) / 2)) * 16;
@@ -686,7 +685,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           <Group transform={draggedTransform}>
             {renderNodeShell(draggedNodeMeta, 0, 0, LOD.isFar)}
 
-            {LOD.showLabels && labelFont && draggedNodeMeta.lines.map((line, lineIndex) => {
+            {LOD.showLabels && labelFont && !draggedNodeMeta.isLocked && draggedNodeMeta.lines.map((line, lineIndex) => {
               const width = labelMetrics[dragId]?.[lineIndex] ?? labelFont.measureText(line).width;
               const x = -width / 2;
               const y = 5 + (lineIndex - ((draggedNodeMeta.lines.length - 1) / 2)) * 16;

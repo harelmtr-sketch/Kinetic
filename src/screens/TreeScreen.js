@@ -780,31 +780,47 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
 
       const resolved = bc;
       const isMastered = status === 'mastered';
-      const baseFill = isMastered ? 'rgba(8,14,24,0.96)' : 'rgba(8,13,22,0.94)';
-      const innerFill = isMastered ? 'rgba(7,12,20,0.98)' : 'rgba(6,10,18,0.97)';
-      const core = isMastered ? 'rgba(1,2,4,0.96)' : 'rgba(1,2,4,0.98)';
-      const strokeAlpha = isMastered ? 0.94 : 0.86;
-      const ringAlpha = isMastered ? 0.7 : 0.58;
-      const glowOuterAlpha = isMastered ? 0.12 : 0.08;
-      const glowInnerAlpha = isMastered ? 0.2 : 0.14;
+      const isReady = status === 'ready';
+
+      if (isReady) {
+        return {
+          fill: 'rgba(20,18,16,0.86)',
+          innerFill: 'rgba(9,8,7,0.96)',
+          core: 'rgba(1,1,1,0.94)',
+          outerRim: 'rgba(118,104,89,0.22)',
+          stroke: toRGBA(resolved.main, 0.38),
+          ring: 'rgba(124,111,97,0.24)',
+          glowInner: toRGBA(resolved.main, 0.06),
+          glowOuter: toRGBA(resolved.main, 0.03),
+          ambient: toRGBA(resolved.main, 0.015),
+          farAura: toRGBA(resolved.main, 0.12),
+          farBody: toRGBA(resolved.main, 0.24),
+          farCore: toRGBA(resolved.ring, 0.26),
+          innerRing: 'rgba(112,100,86,0.24)',
+          innerRingSoft: 'rgba(80,72,63,0.2)',
+          specular: 'rgba(226,214,198,0.06)',
+          sw: 1.6,
+          opacity: 0.88,
+        };
+      }
 
       return {
-        fill: baseFill,
-        innerFill,
-        core,
+        fill: 'rgba(8,14,24,0.96)',
+        innerFill: 'rgba(7,12,20,0.98)',
+        core: 'rgba(1,2,4,0.96)',
         outerRim: toRGBA(resolved.ring, 0.14),
-        stroke: toRGBA(resolved.main, strokeAlpha),
-        ring: toRGBA(resolved.ring, ringAlpha),
-        glowInner: toRGBA(resolved.ring, glowInnerAlpha),
-        glowOuter: toRGBA(resolved.main, glowOuterAlpha),
-        ambient: toRGBA(resolved.main, isMastered ? 0.045 : 0.03),
-        farAura: toRGBA(resolved.main, isMastered ? 0.18 : 0.13),
-        farBody: toRGBA(resolved.main, isMastered ? 0.44 : 0.32),
-        farCore: toRGBA(resolved.ring, isMastered ? 0.72 : 0.54),
+        stroke: toRGBA(resolved.main, 0.94),
+        ring: toRGBA(resolved.ring, 0.7),
+        glowInner: toRGBA(resolved.ring, 0.2),
+        glowOuter: toRGBA(resolved.main, 0.12),
+        ambient: toRGBA(resolved.main, 0.045),
+        farAura: toRGBA(resolved.main, 0.18),
+        farBody: toRGBA(resolved.main, 0.44),
+        farCore: toRGBA(resolved.ring, 0.72),
         innerRing: toRGBA(resolved.main, 0.2),
         innerRingSoft: toRGBA(resolved.ring, 0.15),
         specular: 'rgba(240,246,255,0.12)',
-        sw: isMastered ? 2.35 : 2.05,
+        sw: 2.35,
         opacity: 0.98,
       };
     };
