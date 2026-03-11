@@ -86,39 +86,56 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const { cx, cy, w: worldWidth, h: worldHeight } = starBounds;
     const rand = mulberry32(1337);
     const stars = [];
-    const colors = ['#ffffff', '#ffffff', '#ffffff', '#f8fbff', '#eef5ff', '#fff6e5'];
+    const dustColors = ['#ffffff', '#fbfdff', '#f4f8ff', '#edf4ff', '#fff5e8'];
+    const starColors = ['#ffffff', '#f8fbff', '#eef5ff', '#fff4df', '#eefdf7', '#f7efff', '#ffeceb'];
+    const accentColors = ['#b9d8ff', '#d8c2ff', '#ffc8b8', '#bfffe0', '#ffe4a8', '#c7f1ff'];
 
-    for (let i = 0; i < 5200; i++) {
+    for (let i = 0; i < 6600; i++) {
       stars.push({
         x: cx + (rand() - 0.5) * worldWidth,
         y: cy + (rand() - 0.5) * worldHeight,
-        r: 0.56 + rand() * 0.62,
-        color: colors[Math.floor(rand() * colors.length)],
-        opacity: 0.18 + rand() * 0.18,
+        r: 0.46 + rand() * 0.5,
+        color: dustColors[Math.floor(rand() * dustColors.length)],
+        opacity: 0.12 + rand() * 0.11,
       });
     }
 
-    for (let i = 0; i < 2100; i++) {
+    for (let i = 0; i < 2550; i++) {
       stars.push({
         x: cx + (rand() - 0.5) * worldWidth,
         y: cy + (rand() - 0.5) * worldHeight,
-        r: 0.95 + rand() * 0.72,
-        color: colors[Math.floor(rand() * colors.length)],
-        opacity: 0.3 + rand() * 0.22,
-        glowRadius: 2.1 + rand() * 1.4,
-        glowOpacity: 0.04 + rand() * 0.04,
+        r: 0.88 + rand() * 0.66,
+        color: starColors[Math.floor(rand() * starColors.length)],
+        opacity: 0.22 + rand() * 0.16,
+        glowRadius: 1.9 + rand() * 1.25,
+        glowOpacity: 0.025 + rand() * 0.03,
       });
     }
 
-    for (let i = 0; i < 420; i++) {
+    for (let i = 0; i < 520; i++) {
       stars.push({
         x: cx + (rand() - 0.5) * worldWidth,
         y: cy + (rand() - 0.5) * worldHeight,
-        r: 1.4 + rand() * 0.95,
-        color: colors[Math.floor(rand() * colors.length)],
-        opacity: 0.54 + rand() * 0.22,
-        glowRadius: 3.6 + rand() * 2.2,
-        glowOpacity: 0.07 + rand() * 0.08,
+        r: 1.2 + rand() * 0.84,
+        color: rand() < 0.78
+          ? starColors[Math.floor(rand() * starColors.length)]
+          : accentColors[Math.floor(rand() * accentColors.length)],
+        opacity: 0.34 + rand() * 0.16,
+        glowRadius: 2.9 + rand() * 1.8,
+        glowOpacity: 0.04 + rand() * 0.045,
+      });
+    }
+
+    for (let i = 0; i < 120; i++) {
+      const color = accentColors[Math.floor(rand() * accentColors.length)];
+      stars.push({
+        x: cx + (rand() - 0.5) * worldWidth,
+        y: cy + (rand() - 0.5) * worldHeight,
+        r: 1.45 + rand() * 0.9,
+        color,
+        opacity: 0.26 + rand() * 0.12,
+        glowRadius: 4.2 + rand() * 2.4,
+        glowOpacity: 0.028 + rand() * 0.024,
       });
     }
 
@@ -425,17 +442,38 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           const mainColor = isLocked
             ? toRGBA(edge.branchColor.main, 0.18)
             : toRGBA(edgeBaseColor, isMastered ? 0.9 : 0.84);
+          const glowOuterWidth = isMastered ? width + 7.2 : isReady ? width + 5.1 : width + 1.8;
+          const glowInnerWidth = isMastered ? width + 3.9 : isReady ? width + 2.7 : width + 0.95;
+          const glowOuterColor = isMastered
+            ? edge.branchColor.glow
+            : isReady
+              ? toRGBA(edge.branchColor.main, 0.2)
+              : toRGBA(edge.branchColor.main, 0.06);
+          const glowInnerColor = isMastered
+            ? toRGBA(edge.branchColor.edgeHex, 0.24)
+            : isReady
+              ? toRGBA(edge.branchColor.edgeHex, 0.16)
+              : toRGBA(edge.branchColor.edgeHex, 0.05);
 
           return (
             <Group key={edge.id}>
-              {isMastered && LOD.showEdgeGlow && !isInteracting && (
-                <Path
-                  path={edge.path}
-                  style="stroke"
-                  strokeWidth={width + 3.2}
-                  color={toRGBA(edge.branchColor.main, 0.16)}
-                  strokeCap="round"
-                />
+              {LOD.showEdgeGlow && !isInteracting && !bld && !isLocked && (
+                <Group>
+                  <Path
+                    path={edge.path}
+                    style="stroke"
+                    strokeWidth={glowOuterWidth}
+                    color={glowOuterColor}
+                    strokeCap="round"
+                  />
+                  <Path
+                    path={edge.path}
+                    style="stroke"
+                    strokeWidth={glowInnerWidth}
+                    color={glowInnerColor}
+                    strokeCap="round"
+                  />
+                </Group>
               )}
 
               <Path path={edge.path} style="stroke" strokeWidth={width} color={mainColor} strokeCap="round">
