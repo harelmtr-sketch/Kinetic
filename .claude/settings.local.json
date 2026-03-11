@@ -4,7 +4,8 @@
       "Bash(npx expo start --dev-client --clear)",
       "WebFetch(domain:shopify.github.io)",
       "WebSearch",
-      "Bash(grep -n:*)"
+      "Bash(grep -n:*)",
+      "Bash(gh pr:*)"
     ]
   }
 }
