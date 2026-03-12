@@ -5,6 +5,7 @@ node_modules/
 
 # Expo
 .expo/
+.expo-export-check/
 dist/
 web-build/
 expo-env.d.ts
@@ -40,6 +41,7 @@ yarn-error.*
 /ios
 /android
 .expo-shared/
+.gradle-user-home/
 build/
 *.log
 .env
