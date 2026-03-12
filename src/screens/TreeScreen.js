@@ -24,19 +24,37 @@ import { INIT } from '../data/initialTree';
 import {
   normalizeTree, segDist, resolveBranch, segmentIntersectsRect, toRGBA, getTreeStats,
 } from '../utils/treeUtils';
+import {
+  applyUnlockedNodesToTree,
+  buildUnlockedNodeRows,
+  getProgressFromUnlockedCount,
+  getUnlockedNodeIdsFromTree,
+  replaceUnlockedNodes,
+  saveXp,
+  unlockNode,
+} from '../services/progressService';
 
-export default function TreeScreen({ onTreeChange, treeActionsRef, onNavigate }) {
+export default function TreeScreen({
+  onTreeChange,
+  treeActionsRef,
+  onNavigate,
+  userId,
+  userData,
+  onCloudDataChange,
+}) {
+  const initialTree = normalizeTree(INIT);
   const insets = useSafeAreaInsets();
-  const [tree, _setTree] = useState(normalizeTree(INIT));
-  const tR = useRef(normalizeTree(INIT));
+  const [tree, _setTree] = useState(initialTree);
+  const tR = useRef(initialTree);
   const setTree = (t) => { tR.current = t; _setTree(t); };
-  const hist = useRef([normalizeTree(INIT)]); const hi = useRef(0);
+  const hist = useRef([initialTree]); const hi = useRef(0);
   const [canUndo, setCU] = useState(false); const [canRedo, setCR] = useState(false);
   const [savedTrees, setSavedTrees] = useState([]);
   const [selectedTreeId, setSelectedTreeId] = useState(null);
   const [namePromptVisible, setNamePromptVisible] = useState(false);
   const [treeNameDraft, setTreeNameDraft] = useState('');
   const [libraryVisible, setLibraryVisible] = useState(false);
+  const cloudUnlockedNodes = userData?.unlockedNodes || [];
 
   const resetHistoryWithTree = (nextTree) => {
     hist.current = [nextTree];
@@ -59,10 +77,49 @@ export default function TreeScreen({ onTreeChange, treeActionsRef, onNavigate })
     setSavedTrees(nextSavedTrees);
     AsyncStorage.setItem(SAVED_TREES_KEY, JSON.stringify(nextSavedTrees)).catch(() => {});
   };
+  const applyCloudProgressToTree = (baseTree) => applyUnlockedNodesToTree(baseTree, cloudUnlockedNodes);
+  const syncCloudData = (nodeIds) => {
+    onCloudDataChange?.((current) => ({
+      ...(current || {
+        profile: null,
+        progress: { xp: 0, level: 1 },
+        unlockedNodes: [],
+      }),
+      progress: getProgressFromUnlockedCount(nodeIds.length),
+      unlockedNodes: buildUnlockedNodeRows(nodeIds),
+    }));
+  };
+  const commitCloudProgress = async (nextTree, remoteSave) => {
+    const previousTree = tR.current;
+    const previousUnlockedIds = getUnlockedNodeIdsFromTree(previousTree);
+    const nextUnlockedIds = getUnlockedNodeIdsFromTree(nextTree);
+
+    commit(nextTree);
+    setSel((prev) => (
+      prev ? { ...prev, unlocked: nextUnlockedIds.includes(prev.id) } : null
+    ));
+
+    if (!userId) {
+      return;
+    }
+
+    syncCloudData(nextUnlockedIds);
+
+    try {
+      await remoteSave(getProgressFromUnlockedCount(nextUnlockedIds.length), nextUnlockedIds);
+    } catch (error) {
+      resetHistoryWithTree(previousTree);
+      syncCloudData(previousUnlockedIds);
+      setSel((prev) => (
+        prev ? { ...prev, unlocked: previousUnlockedIds.includes(prev.id) } : null
+      ));
+      Alert.alert('Sync failed', error?.message || 'Unable to save progress right now.');
+    }
+  };
 
   useEffect(() => {
     const boot = async () => {
-      const defaultTree = normalizeTree(INIT);
+      const defaultTree = applyCloudProgressToTree(normalizeTree(INIT));
       let resolvedTree = defaultTree;
       let resolvedSelectedId = null;
       let library = [];
@@ -81,13 +138,15 @@ export default function TreeScreen({ onTreeChange, treeActionsRef, onNavigate })
         const savedSelectedId = await AsyncStorage.getItem(SELECTED_TREE_KEY);
         const selectedTree = savedSelectedId ? library.find((entry) => entry.id === savedSelectedId) : null;
         if (selectedTree) {
-          resolvedTree = normalizeTree(selectedTree.tree);
+          resolvedTree = applyCloudProgressToTree(normalizeTree(selectedTree.tree));
           resolvedSelectedId = selectedTree.id;
         } else {
           const rawWorking = await AsyncStorage.getItem(STORAGE_KEY);
           if (rawWorking) {
             const parsedWorking = JSON.parse(rawWorking);
-            if (parsedWorking?.nodes && parsedWorking?.edges) resolvedTree = normalizeTree(parsedWorking);
+            if (parsedWorking?.nodes && parsedWorking?.edges) {
+              resolvedTree = applyCloudProgressToTree(normalizeTree(parsedWorking));
+            }
           }
         }
       } catch (e) {}
@@ -102,6 +161,18 @@ export default function TreeScreen({ onTreeChange, treeActionsRef, onNavigate })
 
     boot();
   }, []);
+
+  useEffect(() => {
+    const nextTree = applyCloudProgressToTree(tR.current);
+    const hasProgressChanges = nextTree.nodes.some(
+      (node, index) => node.unlocked !== tR.current.nodes[index]?.unlocked,
+    );
+
+    if (hasProgressChanges) {
+      resetHistoryWithTree(nextTree);
+      persistWorkingTree(nextTree);
+    }
+  }, [cloudUnlockedNodes]);
 
   useEffect(() => { onTreeChange?.(tree); }, [onTreeChange, tree]);
 
@@ -120,11 +191,17 @@ export default function TreeScreen({ onTreeChange, treeActionsRef, onNavigate })
     treeActionsRef.current = {
       reset: () => {
         const t = { ...tR.current, nodes: tR.current.nodes.map((n) => (n.isStart ? n : { ...n, unlocked: false })) };
-        commit(t);
+        void commitCloudProgress(t, (nextProgress) => Promise.all([
+          replaceUnlockedNodes(userId, []),
+          saveXp(userId, nextProgress.xp, nextProgress.level),
+        ]));
       },
       unlockAll: () => {
         const t = { ...tR.current, nodes: tR.current.nodes.map((n) => ({ ...n, unlocked: true })) };
-        commit(t);
+        void commitCloudProgress(t, (nextProgress, nextUnlockedIds) => Promise.all([
+          replaceUnlockedNodes(userId, nextUnlockedIds),
+          saveXp(userId, nextProgress.xp, nextProgress.level),
+        ]));
       },
       enterEditMode: () => { setBld(true); setConnA(null); },
     };
@@ -529,9 +606,12 @@ export default function TreeScreen({ onTreeChange, treeActionsRef, onNavigate })
     });
     showPrompt(false);
   };
-  const record = (id) => {
+  const record = async (id) => {
     const t = { ...tR.current, nodes: tR.current.nodes.map((n) => (n.id === id ? { ...n, unlocked: true } : n)) };
-    commit(t); setSel((prev) => (prev ? { ...prev, unlocked: true } : null));
+    await commitCloudProgress(t, (nextProgress) => Promise.all([
+      unlockNode(userId, id),
+      saveXp(userId, nextProgress.xp, nextProgress.level),
+    ]));
   };
 
   const exportTree = async () => {
@@ -553,7 +633,7 @@ export default function TreeScreen({ onTreeChange, treeActionsRef, onNavigate })
         Alert.alert('Invalid file', 'Not a valid skill tree JSON.');
         return;
       }
-      const t = normalizeTree(parsed);
+      const t = applyCloudProgressToTree(normalizeTree(parsed));
       Alert.alert('Import Tree', 'Replace current tree with imported one?', [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -606,7 +686,7 @@ export default function TreeScreen({ onTreeChange, treeActionsRef, onNavigate })
   const switchToTree = (treeId) => {
     const target = savedTrees.find((entry) => entry.id === treeId);
     if (!target) return;
-    const next = normalizeTree(target.tree);
+    const next = applyCloudProgressToTree(normalizeTree(target.tree));
     resetHistoryWithTree(next);
     persistWorkingTree(next);
     persistSelectedTree(treeId);
@@ -614,7 +694,7 @@ export default function TreeScreen({ onTreeChange, treeActionsRef, onNavigate })
   };
 
   const loadDefaultTree = () => {
-    const next = normalizeTree(INIT);
+    const next = applyCloudProgressToTree(normalizeTree(INIT));
     resetHistoryWithTree(next);
     persistWorkingTree(next);
     persistSelectedTree(null);
