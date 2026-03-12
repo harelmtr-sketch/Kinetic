@@ -10,14 +10,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import NamePrompt from '../components/tree/NamePrompt';
 import SkillCard from '../components/tree/SkillCard';
-import GlowText from '../components/common/GlowText';
-import NeonControl from '../components/common/NeonControl';
-import KineticLogo from '../components/KineticLogo';
-import StreakBadge from '../components/StreakBadge.js';
 import SkiaTreeCanvas from '../components/tree/SkiaTreeCanvas';
 import { BRANCH_COLORS, Colors } from '../theme/colors';
 import {
@@ -25,10 +22,10 @@ import {
 } from '../constants/tree';
 import { INIT } from '../data/initialTree';
 import {
-  normalizeTree, segDist, resolveBranch, segmentIntersectsRect, toRGBA,
+  normalizeTree, segDist, resolveBranch, segmentIntersectsRect, toRGBA, getTreeStats,
 } from '../utils/treeUtils';
 
-export default function TreeScreen({ onTreeChange, treeActionsRef }) {
+export default function TreeScreen({ onTreeChange, treeActionsRef, onNavigate }) {
   const insets = useSafeAreaInsets();
   const [tree, _setTree] = useState(normalizeTree(INIT));
   const tR = useRef(normalizeTree(INIT));
@@ -129,6 +126,7 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
         const t = { ...tR.current, nodes: tR.current.nodes.map((n) => ({ ...n, unlocked: true })) };
         commit(t);
       },
+      enterEditMode: () => { setBld(true); setConnA(null); },
     };
   });
 
@@ -911,85 +909,79 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
     delete: 'Tap a node or line to delete it',
   };
 
+  const treeStats = useMemo(() => getTreeStats(tree), [tree]);
+  const eloRating = useMemo(() => {
+    const base = 800;
+    const perSkill = 45;
+    return base + (treeStats.unlocked * perSkill);
+  }, [treeStats.unlocked]);
+
   return (
     <View style={styles.root}>
-      <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
-        <View pointerEvents="none" style={styles.barGlassBase} />
-        <View pointerEvents="none" style={styles.barGlassShade} />
-        <View pointerEvents="none" style={styles.barInnerGlow} />
-        <View pointerEvents="none" style={styles.barInnerHighlight} />
-        <View pointerEvents="none" style={styles.barScanLine} />
-
-        <View style={styles.barContent}>
-          <View style={styles.barSide}>
-            <StreakBadge
-              days={7}
-              size={1.08}
-              style={styles.streakBadge}
-              onPress={() => Alert.alert('Daily Streak', '7 days. Train today to keep it alive.')}
-            />
-          </View>
-          <View pointerEvents="none" style={styles.titleSlot}>
-            <View style={styles.titleWrap}>
-              <KineticLogo size={20} style={styles.titleLogo} />
-              <GlowText style={styles.title} color="#9FD4FF" glowColor="rgba(80,160,255,0.52)" outerGlowColor="rgba(80,160,255,0.26)" numberOfLines={1}>KINETIC</GlowText>
+      {!bld && (
+        <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
+          <View style={styles.barContent}>
+            <TouchableOpacity style={styles.barIconBtn} onPress={() => onNavigate?.('Profile')} activeOpacity={0.7}>
+              <Ionicons name="person-outline" size={22} color="rgba(255,255,255,0.8)" />
+            </TouchableOpacity>
+            <View style={styles.eloWrap}>
+              <Text style={styles.eloIcon}>🏆</Text>
+              <Text style={styles.eloText}>{eloRating}</Text>
             </View>
-          </View>
-          <View style={[styles.barSide, styles.barSideRight]}>
-            <NeonControl
-              style={styles.modeBtnWrap}
-              surfaceStyle={[styles.modeBtn, bld && styles.modeOn]}
-              paddingHorizontal={14}
-              paddingVertical={9}
-              radius={10}
-              accentColor={bld ? '#5DB4FF' : '#4BA3FF'}
-              onPress={() => { setBld(!bld); setConnA(null); dId.current = null; }}
-            >
-              <Text style={[styles.modeT, bld && styles.modeTOn]}>{bld ? 'DONE' : 'EDIT TREE'}</Text>
-            </NeonControl>
+            <TouchableOpacity style={styles.barIconBtn} onPress={() => onNavigate?.('Settings')} activeOpacity={0.7}>
+              <Ionicons name="settings-outline" size={22} color="rgba(255,255,255,0.8)" />
+            </TouchableOpacity>
           </View>
         </View>
-      </View>
+      )}
 
       {bld && (
-        <View style={styles.toolbar}>
-          <View style={styles.tg}>
-            {[['move', 'Move/Add'], ['connect', 'Connect'], ['delete', 'Delete']].map(([id, lbl]) => (
-              <TouchableOpacity key={id} style={[styles.tBtn, tool === id && styles.tOn]} onPress={() => { setTool(id); setConnA(null); }}>
-                <Text style={[styles.tT, tool === id && styles.tTOn]}>{lbl}</Text>
+        <View style={[styles.bar, { paddingTop: insets.top + 6 }]}>
+          <View style={styles.barContent}>
+            <View style={styles.barSide} />
+            <View pointerEvents="none" style={styles.titleSlot}>
+              <Text style={styles.title}>EDIT MODE</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.doneBtn}
+              onPress={() => { setBld(false); setConnA(null); dId.current = null; }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.doneBtnT}>DONE</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {bld && (
+        <View style={[styles.toolbar, { paddingTop: insets.top + 56 }]}>
+          <View style={styles.toolPills}>
+            {[['move', 'Move'], ['connect', 'Link'], ['delete', 'Delete']].map(([id, lbl]) => (
+              <TouchableOpacity key={id} style={[styles.toolPill, tool === id && styles.toolPillOn]} onPress={() => { setTool(id); setConnA(null); }}>
+                <Text style={[styles.toolPillT, tool === id && styles.toolPillTOn]}>{lbl}</Text>
               </TouchableOpacity>
             ))}
+            <View style={styles.toolDivider} />
+            <TouchableOpacity style={[styles.toolPill, !canUndo && styles.dim]} onPress={undo} disabled={!canUndo}><Text style={styles.toolPillT}>↩</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.toolPill, !canRedo && styles.dim]} onPress={redo} disabled={!canRedo}><Text style={styles.toolPillT}>↪</Text></TouchableOpacity>
           </View>
-          <View style={styles.tg}>
-            <TouchableOpacity style={[styles.uBtn, !canUndo && styles.dim]} onPress={undo} disabled={!canUndo}><Text style={styles.uT}>Undo</Text></TouchableOpacity>
-            <TouchableOpacity style={[styles.uBtn, !canRedo && styles.dim]} onPress={redo} disabled={!canRedo}><Text style={styles.uT}>Redo</Text></TouchableOpacity>
+          <Text style={styles.hintT}>{hints[tool]}</Text>
+          <View style={styles.treeMgrRow}>
+            <Text style={styles.treeMgrLabel}>{selectedTreeId ? (savedTrees.find((t) => t.id === selectedTreeId)?.name || 'Saved') : 'Default'}</Text>
+            <View style={styles.treeMgrActions}>
+              <TouchableOpacity style={styles.mgBtn} onPress={saveCurrentTreeAs}><Text style={styles.mgBtnT}>Save</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.mgBtn} onPress={overwriteSelectedTree}><Text style={styles.mgBtnT}>Overwrite</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.mgBtn} onPress={() => setLibraryVisible(true)}><Text style={styles.mgBtnT}>Switch</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.mgBtn} onPress={loadDefaultTree}><Text style={styles.mgBtnT}>Default</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.mgBtn, !selectedTreeId && styles.dim]} onPress={deleteSelectedTree} disabled={!selectedTreeId}><Text style={styles.mgBtnT}>Delete</Text></TouchableOpacity>
+            </View>
           </View>
-        </View>
-      )}
-
-      {bld && (
-        <View style={styles.treeMgrWrap}>
-          <View style={styles.treeMgrHeaderRow}>
-            <Text style={styles.treeMgrTitle}>TREE SLOT</Text>
-            <Text style={styles.treeMgrCurrent}>{selectedTreeId ? (savedTrees.find((t) => t.id === selectedTreeId)?.name || 'Saved') : 'Default'}</Text>
-          </View>
-          <View style={styles.treeMgrActions}>
-            <TouchableOpacity style={styles.miniBtn} onPress={saveCurrentTreeAs}><Text style={styles.miniBtnT}>Save As</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.miniBtn} onPress={overwriteSelectedTree}><Text style={styles.miniBtnT}>Overwrite</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.miniBtn} onPress={() => setLibraryVisible(true)}><Text style={styles.miniBtnT}>Switch</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.miniBtn} onPress={loadDefaultTree}><Text style={styles.miniBtnT}>Default</Text></TouchableOpacity>
-            <TouchableOpacity style={[styles.miniBtn, !selectedTreeId && styles.dim]} onPress={deleteSelectedTree} disabled={!selectedTreeId}><Text style={styles.miniBtnT}>Delete</Text></TouchableOpacity>
+          <View style={styles.ioRow}>
+            <TouchableOpacity style={styles.ioBtn} onPress={exportTree}><Text style={styles.ioBtnT}>Export</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.ioBtn} onPress={importTree}><Text style={styles.ioBtnT}>Import</Text></TouchableOpacity>
           </View>
         </View>
       )}
-
-      {bld && (
-        <View style={styles.ioRow}>
-          <TouchableOpacity style={styles.ioBtn} onPress={exportTree}><Text style={styles.ioT}>EXPORT</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.ioBtn} onPress={importTree}><Text style={styles.ioT}>IMPORT</Text></TouchableOpacity>
-        </View>
-      )}
-      {bld && <View style={styles.hintRow}><Text style={styles.hintT}>{hints[tool]}</Text></View>}
 
       {bld ? (
         <View
@@ -1064,35 +1056,18 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
         </GestureDetector>
       )}
 
-      {/* TEMP: Zoom buttons for emulator testing */}
       <View style={styles.zoomBtns}>
-        <NeonControl
-          size={44}
-          radius={22}
-          accentColor="#4BA3FF"
-          surfaceStyle={styles.zoomBtn}
-          onPress={() => handleZoom('in')}
-        >
+        <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('in')} activeOpacity={0.7}>
           <Text style={styles.zoomBtnText}>+</Text>
-        </NeonControl>
-        <NeonControl
-          size={44}
-          radius={22}
-          accentColor="#4BA3FF"
-          surfaceStyle={styles.zoomBtn}
-          onPress={() => handleZoom('out')}
-        >
-          <Text style={styles.zoomBtnText}>-</Text>
-        </NeonControl>
-        <NeonControl
-          size={44}
-          radius={22}
-          accentColor="#4BA3FF"
-          surfaceStyle={styles.zoomBtn}
-          onPress={handleGoHome}
-        >
+        </TouchableOpacity>
+        <View style={styles.zoomDivider} />
+        <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('out')} activeOpacity={0.7}>
+          <Text style={styles.zoomBtnText}>−</Text>
+        </TouchableOpacity>
+        <View style={styles.zoomDivider} />
+        <TouchableOpacity style={styles.zoomBtn} onPress={handleGoHome} activeOpacity={0.7}>
           <Text style={styles.zoomBtnText}>⌖</Text>
-        </NeonControl>
+        </TouchableOpacity>
       </View>
 
       {/* Legend removed - cleaner UI */}
@@ -1154,185 +1129,241 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background.primary },
   zoomBtns: {
-    position: 'absolute', right: 16, bottom: 100, gap: 8, zIndex: 50,
+    position: 'absolute',
+    right: 16,
+    bottom: 40,
+    zIndex: 50,
+    backgroundColor: 'rgba(15,15,20,0.75)',
+    borderRadius: 24,
+    overflow: 'hidden',
   },
   zoomBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(15,26,43,0.92)',
-    borderColor: 'rgba(120,180,255,0.32)',
+    width: 46,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  zoomBtnText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
+  zoomBtnText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 20,
+    fontWeight: '500',
+  },
+  zoomDivider: {
+    height: 1,
+    marginHorizontal: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   bar: {
-    position: 'relative',
-    paddingHorizontal: 14,
-    paddingBottom: 8,
-    minHeight: 64,
-    overflow: 'visible',
-    backgroundColor: 'rgba(7, 17, 29, 0.58)',
-    borderBottomWidth: 1,
-    borderColor: 'rgba(120,180,255,0.15)',
-  },
-  barGlassBase: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(6,16,28,0.95)',
-  },
-  barGlassShade: {
-    ...StyleSheet.absoluteFillObject,
-    left: -18,
-    right: -18,
+    position: 'absolute',
     top: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(7,28,48,0.11)',
-  },
-  barInnerGlow: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    top: 6,
-    bottom: 8,
-    borderRadius: 18,
-    backgroundColor: 'rgba(60,120,255,0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(111, 184, 255, 0.06)',
-  },
-  barInnerHighlight: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    top: 0,
-    height: 14,
-    backgroundColor: 'rgba(120,190,255,0.035)',
-  },
-  barScanLine: {
-    position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
-    height: 1,
-    backgroundColor: 'rgba(80,160,255,0.35)',
+    zIndex: 40,
+    paddingHorizontal: 20,
+    paddingBottom: 8,
   },
   barContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    position: 'relative',
-    minHeight: 44,
-    paddingHorizontal: 4,
-    paddingVertical: 8,
+    minHeight: 50,
   },
   barSide: {
-    flex: 1, minWidth: 108, flexDirection: 'row', alignItems: 'center', zIndex: 1,
+    width: 44,
   },
-  barSideRight: { justifyContent: 'flex-end' },
-  streakBadge: {
-    marginLeft: -6,
+  barIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(30,30,40,0.75)',
   },
   titleSlot: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  titleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    maxWidth: '62%',
-    paddingHorizontal: 16,
-  },
-  titleLogo: {
-    marginTop: -1,
+    position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
+    justifyContent: 'center', alignItems: 'center',
   },
   title: {
-    fontSize: 18,
+    color: 'rgba(200,220,255,0.85)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 3,
+  },
+  eloWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,200,50,0.08)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 22,
+  },
+  eloIcon: {
+    fontSize: 22,
+  },
+  eloText: {
+    color: '#FFD700',
+    fontSize: 24,
     fontWeight: '800',
-    letterSpacing: 2.2,
+    letterSpacing: 1,
+  },
+  doneBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(96,165,250,0.2)',
+    zIndex: 1,
+  },
+  doneBtnT: {
+    color: 'rgba(150,200,255,0.95)',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 1.5,
+  },
+  toolbar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 35,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    gap: 10,
+    backgroundColor: 'rgba(8,8,12,0.82)',
+  },
+  toolPills: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 24,
+    padding: 3,
+    gap: 2,
+  },
+  toolPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  toolPillOn: {
+    backgroundColor: 'rgba(96,165,250,0.22)',
+  },
+  toolPillT: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  toolPillTOn: { color: 'rgba(180,215,255,0.95)' },
+  toolDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: 4,
+  },
+  hintT: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 12,
     textAlign: 'center',
   },
-  modeBtnWrap: {
-    borderRadius: 10,
+  treeMgrRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
   },
-  modeBtn: {
-    backgroundColor: 'rgba(15,26,43,0.92)',
-    borderColor: 'rgba(120,180,255,0.26)',
+  treeMgrLabel: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontWeight: '600',
   },
-  modeOn: { backgroundColor: 'rgba(18,40,61,0.96)', borderColor: 'rgba(100,180,255,0.38)' },
-  modeT: {
-    color: '#E6F2FF',
-    fontSize: 11.5,
-    fontWeight: '700',
-    letterSpacing: 1.1,
+  treeMgrActions: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
   },
-  modeTOn: { color: '#B8E0FF' },
-  toolbar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 10, paddingVertical: 10, rowGap: 8,
-    backgroundColor: Colors.background.secondary, borderBottomWidth: 1, borderColor: Colors.border.default, flexWrap: 'wrap',
+  mgBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.07)',
   },
-  tg: { flexDirection: 'row', gap: 7, flexWrap: 'wrap' },
-  tBtn: {
-    paddingHorizontal: 11, paddingVertical: 8, borderRadius: 6,
-    backgroundColor: '#121722', borderWidth: 1, borderColor: Colors.border.default,
+  mgBtnT: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 11,
+    fontWeight: '600',
   },
-  tOn: { backgroundColor: 'rgba(59,130,246,0.18)', borderColor: 'rgba(59,130,246,0.4)' },
-  tT: { color: Colors.text.tertiary, fontSize: 12, fontWeight: '600' },
-  tTOn: { color: Colors.blue[300] },
-  uBtn: {
-    paddingHorizontal: 11, paddingVertical: 8, borderRadius: 6,
-    backgroundColor: Colors.background.primary, borderWidth: 1, borderColor: Colors.border.default,
-  },
-  dim: { opacity: 0.2 },
-  uT: { color: Colors.text.tertiary, fontSize: 12, fontWeight: '600' },
+  dim: { opacity: 0.25 },
   ioRow: {
-    flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: Colors.background.primary,
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 8,
   },
   ioBtn: {
-    flex: 1, backgroundColor: Colors.background.cardAlt, borderRadius: 6, paddingVertical: 10,
-    alignItems: 'center', borderWidth: 1, borderColor: Colors.border.default,
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  ioT: { color: Colors.text.secondary, fontSize: 12, fontWeight: '800', letterSpacing: 2 },
-  hintRow: { paddingHorizontal: 16, paddingVertical: 6, backgroundColor: Colors.background.primary },
-  hintT: {
-    color: Colors.text.tertiary, fontSize: 11, textAlign: 'center', letterSpacing: 0.5,
+  ioBtnT: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 1,
   },
-  treeMgrWrap: {
-    backgroundColor: Colors.background.secondary,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: Colors.border.default,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
+  slotModalBack: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
   },
-  treeMgrHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  treeMgrTitle: { color: Colors.text.tertiary, fontSize: 10, letterSpacing: 1.4, fontWeight: '700' },
-  treeMgrCurrent: { color: Colors.text.secondary, fontSize: 11, fontWeight: '700' },
-  treeMgrActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  miniBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    backgroundColor: Colors.background.cardAlt,
+  slotModalCard: {
+    backgroundColor: 'rgba(18,18,24,0.95)',
+    borderRadius: 20,
+    padding: 20,
+    gap: 12,
   },
-  miniBtnT: { color: Colors.text.secondary, fontSize: 11, fontWeight: '700' },
-  slotModalBack: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', paddingHorizontal: 24 },
-  slotModalCard: { backgroundColor: Colors.background.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border.default, padding: 16, gap: 10 },
-  slotModalTitle: { color: Colors.text.secondary, fontSize: 13, fontWeight: '800', letterSpacing: 1.2 },
-  slotInput: { borderWidth: 1, borderColor: Colors.border.default, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10, color: Colors.text.primary, backgroundColor: Colors.background.cardAlt },
+  slotModalTitle: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  slotInput: {
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    color: '#fff',
+    fontSize: 16,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
   slotRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
-  slotBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.background.cardAlt, alignSelf: 'flex-end' },
-  slotBtnT: { color: Colors.text.secondary, fontWeight: '700' },
-  slotListItem: { borderWidth: 1, borderColor: Colors.border.default, borderRadius: 8, padding: 10, backgroundColor: Colors.background.cardAlt, gap: 2 },
-  slotListTitle: { color: Colors.text.secondary, fontWeight: '700' },
-  slotListMeta: { color: Colors.text.tertiary, fontSize: 11 },
+  slotBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  slotBtnT: {
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  slotListItem: {
+    borderRadius: 14,
+    padding: 14,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    gap: 2,
+  },
+  slotListTitle: {
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  slotListMeta: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 12,
+  },
   canvas: { flex: 1, backgroundColor: '#0A0A0A', overflow: 'hidden' },
   legend: {
     flexDirection: 'row', justifyContent: 'center', gap: 28, paddingVertical: 12,
