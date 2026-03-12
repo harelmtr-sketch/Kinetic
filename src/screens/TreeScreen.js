@@ -220,6 +220,18 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
     canvasHV.value = canvasSize.height || 800;
   }, [canvasSize.width, canvasSize.height]);
 
+  const handleGoHome = () => {
+    const startNode = tR.current.nodes.find((n) => n.isStart);
+    if (!startNode) return;
+    const sc = 0.7;
+    const cx = canvasSize.width / 2;
+    const cy = canvasSize.height / 2;
+    const tx = cx - startNode.x * sc;
+    const ty = cy - startNode.y * sc;
+    setLiveXform(tx, ty, sc);
+    commitLiveXform();
+  };
+
   // TEMP: Zoom buttons for testing on emulator (remove before release)
   const handleZoom = (direction) => {
     const zoomFactor = direction === 'in' ? 1.3 : 0.7;
@@ -1071,6 +1083,15 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
           onPress={() => handleZoom('out')}
         >
           <Text style={styles.zoomBtnText}>-</Text>
+        </NeonControl>
+        <NeonControl
+          size={44}
+          radius={22}
+          accentColor="#4BA3FF"
+          surfaceStyle={styles.zoomBtn}
+          onPress={handleGoHome}
+        >
+          <Text style={styles.zoomBtnText}>⌖</Text>
         </NeonControl>
       </View>
 
