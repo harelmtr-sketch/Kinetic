@@ -1,7 +1,5 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Zap } from 'lucide-react-native/icons';
-import { Colors } from '../theme/colors';
 
 export default function KineticLogo({
   size = 48,
@@ -11,6 +9,7 @@ export default function KineticLogo({
   const outerInset = Math.max(10, Math.round(size * 0.25));
   const innerInset = Math.max(6, Math.round(size * 0.17));
   const radius = Math.round(size * 0.62);
+  const iconSize = size;
 
   return (
     <View style={[styles.shell, style]}>
@@ -45,14 +44,8 @@ export default function KineticLogo({
         </>
       )}
 
-      <View style={[styles.iconWrap, { padding: Math.max(6, Math.round(size * 0.22)) }]}>
+      <View style={[styles.iconWrap, { padding: Math.max(6, Math.round(size * 0.22)), width: iconSize + Math.max(12, Math.round(size * 0.44)), height: iconSize + Math.max(12, Math.round(size * 0.44)) }]}>
         <View style={styles.iconCore} />
-        <Zap
-          size={size}
-          color="#7BC3FF"
-          strokeWidth={2.5}
-          fill="#7BC3FF"
-        />
       </View>
     </View>
   );
@@ -78,6 +71,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconCore: {
     ...StyleSheet.absoluteFillObject,
