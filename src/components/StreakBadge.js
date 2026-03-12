@@ -2,7 +2,7 @@ import React from 'react';
 import {
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
-import { Flame } from 'lucide-react-native/icons';
+
 
 const BASE = {
   wrapperWidth: 96,
@@ -154,7 +154,7 @@ export default function StreakBadge({
 
         <View style={[styles.content, { marginTop: scaled(-1, size) }]}>
           <View style={[styles.topRow, { gap: scaled(5, size) }]}>
-            <Flame size={scaled(BASE.iconSize, size)} color={iconColor} strokeWidth={2} />
+            <Text style={{ fontSize: scaled(BASE.iconSize, size), color: iconColor }}>🔥</Text>
             <Text
               style={[
                 styles.number,
