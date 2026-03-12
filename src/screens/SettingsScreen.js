@@ -1,8 +1,17 @@
 import React, { useState } from 'react';
-import { ScrollView, View, Text, Switch, TouchableOpacity, Alert, StyleSheet } from 'react-native';
+import {
+  ScrollView, View, Text, Switch, TouchableOpacity, Alert, StyleSheet,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-export default function SettingsScreen({ onResetProgress, onUnlockAll, onEditTree }) {
+export default function SettingsScreen({
+  onResetProgress,
+  onUnlockAll,
+  onEditTree,
+  onSignOut,
+  userEmail,
+  userRole,
+}) {
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
   const insets = useSafeAreaInsets();
@@ -11,6 +20,27 @@ export default function SettingsScreen({ onResetProgress, onUnlockAll, onEditTre
     <ScrollView style={styles.page} contentContainerStyle={[styles.content, { paddingTop: insets.top + 72 }]}>
       <Text style={styles.pageTitle}>Settings</Text>
 
+      <Text style={styles.sectionHeader}>Account</Text>
+      <View style={styles.section}>
+        <View style={styles.row}>
+          <Text style={styles.label}>Signed In</Text>
+          <Text style={styles.valueDim}>{userEmail || 'Unknown account'}</Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.row}>
+          <Text style={styles.label}>Role</Text>
+          <Text style={userRole === 'admin' ? styles.valueLive : styles.valueDim}>
+            {String(userRole || 'user').toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.row}>
+          <Text style={styles.label}>Data Sync</Text>
+          <Text style={styles.valueLive}>Supabase</Text>
+        </View>
+      </View>
+
+      <Text style={styles.sectionHeader}>Preferences</Text>
       <View style={styles.section}>
         <View style={styles.row}>
           <Text style={styles.label}>Notifications</Text>
@@ -33,57 +63,64 @@ export default function SettingsScreen({ onResetProgress, onUnlockAll, onEditTre
         </View>
         <View style={styles.divider} />
         <View style={styles.row}>
-          <Text style={styles.label}>Haptics</Text>
-          <Text style={styles.valueDim}>On</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.row}>
-          <Text style={styles.label}>Data Sync</Text>
-          <Text style={styles.valueDim}>Manual</Text>
+          <Text style={styles.label}>Cloud Save</Text>
+          <Text style={styles.valueDim}>Automatic</Text>
         </View>
       </View>
 
-      <Text style={styles.sectionHeader}>Tree</Text>
-      <View style={styles.section}>
-        {onEditTree && (
-          <TouchableOpacity style={styles.row} onPress={onEditTree} activeOpacity={0.6}>
-            <Text style={styles.label}>Edit Tree</Text>
-            <Text style={styles.valueDim}>→</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      {!!onEditTree && (
+        <>
+          <Text style={styles.sectionHeader}>Tree</Text>
+          <View style={styles.section}>
+            <TouchableOpacity style={styles.row} onPress={onEditTree} activeOpacity={0.6}>
+              <Text style={styles.label}>Edit Tree</Text>
+              <Text style={styles.valueDim}>→</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
 
-      <Text style={styles.sectionHeader}>Danger Zone</Text>
-      <View style={styles.actionRow}>
-        {onResetProgress && (
-          <TouchableOpacity
-            style={styles.dangerBtn}
-            activeOpacity={0.7}
-            onPress={() => {
-              Alert.alert('Reset Progress', 'Set all skills back to locked? Your tree structure stays intact.', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Reset', style: 'destructive', onPress: onResetProgress },
-              ]);
-            }}
-          >
-            <Text style={styles.dangerBtnT}>Reset Progress</Text>
-          </TouchableOpacity>
-        )}
-        {onUnlockAll && (
-          <TouchableOpacity
-            style={styles.greenBtn}
-            activeOpacity={0.7}
-            onPress={() => {
-              Alert.alert('Unlock Entire Tree', 'Unlock every skill in the current tree?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Unlock', onPress: onUnlockAll },
-              ]);
-            }}
-          >
-            <Text style={styles.greenBtnT}>Unlock All</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      {(onResetProgress || onUnlockAll) && (
+        <>
+          <Text style={styles.sectionHeader}>Danger Zone</Text>
+          <View style={styles.actionRow}>
+            {onResetProgress && (
+              <TouchableOpacity
+                style={styles.dangerBtn}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Alert.alert('Reset Progress', 'Set all skills back to locked? Your tree structure stays intact.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Reset', style: 'destructive', onPress: onResetProgress },
+                  ]);
+                }}
+              >
+                <Text style={styles.dangerBtnT}>Reset Progress</Text>
+              </TouchableOpacity>
+            )}
+            {onUnlockAll && (
+              <TouchableOpacity
+                style={styles.greenBtn}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Alert.alert('Unlock Entire Tree', 'Unlock every skill in the current tree?', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Unlock', onPress: onUnlockAll },
+                  ]);
+                }}
+              >
+                <Text style={styles.greenBtnT}>Unlock All</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </>
+      )}
+
+      {onSignOut && (
+        <TouchableOpacity style={styles.signOutBtn} activeOpacity={0.75} onPress={onSignOut}>
+          <Text style={styles.signOutBtnT}>Sign Out</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 }
@@ -128,6 +165,11 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.35)',
     fontSize: 15,
   },
+  valueLive: {
+    color: '#7DD3FC',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   actionRow: {
     flexDirection: 'row',
     gap: 10,
@@ -155,5 +197,24 @@ const styles = StyleSheet.create({
     color: '#4ADE80',
     fontSize: 14,
     fontWeight: '600',
+  },
+  signOutBtn: {
+    marginTop: 8,
+    paddingVertical: 16,
+    borderRadius: 18,
+    alignItems: 'center',
+    backgroundColor: 'rgba(248,113,113,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.18)',
+    shadowColor: '#F87171',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  signOutBtnT: {
+    color: '#F87171',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

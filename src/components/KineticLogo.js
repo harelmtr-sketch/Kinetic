@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import { Zap } from 'lucide-react-native';
 
 export default function KineticLogo({
   size = 48,
@@ -10,6 +11,7 @@ export default function KineticLogo({
   const innerInset = Math.max(6, Math.round(size * 0.17));
   const radius = Math.round(size * 0.62);
   const iconSize = size;
+  const glyphSize = Math.max(20, Math.round(size * 0.54));
 
   return (
     <View style={[styles.shell, style]}>
@@ -44,8 +46,23 @@ export default function KineticLogo({
         </>
       )}
 
-      <View style={[styles.iconWrap, { padding: Math.max(6, Math.round(size * 0.22)), width: iconSize + Math.max(12, Math.round(size * 0.44)), height: iconSize + Math.max(12, Math.round(size * 0.44)) }]}>
+      <View
+        style={[
+          styles.iconWrap,
+          {
+            padding: Math.max(6, Math.round(size * 0.22)),
+            width: iconSize + Math.max(12, Math.round(size * 0.44)),
+            height: iconSize + Math.max(12, Math.round(size * 0.44)),
+          },
+        ]}
+      >
         <View style={styles.iconCore} />
+        <Zap
+          size={glyphSize}
+          color="#3B82F6"
+          strokeWidth={2.4}
+          style={styles.glyph}
+        />
       </View>
     </View>
   );
@@ -77,5 +94,11 @@ const styles = StyleSheet.create({
   iconCore: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(84, 160, 255, 0.08)',
+  },
+  glyph: {
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.32,
+    shadowRadius: 10,
   },
 });
