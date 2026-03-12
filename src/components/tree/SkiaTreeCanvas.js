@@ -94,56 +94,85 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const { cx, cy, w: worldWidth, h: worldHeight } = starBounds;
     const rand = mulberry32(1337);
     const stars = [];
-    const dustColors = ['#ffffff', '#fbfdff', '#f4f8ff', '#edf4ff', '#fff5e8'];
-    const starColors = ['#ffffff', '#f8fbff', '#eef5ff', '#fff4df', '#eefdf7', '#f7efff', '#ffeceb'];
-    const accentColors = ['#b9d8ff', '#d8c2ff', '#ffc8b8', '#bfffe0', '#ffe4a8', '#c7f1ff'];
+    const dustColors = ['#ffffff', '#fbfdff', '#f4f8ff', '#edf4ff', '#fff5e8', '#f0f4ff'];
+    const starColors = ['#ffffff', '#f8fbff', '#eef5ff', '#fff4df', '#eefdf7', '#f7efff', '#ffeceb', '#fdf8ff'];
+    const accentColors = ['#b9d8ff', '#d8c2ff', '#ffc8b8', '#bfffe0', '#ffe4a8', '#c7f1ff', '#a8c8ff', '#ffb8d8'];
+    const warmColors = ['#ffd4a8', '#ffcbb8', '#ffe8c4', '#fff0d8'];
+    const coolColors = ['#a8d4ff', '#b8e0ff', '#c4e8ff', '#d0f0ff'];
 
-    for (let i = 0; i < 6600; i++) {
+    // Layer 1: Dense background dust field
+    for (let i = 0; i < 7000; i++) {
       stars.push({
         x: cx + (rand() - 0.5) * worldWidth,
         y: cy + (rand() - 0.5) * worldHeight,
-        r: 0.46 + rand() * 0.5,
+        r: 0.6 + rand() * 0.7,
         color: dustColors[Math.floor(rand() * dustColors.length)],
-        opacity: 0.12 + rand() * 0.11,
+        opacity: 0.15 + rand() * 0.18,
       });
     }
 
-    for (let i = 0; i < 2550; i++) {
+    // Layer 2: Visible small stars — always present
+    for (let i = 0; i < 3800; i++) {
+      const isWarm = rand() < 0.15;
+      const isCool = !isWarm && rand() < 0.12;
+      const color = isWarm
+        ? warmColors[Math.floor(rand() * warmColors.length)]
+        : isCool
+          ? coolColors[Math.floor(rand() * coolColors.length)]
+          : starColors[Math.floor(rand() * starColors.length)];
       stars.push({
         x: cx + (rand() - 0.5) * worldWidth,
         y: cy + (rand() - 0.5) * worldHeight,
-        r: 0.88 + rand() * 0.66,
-        color: starColors[Math.floor(rand() * starColors.length)],
-        opacity: 0.22 + rand() * 0.16,
-        glowRadius: 1.9 + rand() * 1.25,
-        glowOpacity: 0.025 + rand() * 0.03,
+        r: 1.1 + rand() * 1.0,
+        color,
+        opacity: 0.28 + rand() * 0.22,
+        glowRadius: 2.8 + rand() * 2.2,
+        glowOpacity: 0.04 + rand() * 0.04,
       });
     }
 
-    for (let i = 0; i < 520; i++) {
+    // Layer 3: Medium bright stars with halos
+    for (let i = 0; i < 900; i++) {
       stars.push({
         x: cx + (rand() - 0.5) * worldWidth,
         y: cy + (rand() - 0.5) * worldHeight,
-        r: 1.2 + rand() * 0.84,
-        color: rand() < 0.78
+        r: 1.6 + rand() * 1.2,
+        color: rand() < 0.65
           ? starColors[Math.floor(rand() * starColors.length)]
           : accentColors[Math.floor(rand() * accentColors.length)],
-        opacity: 0.34 + rand() * 0.16,
-        glowRadius: 2.9 + rand() * 1.8,
-        glowOpacity: 0.04 + rand() * 0.045,
+        opacity: 0.38 + rand() * 0.22,
+        glowRadius: 5.0 + rand() * 4.0,
+        glowOpacity: 0.06 + rand() * 0.06,
       });
     }
 
-    for (let i = 0; i < 120; i++) {
+    // Layer 4: Bright feature stars — galaxy landmarks
+    for (let i = 0; i < 280; i++) {
+      const color = rand() < 0.45
+        ? accentColors[Math.floor(rand() * accentColors.length)]
+        : starColors[Math.floor(rand() * starColors.length)];
+      stars.push({
+        x: cx + (rand() - 0.5) * worldWidth,
+        y: cy + (rand() - 0.5) * worldHeight,
+        r: 2.2 + rand() * 1.6,
+        color,
+        opacity: 0.4 + rand() * 0.25,
+        glowRadius: 8.0 + rand() * 6.0,
+        glowOpacity: 0.05 + rand() * 0.06,
+      });
+    }
+
+    // Layer 5: Brilliant beacon stars with big soft halos
+    for (let i = 0; i < 80; i++) {
       const color = accentColors[Math.floor(rand() * accentColors.length)];
       stars.push({
         x: cx + (rand() - 0.5) * worldWidth,
         y: cy + (rand() - 0.5) * worldHeight,
-        r: 1.45 + rand() * 0.9,
+        r: 2.8 + rand() * 1.8,
         color,
-        opacity: 0.26 + rand() * 0.12,
-        glowRadius: 4.2 + rand() * 2.4,
-        glowOpacity: 0.028 + rand() * 0.024,
+        opacity: 0.38 + rand() * 0.2,
+        glowRadius: 12.0 + rand() * 8.0,
+        glowOpacity: 0.04 + rand() * 0.05,
       });
     }
 
@@ -279,8 +308,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     };
 
     return [
-      buildCluster(glowFieldSources.mastered, '#34D366', 240, 0.42),
-      buildCluster(glowFieldSources.ready, '#FACC15', 220, 0.34),
+      buildCluster(glowFieldSources.mastered, '#34D366', 280, 0.28),
+      buildCluster(glowFieldSources.ready, '#FACC15', 260, 0.22),
     ].filter(Boolean);
   }, [glowFieldSources]);
 
@@ -406,7 +435,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   }, [dragId, focusedPulseCandidate, nodeStatusMap, nodeStyles, nodes, wrappedLabels]);
 
   const farNodeR = NODE_R * 0.34;
-  const starOpacityScale = LOD.isNear ? 1.08 : LOD.isMid ? 1 : 0.92;
+  const starOpacityScale = LOD.isNear ? 1.1 : LOD.isMid ? 1.15 : 1.3;
 
   const renderNodeShell = (meta, x, y, isFarNode) => {
     const renderR = isFarNode ? farNodeR : meta.isStart ? NODE_R * 1.14 : NODE_R;
@@ -427,10 +456,16 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     if (isFarNode) {
       return (
         <Group>
-          <Circle cx={cx} cy={cy} r={NODE_R * 0.43} color={meta.visual.farAura || toRGBA(meta.visual.stroke, 0.14)} />
-          <Circle cx={cx} cy={cy} r={NODE_R * 0.28} color={meta.visual.farBody || toRGBA(meta.visual.stroke, 0.28)} />
-          <Circle cx={cx} cy={cy} r={NODE_R * 0.13} color={meta.visual.farCore || toRGBA(meta.visual.ring, 0.44)} />
-          <Circle cx={cx} cy={cy} r={NODE_R * 0.30} style="stroke" strokeWidth={0.72} color={toRGBA(meta.visual.stroke, 0.42)} />
+          {meta.isLit && (
+            <Circle cx={cx} cy={cy} r={NODE_R * 1.4} color={toRGBA(meta.visual.stroke, 0.06)} />
+          )}
+          {meta.isLit && (
+            <Circle cx={cx} cy={cy} r={NODE_R * 0.9} color={toRGBA(meta.visual.stroke, 0.1)} />
+          )}
+          <Circle cx={cx} cy={cy} r={NODE_R * 0.55} color={meta.visual.farAura || toRGBA(meta.visual.stroke, 0.18)} />
+          <Circle cx={cx} cy={cy} r={NODE_R * 0.36} color={meta.visual.farBody || toRGBA(meta.visual.stroke, 0.36)} />
+          <Circle cx={cx} cy={cy} r={NODE_R * 0.18} color={meta.visual.farCore || toRGBA(meta.visual.ring, 0.56)} />
+          <Circle cx={cx} cy={cy} r={NODE_R * 0.38} style="stroke" strokeWidth={0.9} color={toRGBA(meta.visual.stroke, 0.52)} />
         </Group>
       );
     }
@@ -568,8 +603,9 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       <Group transform={sceneTransform}>
         {regionalGlowFields.map((glow, index) => (
           <Group key={`glow_${index}`} opacity={focusedPulseCandidate ? focusedPulseFieldOpacity : 1}>
-            <Circle cx={glow.cx} cy={glow.cy} r={glow.radius * 1.16} color={toRGBA(glow.color, 0.018 * glow.opacityScale)} />
-            <Circle cx={glow.cx} cy={glow.cy} r={glow.radius * 0.82} color={toRGBA(glow.color, 0.03 * glow.opacityScale)} />
+            <Circle cx={glow.cx} cy={glow.cy} r={glow.radius * 1.4} color={toRGBA(glow.color, 0.008 * glow.opacityScale)} />
+            <Circle cx={glow.cx} cy={glow.cy} r={glow.radius * 1.1} color={toRGBA(glow.color, 0.015 * glow.opacityScale)} />
+            <Circle cx={glow.cx} cy={glow.cy} r={glow.radius * 0.75} color={toRGBA(glow.color, 0.024 * glow.opacityScale)} />
           </Group>
         ))}
 
