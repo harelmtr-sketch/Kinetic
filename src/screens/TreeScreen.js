@@ -814,9 +814,9 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
         glowInner: toRGBA(resolved.ring, 0.2),
         glowOuter: toRGBA(resolved.main, 0.12),
         ambient: toRGBA(resolved.main, 0.045),
-        farAura: toRGBA(resolved.main, 0.18),
-        farBody: toRGBA(resolved.main, 0.44),
-        farCore: toRGBA(resolved.ring, 0.72),
+        farAura: toRGBA(resolved.main, 0.28),
+        farBody: toRGBA(resolved.main, 0.58),
+        farCore: toRGBA(resolved.ring, 0.85),
         innerRing: toRGBA(resolved.main, 0.2),
         innerRingSoft: toRGBA(resolved.ring, 0.15),
         specular: 'rgba(240,246,255,0.12)',
@@ -870,7 +870,7 @@ export default function TreeScreen({ onTreeChange, treeActionsRef }) {
 
   const edgeVisual = useMemo(() => {
     if (LOD.isFar) return {
-      masteredW: 1.15, readyW: 0.92, lockedW: 0.62, masteredO: 0.76, readyO: 0.46, lockedO: 0.14,
+      masteredW: 1.6, readyW: 1.1, lockedW: 0.7, masteredO: 0.88, readyO: 0.56, lockedO: 0.16,
     };
     if (LOD.isMid) return {
       masteredW: 1.8, readyW: 1.28, lockedW: 0.82, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
