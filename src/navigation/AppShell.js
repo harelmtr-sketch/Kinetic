@@ -32,6 +32,7 @@ function LoadingState() {
 export default function AppShell() {
   const [tab, setTab] = useState('Tree');
   const [treeSnapshot, setTreeSnapshot] = useState(DEFAULT_TREE);
+  const [skippedAuth, setSkippedAuth] = useState(false);
   const insets = useSafeAreaInsets();
   const treeActionsRef = useRef({ reset: null, unlockAll: null, enterEditMode: null });
   const {
@@ -47,24 +48,28 @@ export default function AppShell() {
     progress: { xp: 0, level: 1 },
     unlockedNodes: [],
   };
-  const isAdmin = resolvedUserData.profile?.role === 'admin';
+  const isAdmin = skippedAuth || resolvedUserData.profile?.role === 'admin';
 
   useEffect(() => {
     if (!session) {
-      setTab('Tree');
-      setTreeSnapshot(DEFAULT_TREE);
+      if (!skippedAuth) {
+        setTab('Tree');
+        setTreeSnapshot(DEFAULT_TREE);
+      }
       return;
     }
 
     setTreeSnapshot((currentTree) => applyUnlockedNodesToTree(currentTree || DEFAULT_TREE, resolvedUserData.unlockedNodes));
-  }, [resolvedUserData.unlockedNodes, session]);
+  }, [resolvedUserData.unlockedNodes, session, skippedAuth]);
 
   const handleResetProgress = useCallback(() => {
     if (!isAdmin) return;
+    setTab('Tree');
     treeActionsRef.current?.reset?.();
   }, [isAdmin]);
   const handleUnlockAll = useCallback(() => {
     if (!isAdmin) return;
+    setTab('Tree');
     treeActionsRef.current?.unlockAll?.();
   }, [isAdmin]);
   const handleEditTree = useCallback(() => {
@@ -100,11 +105,11 @@ export default function AppShell() {
     return <LoadingState />;
   }
 
-  if (!session || !user) {
+  if (!skippedAuth && (!session || !user)) {
     return (
       <>
         {statusBar}
-        <AuthScreen />
+        <AuthScreen onSkip={() => setSkippedAuth(true)} />
       </>
     );
   }
@@ -114,16 +119,16 @@ export default function AppShell() {
       {statusBar}
 
       <View style={styles.contentWrap}>
-        {tab === 'Tree' && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: tab === 'Tree' ? 1 : 0, opacity: tab === 'Tree' ? 1 : 0, pointerEvents: tab === 'Tree' ? 'auto' : 'none' }]}>
           <TreeScreen
             onTreeChange={setTreeSnapshot}
             treeActionsRef={treeActionsRef}
             onNavigate={setTab}
-            userId={user.id}
+            userId={user?.id ?? null}
             userData={resolvedUserData}
             onCloudDataChange={handleCloudDataChange}
           />
-        )}
+        </View>
         {tab === 'Profile' && (
           <ProfileScreen
             tree={treeSnapshot}
@@ -138,7 +143,7 @@ export default function AppShell() {
             onUnlockAll={isAdmin ? handleUnlockAll : undefined}
             onEditTree={isAdmin ? handleEditTree : undefined}
             onSignOut={handleSignOut}
-            userEmail={user.email}
+            userEmail={user?.email ?? ''}
             userRole={resolvedUserData.profile?.role || 'user'}
           />
         )}
