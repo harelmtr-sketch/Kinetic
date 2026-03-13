@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Zap } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function KineticLogo({
   size = 48,
@@ -57,10 +57,10 @@ export default function KineticLogo({
         ]}
       >
         <View style={styles.iconCore} />
-        <Zap
+        <Ionicons
+          name="flash"
           size={glyphSize}
           color="#3B82F6"
-          strokeWidth={2.4}
           style={styles.glyph}
         />
       </View>
