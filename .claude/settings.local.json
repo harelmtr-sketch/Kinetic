@@ -5,7 +5,8 @@
       "WebFetch(domain:shopify.github.io)",
       "WebSearch",
       "Bash(grep -n:*)",
-      "Bash(gh pr:*)"
+      "Bash(gh pr:*)",
+      "Bash(npm install:*)"
     ]
   }
 }
