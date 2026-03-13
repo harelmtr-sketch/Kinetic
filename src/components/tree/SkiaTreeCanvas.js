@@ -438,9 +438,9 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   const starOpacityScale = LOD.isNear ? 1.1 : LOD.isMid ? 1.15 : 1.3;
 
   const renderNodeShell = (meta, x, y, isFarNode) => {
-    const renderR = isFarNode ? farNodeR : meta.isStart ? NODE_R * 1.14 : NODE_R;
+    const renderR = isFarNode ? farNodeR : meta.isStart ? NODE_R * 1.24 : NODE_R;
     const primaryRingR = isFarNode ? NODE_R * 0.3 : renderR - 1.5;
-    const haloRingR = isFarNode ? NODE_R * 0.43 : renderR + (meta.isStart ? 18 : 12);
+    const haloRingR = isFarNode ? NODE_R * 0.43 : renderR + (meta.isStart ? 22 : 12);
     const innerGlowR = isFarNode ? NODE_R * 0.38 : renderR * (meta.isStart ? 1.28 : 1.18);
     const outerGlowR = isFarNode ? NODE_R * 0.48 : renderR * (meta.isStart ? 1.52 : 1.36);
     const ambientR = isFarNode ? NODE_R * 0.54 : renderR * (meta.isStart ? 2.08 : 1.64);
@@ -454,18 +454,26 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const haloBloomOpacity = meta.useFocusedPulse ? focusedPulseHaloBloomOpacity : 0;
 
     if (isFarNode) {
+      const farR = meta.isStart ? NODE_R * 0.7 : NODE_R * 0.55;
       return (
         <Group>
           {meta.isLit && (
-            <Circle cx={cx} cy={cy} r={NODE_R * 1.4} color={toRGBA(meta.visual.stroke, 0.06)} />
+            <Circle cx={cx} cy={cy} r={NODE_R * (meta.isStart ? 1.8 : 1.4)} color={toRGBA(meta.visual.stroke, 0.06)} />
+          )}
+          {meta.isStart && (
+            <>
+              <Circle cx={cx - 4} cy={cy - 2} r={NODE_R * 1.1} color="rgba(52,225,122,0.04)" />
+              <Circle cx={cx + 4} cy={cy - 2} r={NODE_R * 1.1} color="rgba(255,216,74,0.035)" />
+              <Circle cx={cx} cy={cy + 3} r={NODE_R * 1.1} color="rgba(96,165,250,0.04)" />
+            </>
           )}
           {meta.isLit && (
-            <Circle cx={cx} cy={cy} r={NODE_R * 0.9} color={toRGBA(meta.visual.stroke, 0.1)} />
+            <Circle cx={cx} cy={cy} r={NODE_R * (meta.isStart ? 1.1 : 0.9)} color={toRGBA(meta.visual.stroke, 0.1)} />
           )}
-          <Circle cx={cx} cy={cy} r={NODE_R * 0.55} color={meta.visual.farAura || toRGBA(meta.visual.stroke, 0.18)} />
-          <Circle cx={cx} cy={cy} r={NODE_R * 0.36} color={meta.visual.farBody || toRGBA(meta.visual.stroke, 0.36)} />
-          <Circle cx={cx} cy={cy} r={NODE_R * 0.18} color={meta.visual.farCore || toRGBA(meta.visual.ring, 0.56)} />
-          <Circle cx={cx} cy={cy} r={NODE_R * 0.38} style="stroke" strokeWidth={0.9} color={toRGBA(meta.visual.stroke, 0.52)} />
+          <Circle cx={cx} cy={cy} r={farR} color={meta.visual.farAura || toRGBA(meta.visual.stroke, 0.18)} />
+          <Circle cx={cx} cy={cy} r={farR * 0.65} color={meta.visual.farBody || toRGBA(meta.visual.stroke, 0.36)} />
+          <Circle cx={cx} cy={cy} r={farR * 0.33} color={meta.visual.farCore || toRGBA(meta.visual.ring, 0.56)} />
+          <Circle cx={cx} cy={cy} r={farR * 0.7} style="stroke" strokeWidth={meta.isStart ? 1.2 : 0.9} color={toRGBA(meta.visual.stroke, 0.52)} />
         </Group>
       );
     }
@@ -587,11 +595,27 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             cy={cy}
             r={primaryRingR - 4}
             style="stroke"
-            strokeWidth={meta.isStart ? 0.95 : 0.74}
-            color={meta.visual.innerRing || toRGBA(meta.visual.ring, meta.isStart ? 0.32 : 0.22)}
+            strokeWidth={meta.isStart ? 0.85 : 0.74}
+            color={meta.visual.innerRing || toRGBA(meta.visual.ring, meta.isStart ? 0.16 : 0.22)}
             opacity={strokeOpacity}
           />
         )}
+        {/* Tri-color ring arcs for start nodes */}
+        {meta.isStart && !isFarNode && (() => {
+          const r = primaryRingR;
+          const sw = 1.4;
+          const arcs = [
+            { c: 'rgba(52,225,122,0.55)', a: -50, sweep: 80 },
+            { c: 'rgba(255,216,74,0.50)', a: 70, sweep: 80 },
+            { c: 'rgba(96,165,250,0.55)', a: 190, sweep: 80 },
+          ];
+          return arcs.map(({ c, a, sweep }, i) => {
+            const s = (a * Math.PI) / 180;
+            const e = ((a + sweep) * Math.PI) / 180;
+            const d = `M ${cx + r * Math.cos(s)} ${cy + r * Math.sin(s)} A ${r} ${r} 0 0 1 ${cx + r * Math.cos(e)} ${cy + r * Math.sin(e)}`;
+            return <Path key={`sa_${i}`} path={d} style="stroke" strokeWidth={sw} color={c} strokeCap="round" />;
+          });
+        })()}
       </Group>
     );
   };
@@ -660,7 +684,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
 
           return (
             <Group key={edge.id}>
-              {LOD.showEdgeGlow && !isInteracting && !bld && !isLocked && (
+              {!bld && isMastered && (
                 <Group>
                   <Path
                     path={edge.path}
@@ -668,7 +692,6 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                     strokeWidth={glowOuterWidth}
                     color={glowOuterColor}
                     strokeCap="round"
-                    opacity={edgeGlowOpacity}
                   />
                   <Path
                     path={edge.path}
@@ -676,12 +699,11 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                     strokeWidth={glowInnerWidth}
                     color={glowInnerColor}
                     strokeCap="round"
-                    opacity={edgeGlowOpacity}
                   />
                 </Group>
               )}
 
-              <Path path={edge.path} style="stroke" strokeWidth={width} color={mainColor} strokeCap="round" opacity={edgeMainOpacity}>
+              <Path path={edge.path} style="stroke" strokeWidth={width} color={mainColor} strokeCap="round">
                 {!isMastered && !bld && <DashPathEffect intervals={dashIntervals} />}
               </Path>
             </Group>

@@ -6,7 +6,8 @@
       "WebSearch",
       "Bash(grep -n:*)",
       "Bash(gh pr:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npx expo:*)"
     ]
   }
 }

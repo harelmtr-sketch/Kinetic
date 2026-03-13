@@ -251,7 +251,10 @@ export default function TreeScreen({
     const hw = Math.max(6000, mxX - mnX + pad * 2) / 2;
     const hh = Math.max(6000, mxY - mnY + pad * 2) / 2;
     boundsMinX.value = cx - hw; boundsMaxX.value = cx + hw;
-    boundsMinY.value = cy - hh; boundsMaxY.value = cy + hh;
+    boundsMinY.value = mnY - 2000;
+    // Tight bottom: start node is the bottommost, only 260 padding below it
+    const startN = nodes.find((n) => n.isStart);
+    boundsMaxY.value = startN ? startN.y + 260 : cy + hh;
   }, [tree]);
 
   const clampTx = (tx, sc) => {
@@ -268,7 +271,8 @@ export default function TreeScreen({
     const ch = canvasHV.value;
     const minTy = ch - boundsMaxY.value * sc;
     const maxTy = -boundsMinY.value * sc;
-    if (minTy > maxTy) return (minTy + maxTy) / 2;
+    // When content fits: anchor to bottom so start node stays low
+    if (minTy > maxTy) return minTy;
     return Math.min(Math.max(ty, minTy), maxTy);
   };
 
@@ -280,7 +284,7 @@ export default function TreeScreen({
     const minTy = ch - boundsMaxY.value * sc;
     const maxTy = -boundsMinY.value * sc;
     const cTx = minTx > maxTx ? (minTx + maxTx) / 2 : Math.min(Math.max(tx, minTx), maxTx);
-    const cTy = minTy > maxTy ? (minTy + maxTy) / 2 : Math.min(Math.max(ty, minTy), maxTy);
+    const cTy = minTy > maxTy ? minTy : Math.min(Math.max(ty, minTy), maxTy);
     txN.current = cTx; tyN.current = cTy; scN.current = sc;
     txV.value = cTx; tyV.value = cTy; scV.value = sc;
   };
@@ -300,9 +304,9 @@ export default function TreeScreen({
     if (!startNode) return;
     const sc = 0.7;
     const cx = canvasSize.width / 2;
-    const cy = canvasSize.height / 2;
+    const ch = canvasSize.height;
     const tx = cx - startNode.x * sc;
-    const ty = cy - startNode.y * sc;
+    const ty = ch / 2 - startNode.y * sc;
     setLiveXform(tx, ty, sc);
     commitLiveXform();
   };
@@ -394,7 +398,7 @@ export default function TreeScreen({
     const minTy = ch - boundsMaxY.value * sc;
     const maxTy = -boundsMinY.value * sc;
     const cTx = minTx > maxTx ? (minTx + maxTx) / 2 : Math.min(Math.max(rawTx, minTx), maxTx);
-    const cTy = minTy > maxTy ? (minTy + maxTy) / 2 : Math.min(Math.max(rawTy, minTy), maxTy);
+    const cTy = minTy > maxTy ? minTy : Math.min(Math.max(rawTy, minTy), maxTy);
     txN.current = cTx; tyN.current = cTy; scN.current = sc;
     txV.value = cTx; tyV.value = cTy; scV.value = sc;
     setXform((prev) => (
@@ -740,7 +744,7 @@ export default function TreeScreen({
       }
       if (!bld) {
         const prereqs = incomingByNode.get(n.id) || [];
-        const ready = prereqs.length > 0 && prereqs.every((pid) => nodeMap.get(pid)?.unlocked);
+        const ready = prereqs.length > 0 && prereqs.some((pid) => nodeMap.get(pid)?.unlocked || nodeMap.get(pid)?.isStart);
         status[n.id] = ready ? 'ready' : 'locked';
       } else {
         status[n.id] = 'locked';
@@ -834,7 +838,7 @@ export default function TreeScreen({
       isMid,
       isNear,
       interactionTier,
-      showLabels: isNear,
+      showLabels: !isFar,
       showOuterRing: !isFar,
       showEdgeGlow: isNear && interactionTier === 'idle',
       showDust: interactionTier === 'idle' && !isFar,
@@ -936,20 +940,24 @@ export default function TreeScreen({
           sw: 2.7,
         };
       } else if (status === 'start') {
-        const startBc = BRANCH_COLORS.neutral;
         map[n.id] = {
-          ...makeVisual('neutral', startBc, 'mastered'),
-          fill: 'rgba(8,14,24,0.96)',
-          innerFill: 'rgba(10,20,34,0.96)',
-          core: 'rgba(147,197,253,0.08)',
-          stroke: 'rgba(96,165,250,0.98)',
-          ring: 'rgba(191,219,254,0.54)',
-          glowInner: 'rgba(96,165,250,0.18)',
-          glowOuter: 'rgba(59,130,246,0.08)',
-          ambient: 'rgba(59,130,246,0.04)',
-          innerRing: 'rgba(96,165,250,0.18)',
-          innerRingSoft: 'rgba(191,219,254,0.12)',
-          sw: 2.7,
+          fill: 'rgba(6,10,18,0.97)',
+          innerFill: 'rgba(8,14,24,0.97)',
+          core: 'rgba(200,220,255,0.06)',
+          outerRim: 'rgba(200,220,240,0.18)',
+          stroke: 'rgba(220,230,255,0.88)',
+          ring: 'rgba(200,215,240,0.44)',
+          glowInner: 'rgba(180,210,255,0.12)',
+          glowOuter: 'rgba(160,200,255,0.06)',
+          ambient: 'rgba(140,180,240,0.03)',
+          farAura: 'rgba(200,215,240,0.22)',
+          farBody: 'rgba(200,215,240,0.48)',
+          farCore: 'rgba(220,230,255,0.7)',
+          innerRing: 'rgba(200,215,240,0.14)',
+          innerRingSoft: 'rgba(200,215,240,0.1)',
+          specular: 'rgba(240,246,255,0.12)',
+          sw: 2.8,
+          opacity: 0.98,
         };
       } else {
         map[n.id] = makeVisual(branch, bc, status);
@@ -966,7 +974,7 @@ export default function TreeScreen({
       masteredW: 1.8, readyW: 1.28, lockedW: 0.82, masteredO: 0.86, readyO: 0.56, lockedO: 0.17,
     };
     return {
-      masteredW: 2.45, readyW: 1.62, lockedW: 0.88, masteredO: 0.92, readyO: 0.65, lockedO: 0.2,
+      masteredW: 4.8, readyW: 3.2, lockedW: 1.6, masteredO: 0.94, readyO: 0.68, lockedO: 0.22,
     };
   }, [LOD.isFar, LOD.isMid]);
 

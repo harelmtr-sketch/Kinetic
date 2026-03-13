@@ -61,78 +61,35 @@ const ALL_STARS = [...STARS, ...EXTRA_STARS];
 
 const ASTEROIDS = [
   {
-    top: 152,
-    width: 30,
-    height: 14,
-    startX: -72,
-    endX: SCREEN_WIDTH + 42,
-    sway: 12,
-    rotateStart: '-16deg',
-    rotateEnd: '12deg',
-    color: 'rgba(148, 163, 184, 0.34)',
-    borderColor: 'rgba(226, 232, 240, 0.16)',
-    craterColor: 'rgba(71, 85, 105, 0.46)',
-    entry: 0.02,
-    exit: 0.4,
+    top: 152, width: 30, height: 14, startX: -72, endX: SCREEN_WIDTH + 42,
+    sway: 12, rotateStart: '-16deg', rotateEnd: '12deg',
+    color: 'rgba(148, 163, 184, 0.34)', borderColor: 'rgba(226, 232, 240, 0.16)',
+    craterColor: 'rgba(71, 85, 105, 0.46)', entry: 0.02, exit: 0.4,
   },
   {
-    top: 286,
-    width: 22,
-    height: 11,
-    startX: SCREEN_WIDTH + 36,
-    endX: -64,
-    sway: 14,
-    rotateStart: '12deg',
-    rotateEnd: '-18deg',
-    color: 'rgba(161, 161, 170, 0.28)',
-    borderColor: 'rgba(228, 228, 231, 0.12)',
-    craterColor: 'rgba(82, 82, 91, 0.42)',
-    entry: 0.2,
-    exit: 0.58,
+    top: 286, width: 22, height: 11, startX: SCREEN_WIDTH + 36, endX: -64,
+    sway: 14, rotateStart: '12deg', rotateEnd: '-18deg',
+    color: 'rgba(161, 161, 170, 0.28)', borderColor: 'rgba(228, 228, 231, 0.12)',
+    craterColor: 'rgba(82, 82, 91, 0.42)', entry: 0.2, exit: 0.58,
   },
   {
-    top: 516,
-    width: 34,
-    height: 16,
-    startX: -88,
-    endX: SCREEN_WIDTH + 60,
-    sway: 18,
-    rotateStart: '-10deg',
-    rotateEnd: '18deg',
-    color: 'rgba(113, 113, 122, 0.26)',
-    borderColor: 'rgba(212, 212, 216, 0.12)',
-    craterColor: 'rgba(63, 63, 70, 0.38)',
-    entry: 0.46,
-    exit: 0.88,
+    top: 516, width: 34, height: 16, startX: -88, endX: SCREEN_WIDTH + 60,
+    sway: 18, rotateStart: '-10deg', rotateEnd: '18deg',
+    color: 'rgba(113, 113, 122, 0.26)', borderColor: 'rgba(212, 212, 216, 0.12)',
+    craterColor: 'rgba(63, 63, 70, 0.38)', entry: 0.46, exit: 0.88,
   },
   {
-    top: 704,
-    width: 18,
-    height: 10,
-    startX: SCREEN_WIDTH + 28,
-    endX: -54,
-    sway: 10,
-    rotateStart: '22deg',
-    rotateEnd: '-14deg',
-    color: 'rgba(148, 163, 184, 0.22)',
-    borderColor: 'rgba(226, 232, 240, 0.1)',
-    craterColor: 'rgba(71, 85, 105, 0.32)',
-    entry: 0.66,
-    exit: 0.98,
+    top: 704, width: 18, height: 10, startX: SCREEN_WIDTH + 28, endX: -54,
+    sway: 10, rotateStart: '22deg', rotateEnd: '-14deg',
+    color: 'rgba(148, 163, 184, 0.22)', borderColor: 'rgba(226, 232, 240, 0.1)',
+    craterColor: 'rgba(71, 85, 105, 0.32)', entry: 0.66, exit: 0.98,
   },
 ];
 
 function Field({
-  icon,
-  placeholder,
-  value,
-  onChangeText,
-  secureTextEntry = false,
-  autoComplete,
-  keyboardType,
-  showToggle = false,
-  isVisible = false,
-  onToggleVisibility,
+  icon, placeholder, value, onChangeText,
+  secureTextEntry = false, autoComplete, keyboardType,
+  showToggle = false, isVisible = false, onToggleVisibility,
 }) {
   return (
     <View style={styles.fieldShell}>
@@ -172,57 +129,36 @@ function Starfield({ driftValue, twinkleValue, rockValue }) {
           outputRange: [rock.startX, rock.startX, rock.endX, rock.endX],
           extrapolate: 'clamp',
         });
-
         const translateY = rockValue.interpolate({
           inputRange: [0, rock.entry, (rock.entry + rock.exit) / 2, rock.exit, 1],
           outputRange: [0, 0, rock.sway, -rock.sway * 0.45, -rock.sway * 0.45],
           extrapolate: 'clamp',
         });
-
         const opacity = rockValue.interpolate({
           inputRange: [0, rock.entry, Math.min(rock.entry + 0.08, rock.exit), rock.exit, 1],
           outputRange: [0, 0, 0.86, 0, 0],
           extrapolate: 'clamp',
         });
-
         const scale = rockValue.interpolate({
           inputRange: [0, rock.entry, (rock.entry + rock.exit) / 2, rock.exit, 1],
           outputRange: [0.86, 0.86, 1.08, 0.94, 0.94],
           extrapolate: 'clamp',
         });
-
         const rotate = rockValue.interpolate({
           inputRange: [0, rock.entry, rock.exit, 1],
           outputRange: [rock.rotateStart, rock.rotateStart, rock.rotateEnd, rock.rotateEnd],
           extrapolate: 'clamp',
         });
-
-        const pulse = driftValue.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.96, 1.04],
-        });
+        const pulse = driftValue.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.04] });
 
         return (
           <Animated.View
             key={`${rock.top}-${rock.entry}-${index}`}
-            style={[
-              styles.asteroid,
-              {
-                top: rock.top,
-                width: rock.width,
-                height: rock.height,
-                backgroundColor: rock.color,
-                borderColor: rock.borderColor,
-                opacity,
-                transform: [
-                  { translateX },
-                  { translateY },
-                  { rotate },
-                  { scale },
-                  { scale: pulse },
-                ],
-              },
-            ]}
+            style={[styles.asteroid, {
+              top: rock.top, width: rock.width, height: rock.height,
+              backgroundColor: rock.color, borderColor: rock.borderColor, opacity,
+              transform: [{ translateX }, { translateY }, { rotate }, { scale }, { scale: pulse }],
+            }]}
           >
             <View style={[styles.asteroidCraterLarge, { backgroundColor: rock.craterColor }]} />
             <View style={[styles.asteroidCraterSmall, { backgroundColor: rock.craterColor }]} />
@@ -231,21 +167,12 @@ function Starfield({ driftValue, twinkleValue, rockValue }) {
       })}
 
       {ALL_STARS.map((star, index) => {
-        const translateY = driftValue.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, star.drift],
-        });
-
-        const translateX = twinkleValue.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, index % 2 === 0 ? 1.5 : -1.5],
-        });
-
+        const translateY = driftValue.interpolate({ inputRange: [0, 1], outputRange: [0, star.drift] });
+        const translateX = twinkleValue.interpolate({ inputRange: [0, 1], outputRange: [0, index % 2 === 0 ? 1.5 : -1.5] });
         const opacity = twinkleValue.interpolate({
           inputRange: [0, star.delay, Math.min(star.delay + 0.22, 1), 1],
           outputRange: [0.18, 1, 0.26, 0.78],
         });
-
         const scale = twinkleValue.interpolate({
           inputRange: [0, star.delay, Math.min(star.delay + 0.22, 1), 1],
           outputRange: [0.82, 1.42, 0.92, 1.12],
@@ -254,19 +181,11 @@ function Starfield({ driftValue, twinkleValue, rockValue }) {
         return (
           <Animated.View
             key={`${star.left}-${star.top}-${index}`}
-            style={[
-              styles.star,
-              {
-                left: star.left,
-                top: star.top,
-                width: star.size,
-                height: star.size,
-                borderRadius: star.size,
-                backgroundColor: star.color,
-                opacity,
-                transform: [{ translateX }, { translateY }, { scale }],
-              },
-            ]}
+            style={[styles.star, {
+              left: star.left, top: star.top, width: star.size, height: star.size,
+              borderRadius: star.size, backgroundColor: star.color, opacity,
+              transform: [{ translateX }, { translateY }, { scale }],
+            }]}
           />
         );
       })}
@@ -274,7 +193,7 @@ function Starfield({ driftValue, twinkleValue, rockValue }) {
   );
 }
 
-export default function AuthScreen() {
+export default function AuthScreen({ onSkip }) {
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState('signIn');
   const [email, setEmail] = useState('');
@@ -282,10 +201,10 @@ export default function AuthScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [socialProvider, setSocialProvider] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [showReset, setShowReset] = useState(false);
   const floatValue = useRef(new Animated.Value(0)).current;
   const twinkleValue = useRef(new Animated.Value(0)).current;
   const rockValue = useRef(new Animated.Value(0)).current;
@@ -293,202 +212,93 @@ export default function AuthScreen() {
 
   useEffect(() => {
     let isMounted = true;
-
     const restoreSavedLogin = async () => {
       try {
         const raw = await AsyncStorage.getItem(SAVED_LOGIN_KEY);
-        if (!raw || !isMounted) {
-          return;
-        }
-
+        if (!raw || !isMounted) return;
         const savedLogin = JSON.parse(raw);
-        setRememberMe(savedLogin.remember !== false);
         setEmail(savedLogin.email || '');
         setPassword(savedLogin.password || '');
-      } catch (_error) {
-        // Ignore malformed local auth cache.
-      }
+      } catch (_error) { /* ignore */ }
     };
-
     restoreSavedLogin();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, []);
 
   useEffect(() => {
-    const floatLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatValue, {
-          toValue: 1,
-          duration: 4200,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(floatValue, {
-          toValue: 0,
-          duration: 4200,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-
-    const twinkleLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(twinkleValue, {
-          toValue: 1,
-          duration: 5200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(twinkleValue, {
-          toValue: 0,
-          duration: 5200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-
-    const rockLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(rockValue, {
-          toValue: 1,
-          duration: 16000,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-        Animated.timing(rockValue, {
-          toValue: 0,
-          duration: 0,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-
-    floatLoop.start();
-    twinkleLoop.start();
-    rockLoop.start();
-
-    return () => {
-      floatLoop.stop();
-      twinkleLoop.stop();
-      rockLoop.stop();
-    };
+    const floatLoop = Animated.loop(Animated.sequence([
+      Animated.timing(floatValue, { toValue: 1, duration: 4200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(floatValue, { toValue: 0, duration: 4200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+    ]));
+    const twinkleLoop = Animated.loop(Animated.sequence([
+      Animated.timing(twinkleValue, { toValue: 1, duration: 5200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(twinkleValue, { toValue: 0, duration: 5200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    const rockLoop = Animated.loop(Animated.sequence([
+      Animated.timing(rockValue, { toValue: 1, duration: 16000, easing: Easing.linear, useNativeDriver: true }),
+      Animated.timing(rockValue, { toValue: 0, duration: 0, useNativeDriver: true }),
+    ]));
+    floatLoop.start(); twinkleLoop.start(); rockLoop.start();
+    return () => { floatLoop.stop(); twinkleLoop.stop(); rockLoop.stop(); };
   }, [floatValue, twinkleValue, rockValue]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
     const showSub = Keyboard.addListener(showEvent, (event) => {
       const keyboardHeight = event.endCoordinates?.height || 0;
-      const targetShift = -Math.min(150, Math.max(72, keyboardHeight * 0.32));
-
       Animated.timing(keyboardShift, {
-        toValue: targetShift,
+        toValue: -Math.min(150, Math.max(72, keyboardHeight * 0.32)),
         duration: Platform.OS === 'ios' ? 240 : 180,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic), useNativeDriver: true,
       }).start();
     });
-
     const hideSub = Keyboard.addListener(hideEvent, () => {
       Animated.timing(keyboardShift, {
-        toValue: 0,
-        duration: Platform.OS === 'ios' ? 220 : 180,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        toValue: 0, duration: Platform.OS === 'ios' ? 220 : 180,
+        easing: Easing.out(Easing.cubic), useNativeDriver: true,
       }).start();
     });
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
+    return () => { showSub.remove(); hideSub.remove(); };
   }, [keyboardShift]);
 
-  const logoTranslateY = floatValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -7],
-  });
-
-  const cardTranslateY = floatValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -2],
-  });
-
-  const copy = useMemo(() => (
-    mode === 'signIn'
-      ? {
-        title: 'Welcome back',
-        subtitle: 'Sign in to track your progress',
-        submitLabel: 'Sign In',
-        switchPrompt: "Don't have an account?",
-        switchLabel: 'Sign up',
-      }
-      : {
-        title: 'Create account',
-        subtitle: 'Set up cloud save and sync your progress',
-        submitLabel: 'Create Account',
-        switchPrompt: 'Already have an account?',
-        switchLabel: 'Use existing login',
-      }
-  ), [mode]);
+  const logoTranslateY = floatValue.interpolate({ inputRange: [0, 1], outputRange: [0, -7] });
+  const formTranslateY = floatValue.interpolate({ inputRange: [0, 1], outputRange: [0, -2] });
 
   const handleSubmit = async () => {
     const normalizedEmail = email.trim().toLowerCase();
-
-    if (!normalizedEmail || !password) {
-      setErrorMessage('Email and password are required.');
-      return;
-    }
-
-    if (!normalizedEmail.includes('@')) {
-      setErrorMessage('Enter a valid email address with @.');
-      return;
-    }
-
-    if (password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters.');
-      return;
-    }
-
-    if (mode === 'signUp' && password !== confirmPassword) {
-      setErrorMessage('Passwords do not match.');
-      return;
-    }
+    if (!normalizedEmail || !password) { setErrorMessage('Email and password are required.'); return; }
+    if (!normalizedEmail.includes('@')) { setErrorMessage('Enter a valid email address.'); return; }
+    if (password.length < 6) { setErrorMessage('Password must be at least 6 characters.'); return; }
+    if (mode === 'signUp' && password !== confirmPassword) { setErrorMessage('Passwords do not match.'); return; }
 
     setIsSubmitting(true);
     setErrorMessage('');
+    setShowReset(false);
 
     try {
       if (mode === 'signIn') {
         await signIn(normalizedEmail, password);
+        // Prompt to save credentials after successful sign-in
+        Alert.alert(
+          'Save login?',
+          'Would you like to save your credentials for next time?',
+          [
+            { text: 'Not now', style: 'cancel', onPress: () => AsyncStorage.removeItem(SAVED_LOGIN_KEY) },
+            { text: 'Save', onPress: () => AsyncStorage.setItem(SAVED_LOGIN_KEY, JSON.stringify({ email: normalizedEmail, password, remember: true })) },
+          ],
+        );
       } else {
         const result = await signUp(normalizedEmail, password);
         if (result.user && !result.session) {
-          Alert.alert(
-            'Check your email',
-            'Your account was created. Confirm your email, then sign in.',
-          );
+          Alert.alert('Check your email', 'Your account was created. Confirm your email, then sign in.');
           setMode('signIn');
         }
       }
-
-      if (rememberMe) {
-        await AsyncStorage.setItem(SAVED_LOGIN_KEY, JSON.stringify({
-          email: normalizedEmail,
-          password,
-          remember: true,
-        }));
-      } else {
-        await AsyncStorage.removeItem(SAVED_LOGIN_KEY);
-      }
     } catch (error) {
-      setErrorMessage(error?.message || 'Unable to continue right now.');
+      const msg = error?.message || 'Unable to continue right now.';
+      setErrorMessage(msg);
+      if (mode === 'signIn') setShowReset(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -497,7 +307,6 @@ export default function AuthScreen() {
   const handleSocialAuth = async (provider) => {
     setSocialProvider(provider);
     setErrorMessage('');
-
     try {
       await signInWithSocial(provider);
     } catch (error) {
@@ -509,27 +318,24 @@ export default function AuthScreen() {
 
   const handleForgotPassword = async () => {
     const normalizedEmail = email.trim().toLowerCase();
-
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
       setErrorMessage('Enter your email first so we can send a reset link.');
       return;
     }
-
     setIsSubmitting(true);
     setErrorMessage('');
-
     try {
       await sendPasswordReset(normalizedEmail);
-      Alert.alert(
-        'Reset email sent',
-        'Open the reset link on your phone in this app to finish resetting your password.',
-      );
+      Alert.alert('Reset email sent', 'Check your inbox for the password reset link.');
+      setShowReset(false);
     } catch (error) {
       setErrorMessage(error?.message || 'Unable to send a reset email right now.');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const isSignIn = mode === 'signIn';
 
   return (
     <KeyboardAvoidingView
@@ -542,49 +348,18 @@ export default function AuthScreen() {
         <Starfield driftValue={floatValue} twinkleValue={twinkleValue} rockValue={rockValue} />
       </View>
 
-      <View
-        style={[
-          styles.content,
-          {
-            paddingTop: insets.top + 2,
-            paddingBottom: Math.max(insets.bottom, 18),
-          },
-        ]}
-      >
-        <Animated.View
-          style={[
-            styles.hero,
-            {
-              transform: [{ translateY: Animated.add(logoTranslateY, keyboardShift) }],
-            },
-          ]}
-        >
+      <View style={[styles.content, { paddingTop: insets.top + 2, paddingBottom: Math.max(insets.bottom, 18) }]}>
+        <Animated.View style={[styles.hero, { transform: [{ translateY: Animated.add(logoTranslateY, keyboardShift) }] }]}>
           <View style={styles.logoHalo}>
             <View style={styles.logoHaloRing} />
             <View style={styles.logoCoreBox}>
-              <KineticLogo size={60} glow={false} />
+              <KineticLogo size={44} glow={false} />
             </View>
           </View>
-          <Text style={styles.brand}>Kinetic</Text>
+          <Text style={styles.title}>{isSignIn ? 'Sign In' : 'Create Account'}</Text>
         </Animated.View>
 
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              transform: [{ translateY: Animated.add(cardTranslateY, keyboardShift) }],
-            },
-          ]}
-        >
-          <View style={styles.signalBadge}>
-            <View style={styles.signalDot} />
-            <Text style={styles.signalText}>Supabase connected</Text>
-          </View>
-
-          <View style={styles.copyBlock}>
-            <Text style={styles.title}>{copy.title}</Text>
-            <Text style={styles.subtitle}>{copy.subtitle}</Text>
-          </View>
+        <Animated.View style={[styles.formWrap, { transform: [{ translateY: Animated.add(formTranslateY, keyboardShift) }] }]}>
 
           <View style={styles.form}>
             <Field
@@ -595,20 +370,18 @@ export default function AuthScreen() {
               autoComplete="email"
               keyboardType="email-address"
             />
-
             <Field
               icon="lock-closed-outline"
-              placeholder="Enter your password"
+              placeholder={isSignIn ? 'Enter your password' : 'Create a password'}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
-              autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'}
+              autoComplete={isSignIn ? 'current-password' : 'new-password'}
               showToggle
               isVisible={isPasswordVisible}
-              onToggleVisibility={() => setIsPasswordVisible((current) => !current)}
+              onToggleVisibility={() => setIsPasswordVisible((c) => !c)}
             />
-
-            {mode === 'signUp' && (
+            {!isSignIn && (
               <Field
                 icon="shield-checkmark-outline"
                 placeholder="Confirm your password"
@@ -617,7 +390,7 @@ export default function AuthScreen() {
                 secureTextEntry
                 showToggle
                 isVisible={isConfirmPasswordVisible}
-                onToggleVisibility={() => setIsConfirmPasswordVisible((current) => !current)}
+                onToggleVisibility={() => setIsConfirmPasswordVisible((c) => !c)}
               />
             )}
           </View>
@@ -629,15 +402,11 @@ export default function AuthScreen() {
             </View>
           )}
 
-          <Pressable
-            style={styles.rememberRow}
-            onPress={() => setRememberMe((current) => !current)}
-          >
-            <View style={[styles.rememberBox, rememberMe && styles.rememberBoxActive]}>
-              {rememberMe && <Ionicons name="checkmark" size={13} color="#04101B" />}
-            </View>
-            <Text style={styles.rememberText}>Remember me on this device</Text>
-          </Pressable>
+          {showReset && isSignIn && (
+            <Pressable style={styles.resetButton} onPress={handleForgotPassword}>
+              <Text style={styles.resetButtonText}>Reset password</Text>
+            </Pressable>
+          )}
 
           <Pressable
             style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
@@ -645,10 +414,19 @@ export default function AuthScreen() {
             disabled={isSubmitting || !!socialProvider}
           >
             {isSubmitting ? (
-              <ActivityIndicator color="#04101B" />
+              <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.submitButtonText}>{copy.submitLabel}</Text>
+              <Text style={styles.submitButtonText}>{isSignIn ? 'Sign In' : 'Create Account'}</Text>
             )}
+          </Pressable>
+
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => { setMode(isSignIn ? 'signUp' : 'signIn'); setErrorMessage(''); setShowReset(false); }}
+          >
+            <Text style={styles.secondaryButtonText}>
+              {isSignIn ? 'Create Account' : 'Back to Sign In'}
+            </Text>
           </Pressable>
 
           <View style={styles.orRow}>
@@ -659,36 +437,23 @@ export default function AuthScreen() {
 
           <View style={styles.socialRow}>
             <Pressable
-              style={[
-                styles.socialButton,
-                styles.googleButton,
-                socialProvider === 'google' && styles.socialButtonBusy,
-              ]}
+              style={[styles.socialButton, socialProvider === 'google' && styles.socialButtonBusy]}
               onPress={() => handleSocialAuth('google')}
               disabled={isSubmitting || !!socialProvider}
             >
-              {socialProvider === 'google' ? (
-                <ActivityIndicator color="#F8FBFF" />
-              ) : (
+              {socialProvider === 'google' ? <ActivityIndicator color="#F8FBFF" /> : (
                 <>
                   <Ionicons name="logo-google" size={17} color="#EA4335" />
                   <Text style={styles.socialButtonText}>Google</Text>
                 </>
               )}
             </Pressable>
-
             <Pressable
-              style={[
-                styles.socialButton,
-                styles.facebookButton,
-                socialProvider === 'facebook' && styles.socialButtonBusy,
-              ]}
+              style={[styles.socialButton, socialProvider === 'facebook' && styles.socialButtonBusy]}
               onPress={() => handleSocialAuth('facebook')}
               disabled={isSubmitting || !!socialProvider}
             >
-              {socialProvider === 'facebook' ? (
-                <ActivityIndicator color="#F8FBFF" />
-              ) : (
+              {socialProvider === 'facebook' ? <ActivityIndicator color="#F8FBFF" /> : (
                 <>
                   <Ionicons name="logo-facebook" size={17} color="#1877F2" />
                   <Text style={styles.socialButtonText}>Facebook</Text>
@@ -696,27 +461,6 @@ export default function AuthScreen() {
               )}
             </Pressable>
           </View>
-
-          <View style={styles.switchRow}>
-            <Text style={styles.switchPrompt}>{copy.switchPrompt}</Text>
-            <Pressable
-              onPress={() => {
-                setMode((current) => (current === 'signIn' ? 'signUp' : 'signIn'));
-                setErrorMessage('');
-              }}
-            >
-              <Text style={styles.switchLabel}>{copy.switchLabel}</Text>
-            </Pressable>
-          </View>
-
-          {mode === 'signIn' && (
-            <View style={styles.resetRow}>
-              <Text style={styles.resetPrompt}>Forgot your password?</Text>
-              <Pressable onPress={handleForgotPassword}>
-                <Text style={styles.resetLink}>Reset it</Text>
-              </Pressable>
-            </View>
-          )}
         </Animated.View>
       </View>
     </KeyboardAvoidingView>
@@ -724,332 +468,85 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: {
-    flex: 1,
-    backgroundColor: '#01030A',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#01030A',
-  },
-  backgroundTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(1, 4, 12, 0.9)',
-  },
-  backgroundDepth: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(3, 8, 18, 0.18)',
-  },
-  starfield: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  page: { flex: 1, backgroundColor: '#01030A' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: '#01030A' },
+  backgroundTint: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(1, 4, 12, 0.9)' },
+  backgroundDepth: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3, 8, 18, 0.18)' },
+  starfield: { ...StyleSheet.absoluteFillObject },
   star: {
     position: 'absolute',
-    shadowColor: '#D7ECFF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.95,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowColor: '#D7ECFF', shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.95, shadowRadius: 10, elevation: 3,
   },
   asteroid: {
-    position: 'absolute',
-    borderRadius: 999,
-    borderWidth: 1,
-    shadowColor: '#CBD5E1',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    position: 'absolute', borderRadius: 999, borderWidth: 1,
+    shadowColor: '#CBD5E1', shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.1, shadowRadius: 8,
   },
-  asteroidCraterLarge: {
-    position: 'absolute',
-    width: 7,
-    height: 7,
-    borderRadius: 999,
-    top: 3,
-    left: 6,
-    opacity: 0.72,
-  },
-  asteroidCraterSmall: {
-    position: 'absolute',
-    width: 4,
-    height: 4,
-    borderRadius: 999,
-    right: 5,
-    bottom: 3,
-    opacity: 0.58,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 22,
-    justifyContent: 'center',
-    gap: 18,
-  },
-  hero: {
-    alignItems: 'center',
-    gap: 2,
-    paddingTop: 0,
-  },
-  logoHalo: {
-    width: 104,
-    height: 104,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: -2,
-  },
+  asteroidCraterLarge: { position: 'absolute', width: 7, height: 7, borderRadius: 999, top: 3, left: 6, opacity: 0.72 },
+  asteroidCraterSmall: { position: 'absolute', width: 4, height: 4, borderRadius: 999, right: 5, bottom: 3, opacity: 0.58 },
+  content: { flex: 1, paddingHorizontal: 46, justifyContent: 'center', gap: 20 },
+  hero: { alignItems: 'center', gap: 10 },
+  logoHalo: { width: 76, height: 76, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   logoHaloRing: {
-    position: 'absolute',
-    inset: -8,
-    borderRadius: 36,
+    position: 'absolute', inset: -6, borderRadius: 26,
     backgroundColor: 'rgba(37, 99, 235, 0.12)',
-    shadowColor: '#60A5FA',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 8,
+    shadowColor: '#60A5FA', shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35, shadowRadius: 16, elevation: 8,
   },
   logoCoreBox: {
-    width: 82,
-    height: 82,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 62, height: 62, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(9, 20, 36, 0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(125, 211, 252, 0.16)',
+    borderWidth: 1, borderColor: 'rgba(125, 211, 252, 0.16)',
   },
-  brand: {
-    color: '#F8FBFF',
-    fontSize: 31,
-    fontWeight: '800',
-    letterSpacing: -1,
-    textShadowColor: 'rgba(96, 165, 250, 0.42)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 24,
-  },
-  card: {
-    borderRadius: 28,
-    padding: 16,
-    backgroundColor: 'rgba(7, 13, 24, 0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(125, 211, 252, 0.09)',
-    shadowColor: '#0EA5E9',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 10,
-    gap: 12,
-    marginTop: -32,
-  },
-  signalBadge: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  signalDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4ADE80',
-  },
-  signalText: {
-    color: '#E2E8F0',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  copyBlock: {
-    gap: 4,
-  },
+  formWrap: { gap: 12 },
   title: {
-    color: '#F8FBFF',
-    fontSize: 23,
-    fontWeight: '800',
-    letterSpacing: -0.7,
-    textShadowColor: 'rgba(125, 211, 252, 0.18)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 12,
+    color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 1.6,
+    textAlign: 'center', textTransform: 'uppercase',
   },
-  subtitle: {
-    color: 'rgba(190, 206, 228, 0.72)',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  form: {
-    gap: 9,
-  },
+  form: { gap: 8 },
   fieldShell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.028)',
-    borderWidth: 1,
-    borderColor: 'rgba(173,191,218,0.08)',
-    overflow: 'hidden',
+    flexDirection: 'row', alignItems: 'center', borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1, borderColor: 'rgba(173,191,218,0.10)', overflow: 'hidden',
   },
-  fieldIconWrap: {
-    width: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fieldInput: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingRight: 8,
-    color: '#F8FBFF',
-    fontSize: 15,
-  },
-  fieldToggle: {
-    width: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rememberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: -2,
-  },
-  rememberBox: {
-    width: 18,
-    height: 18,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(173,191,218,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  rememberBoxActive: {
-    backgroundColor: '#7DD3FC',
-    borderColor: '#7DD3FC',
-  },
-  rememberText: {
-    color: 'rgba(190, 206, 228, 0.72)',
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  fieldIconWrap: { width: 42, alignItems: 'center', justifyContent: 'center' },
+  fieldInput: { flex: 1, paddingVertical: 13, paddingRight: 8, color: '#F8FBFF', fontSize: 14 },
+  fieldToggle: { width: 38, alignItems: 'center', justifyContent: 'center' },
   errorBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 6, borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 9,
     backgroundColor: 'rgba(127,29,29,0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(252,165,165,0.12)',
+    borderWidth: 1, borderColor: 'rgba(252,165,165,0.12)',
   },
-  errorText: {
-    flex: 1,
-    color: '#FCA5A5',
-    fontSize: 13,
-    lineHeight: 18,
-  },
+  errorText: { flex: 1, color: '#FCA5A5', fontSize: 12, lineHeight: 16 },
+  resetButton: { alignSelf: 'center', paddingVertical: 3 },
+  resetButtonText: { color: '#FCA5A5', fontSize: 12, fontWeight: '600' },
   submitButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 18,
-    paddingVertical: 15,
-    backgroundColor: '#3B82F6',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.32,
-    shadowRadius: 16,
-    elevation: 8,
+    alignItems: 'center', justifyContent: 'center', borderRadius: 14,
+    paddingVertical: 14, backgroundColor: '#3B82F6',
+    shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.32, shadowRadius: 12, elevation: 6,
   },
-  submitButtonDisabled: {
-    opacity: 0.72,
+  submitButtonDisabled: { opacity: 0.72 },
+  submitButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
+  secondaryButton: {
+    alignItems: 'center', justifyContent: 'center', borderRadius: 14,
+    paddingVertical: 13, borderWidth: 1,
+    borderColor: 'rgba(173,191,218,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
-  submitButtonText: {
-    color: '#04101B',
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  orRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  orLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(173,191,218,0.12)',
-  },
-  orText: {
-    color: 'rgba(173,191,218,0.48)',
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 1.1,
-  },
-  socialRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
+  secondaryButtonText: { color: 'rgba(220, 230, 245, 0.82)', fontSize: 13, fontWeight: '800' },
+  orRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  orLine: { flex: 1, height: 1, backgroundColor: 'rgba(173,191,218,0.12)' },
+  orText: { color: 'rgba(173,191,218,0.48)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.1 },
+  socialRow: { flexDirection: 'row', gap: 8 },
   socialButton: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
+    flex: 1, minHeight: 42, borderRadius: 12, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)',
   },
-  googleButton: {
-    backgroundColor: 'rgba(255,255,255,0.035)',
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  facebookButton: {
-    backgroundColor: 'rgba(255,255,255,0.035)',
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  socialButtonBusy: {
-    opacity: 0.8,
-  },
-  socialButtonText: {
-    color: '#F8FBFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingTop: 2,
-  },
-  switchPrompt: {
-    color: 'rgba(190,206,228,0.56)',
-    fontSize: 13,
-  },
-  switchLabel: {
-    color: '#7DD3FC',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  resetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: -2,
-  },
-  resetPrompt: {
-    color: 'rgba(190,206,228,0.48)',
-    fontSize: 12.5,
-  },
-  resetLink: {
-    color: '#FCA5A5',
-    fontSize: 12.5,
-    fontWeight: '700',
-  },
+  socialButtonBusy: { opacity: 0.8 },
+  socialButtonText: { color: '#F8FBFF', fontSize: 12, fontWeight: '700' },
 });
