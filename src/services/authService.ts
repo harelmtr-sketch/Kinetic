@@ -6,6 +6,23 @@ const normalizeEmail = (email) => email.trim().toLowerCase();
 export const AUTH_CALLBACK_URL = 'kinetic://auth/callback';
 const AUTH_CALLBACK_SCHEME = 'kinetic:';
 
+export function isRefreshTokenError(error) {
+  const message = error?.message || error?.error_description || error?.error || '';
+  const normalizedMessage = String(message).toLowerCase();
+
+  return normalizedMessage.includes('invalid refresh token')
+    || normalizedMessage.includes('refresh token not found')
+    || normalizedMessage.includes('refresh_token_not_found');
+}
+
+export async function clearStoredSession() {
+  const { error } = await supabase.auth.signOut({ scope: 'local' });
+
+  if (error) {
+    throw error;
+  }
+}
+
 function parseUrl(url) {
   try {
     return new URL(url);
@@ -21,6 +38,22 @@ function normalizePath(pathname) {
 
   const normalized = pathname.replace(/\/+$/, '');
   return normalized || '/';
+}
+
+function normalizeOtpType(type) {
+  switch (type) {
+    case 'signup':
+    case 'invite':
+    case 'magiclink':
+    case 'recovery':
+    case 'email_change':
+    case 'email':
+    case 'sms':
+    case 'phone_change':
+      return type;
+    default:
+      return null;
+  }
 }
 
 export function isAuthCallbackUrl(url) {
@@ -111,10 +144,12 @@ export async function handleAuthRedirect(url) {
     return data;
   }
 
-  if (tokenHash && type) {
+  const otpType = normalizeOtpType(type);
+
+  if (tokenHash && otpType) {
     const { data, error } = await supabase.auth.verifyOtp({
       token_hash: tokenHash,
-      type,
+      type: otpType,
     });
 
     if (error) {
@@ -215,6 +250,11 @@ export async function signOut() {
   const { error } = await supabase.auth.signOut();
 
   if (error) {
+    if (isRefreshTokenError(error)) {
+      await clearStoredSession();
+      return;
+    }
+
     throw error;
   }
 }

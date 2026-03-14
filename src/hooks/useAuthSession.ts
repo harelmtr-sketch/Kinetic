@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { handleAuthRedirect, isAuthCallbackUrl } from '../services/authService';
+import {
+  clearStoredSession,
+  handleAuthRedirect,
+  isAuthCallbackUrl,
+  isRefreshTokenError,
+} from '../services/authService';
 import { ensureStarterData, loadUserData } from '../services/progressService';
 
 const DEFAULT_USER_DATA = {
@@ -53,12 +58,26 @@ export function useAuthSession() {
     return hydrateUserData(nextUser);
   }, [hydrateUserData]);
 
+  const recoverInvalidSession = useCallback(async (error) => {
+    if (!isRefreshTokenError(error)) {
+      return false;
+    }
+
+    await clearStoredSession();
+    await applySession(null);
+    return true;
+  }, [applySession]);
+
   useEffect(() => {
     let isMounted = true;
 
     const syncSessionFromClient = async () => {
       const { data, error } = await supabase.auth.getSession();
       if (error) {
+        if (await recoverInvalidSession(error)) {
+          return;
+        }
+
         throw error;
       }
 
@@ -79,6 +98,10 @@ export function useAuthSession() {
 
         await syncSessionFromClient();
       } catch (error) {
+        if (await recoverInvalidSession(error)) {
+          return;
+        }
+
         if (isMounted) {
           setAuthError(error);
         }
@@ -105,6 +128,10 @@ export function useAuthSession() {
         try {
           await applySession(nextSession ?? null);
         } catch (error) {
+          if (await recoverInvalidSession(error)) {
+            return;
+          }
+
           if (isMounted) {
             setAuthError(error);
           }
@@ -129,6 +156,10 @@ export function useAuthSession() {
           await handleAuthRedirect(url);
           await syncSessionFromClient();
         } catch (error) {
+          if (await recoverInvalidSession(error)) {
+            return;
+          }
+
           if (isMounted) {
             setAuthError(error);
           }
@@ -146,7 +177,7 @@ export function useAuthSession() {
       subscription.unsubscribe();
       linkingSubscription.remove();
     };
-  }, [applySession]);
+  }, [applySession, recoverInvalidSession]);
 
   const refreshUserData = useCallback(async () => {
     if (!user?.id) {

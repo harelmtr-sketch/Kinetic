@@ -11,15 +11,34 @@ export function mulberry32(seed) {
   };
 }
 
-export function buildEdgePath(fromPos, toPos) {
-  const path = Skia.Path.Make();
+export function getEdgeControlPoint(fromPos, toPos) {
+  'worklet';
   const dx = toPos.x - fromPos.x;
   const dy = toPos.y - fromPos.y;
   const mx = (fromPos.x + toPos.x) / 2;
   const my = (fromPos.y + toPos.y) / 2;
-  const bendX = mx + (Math.abs(dy) > Math.abs(dx) ? (dx > 0 ? 24 : -24) : 0);
-  const bendY = my - Math.min(44, Math.max(14, Math.abs(dx) * 0.09));
+
+  return {
+    x: mx + (Math.abs(dy) > Math.abs(dx) ? (dx > 0 ? 24 : -24) : 0),
+    y: my - Math.min(44, Math.max(14, Math.abs(dx) * 0.09)),
+  };
+}
+
+export function pointOnQuadraticEdge(fromPos, toPos, t) {
+  'worklet';
+  const control = getEdgeControlPoint(fromPos, toPos);
+  const invT = 1 - t;
+
+  return {
+    x: (invT * invT * fromPos.x) + (2 * invT * t * control.x) + (t * t * toPos.x),
+    y: (invT * invT * fromPos.y) + (2 * invT * t * control.y) + (t * t * toPos.y),
+  };
+}
+
+export function buildEdgePath(fromPos, toPos) {
+  const path = Skia.Path.Make();
+  const control = getEdgeControlPoint(fromPos, toPos);
   path.moveTo(fromPos.x, fromPos.y);
-  path.quadTo(bendX, bendY, toPos.x, toPos.y);
+  path.quadTo(control.x, control.y, toPos.x, toPos.y);
   return path;
 }

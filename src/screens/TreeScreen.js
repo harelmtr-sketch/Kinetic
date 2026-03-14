@@ -1,5 +1,5 @@
 import React, {
-  useState, useRef, useEffect, useMemo,
+  startTransition, useCallback, useEffect, useMemo, useRef, useState,
 } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
@@ -12,7 +12,8 @@ import * as Sharing from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS, useSharedValue } from 'react-native-reanimated';
+import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
+import AuthBackdrop from '../components/AuthBackdrop';
 import NamePrompt from '../components/tree/NamePrompt';
 import SkillCard from '../components/tree/SkillCard';
 import SkiaTreeCanvas from '../components/tree/SkiaTreeCanvas';
@@ -24,6 +25,12 @@ import { INIT } from '../data/initialTree';
 import {
   normalizeTree, segDist, resolveBranch, segmentIntersectsRect, toRGBA, getTreeStats,
 } from '../utils/treeUtils';
+import { buildBackdropRocks, getBackdropRockState } from '../utils/treeBackdropUtils';
+import {
+  buildTreeSpatialIndex,
+  querySpatialEdges,
+  querySpatialNodes,
+} from '../utils/treeSpatialIndex';
 import {
   applyUnlockedNodesToTree,
   buildUnlockedNodeRows,
@@ -33,6 +40,9 @@ import {
   saveXp,
   unlockNode,
 } from '../services/progressService';
+
+const HOME_VIEW_SCALE = 0.95;
+const HOME_VIEW_Y_RATIO = 0.76;
 
 export default function TreeScreen({
   onTreeChange,
@@ -54,6 +64,10 @@ export default function TreeScreen({
   const [namePromptVisible, setNamePromptVisible] = useState(false);
   const [treeNameDraft, setTreeNameDraft] = useState('');
   const [libraryVisible, setLibraryVisible] = useState(false);
+  const [unlockFx, setUnlockFx] = useState(null);
+  const unlockFxTimeoutRef = useRef(null);
+  const [rockBurstFx, setRockBurstFx] = useState(null);
+  const rockBurstTimeoutRef = useRef(null);
   const cloudUnlockedNodes = userData?.unlockedNodes || [];
 
   const resetHistoryWithTree = (nextTree) => {
@@ -100,7 +114,7 @@ export default function TreeScreen({
     ));
 
     if (!userId) {
-      return;
+      return true;
     }
 
     syncCloudData(nextUnlockedIds);
@@ -114,7 +128,10 @@ export default function TreeScreen({
         prev ? { ...prev, unlocked: previousUnlockedIds.includes(prev.id) } : null
       ));
       Alert.alert('Sync failed', error?.message || 'Unable to save progress right now.');
+      return false;
     }
+
+    return true;
   };
 
   useEffect(() => {
@@ -160,6 +177,15 @@ export default function TreeScreen({
     };
 
     boot();
+  }, []);
+
+  useEffect(() => () => {
+    if (unlockFxTimeoutRef.current) {
+      clearTimeout(unlockFxTimeoutRef.current);
+    }
+    if (rockBurstTimeoutRef.current) {
+      clearTimeout(rockBurstTimeoutRef.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -216,15 +242,34 @@ export default function TreeScreen({
 
   const txN = useRef(0); const tyN = useRef(0); const scN = useRef(1);
   const txV = useSharedValue(0); const tyV = useSharedValue(0); const scV = useSharedValue(1);
+  const unlockFxProgressV = useSharedValue(0);
+  const rockBurstProgressV = useSharedValue(1);
+  const dragXV = useSharedValue(0); const dragYV = useSharedValue(0);
   const panStartTx = useSharedValue(0); const panStartTy = useSharedValue(0); const panStartSc = useSharedValue(1);
+  const panStartAbsXV = useSharedValue(0); const panStartAbsYV = useSharedValue(0);
   const pinchStartTx = useSharedValue(0); const pinchStartTy = useSharedValue(0); const pinchStartSc = useSharedValue(1);
   const pinchStartSvgFx = useSharedValue(0); const pinchStartSvgFy = useSharedValue(0);
+  const pinchStartDistV = useSharedValue(1);
+  const pinchActiveV = useSharedValue(0);
+  const navModeV = useSharedValue(0);
+  const navHasInteractedV = useSharedValue(0);
+  const navMovedV = useSharedValue(0);
+  const navTapLocalXV = useSharedValue(0); const navTapLocalYV = useSharedValue(0);
+  const navTapAbsXV = useSharedValue(0); const navTapAbsYV = useSharedValue(0);
+  const navPointerCountV = useSharedValue(0);
+  const navPreviewTxV = useSharedValue(0); const navPreviewTyV = useSharedValue(0); const navPreviewScV = useSharedValue(1);
   const canvasLeftV = useSharedValue(0); const canvasTopV = useSharedValue(0);
-  const dragXV = useSharedValue(0); const dragYV = useSharedValue(0);
   const [dragId, setDragId] = useState(null);
   const [xform, setXform] = useState({ tx: 0, ty: 0, sc: 1 });
+  const pendingXformRef = useRef(null);
+  const xformPublishFrameRef = useRef(null);
+  const xformIdleCommitTimeoutRef = useRef(null);
   const gestureActive = useRef(false);
-
+  const sceneEpochRef = useRef(Date.now());
+  const initialViewportAppliedRef = useRef(false);
+  const canvasSizeRef = useRef({ width: 0, height: 0 });
+  const isInteractingRef = useRef(false);
+  const interactionSessionCountRef = useRef(0);
   // Map bounds as shared values so worklets can clamp on UI thread (no snap-back)
   const boundsMinX = useSharedValue(-2000);
   const boundsMaxX = useSharedValue(2000);
@@ -232,6 +277,7 @@ export default function TreeScreen({
   const boundsMaxY = useSharedValue(2000);
   const canvasWV = useSharedValue(400);
   const canvasHV = useSharedValue(800);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   // Keep bounds in sync with tree
   useEffect(() => {
@@ -276,40 +322,155 @@ export default function TreeScreen({
     return Math.min(Math.max(ty, minTy), maxTy);
   };
 
-  const setLiveXform = (tx, ty, sc) => {
-    const cw = canvasSize.width || 400;
-    const ch = canvasSize.height || 800;
+  const clampViewport = (tx, ty, sc) => {
+    const { width: canvasWidth, height: canvasHeight } = canvasSizeRef.current;
+    const cw = canvasWidth || 400;
+    const ch = canvasHeight || 800;
     const minTx = cw - boundsMaxX.value * sc;
     const maxTx = -boundsMinX.value * sc;
     const minTy = ch - boundsMaxY.value * sc;
     const maxTy = -boundsMinY.value * sc;
-    const cTx = minTx > maxTx ? (minTx + maxTx) / 2 : Math.min(Math.max(tx, minTx), maxTx);
-    const cTy = minTy > maxTy ? minTy : Math.min(Math.max(ty, minTy), maxTy);
-    txN.current = cTx; tyN.current = cTy; scN.current = sc;
-    txV.value = cTx; tyV.value = cTy; scV.value = sc;
-  };
-  const commitLiveXform = () => {
-    const next = { tx: txN.current, ty: tyN.current, sc: scN.current };
-    setXform((prev) => (prev.tx === next.tx && prev.ty === next.ty && prev.sc === next.sc ? prev : next));
+
+    return {
+      tx: minTx > maxTx ? (minTx + maxTx) / 2 : Math.min(Math.max(tx, minTx), maxTx),
+      ty: minTy > maxTy ? minTy : Math.min(Math.max(ty, minTy), maxTy),
+      sc,
+    };
   };
 
-  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const setLiveXform = (tx, ty, sc) => {
+    const next = clampViewport(tx, ty, sc);
+    txN.current = next.tx; tyN.current = next.ty; scN.current = next.sc;
+    txV.value = next.tx; tyV.value = next.ty; scV.value = next.sc;
+  };
+  const queueXformState = (next, force = false) => {
+    pendingXformRef.current = next;
+
+    const flush = () => {
+      xformPublishFrameRef.current = null;
+      const current = pendingXformRef.current;
+      pendingXformRef.current = null;
+      if (!current) {
+        return;
+      }
+      startTransition(() => {
+        setXform((prev) => (
+          prev.tx === current.tx && prev.ty === current.ty && prev.sc === current.sc
+            ? prev
+            : current
+        ));
+      });
+    };
+
+    if (force) {
+      if (xformPublishFrameRef.current !== null) {
+        cancelAnimationFrame(xformPublishFrameRef.current);
+        xformPublishFrameRef.current = null;
+      }
+      flush();
+      return;
+    }
+
+    if (xformPublishFrameRef.current === null) {
+      xformPublishFrameRef.current = requestAnimationFrame(flush);
+    }
+  };
+  const publishXform = (force = false) => {
+    queueXformState({ tx: txN.current, ty: tyN.current, sc: scN.current }, force);
+  };
+  const cancelQueuedXformState = () => {
+    pendingXformRef.current = null;
+    if (xformPublishFrameRef.current !== null) {
+      cancelAnimationFrame(xformPublishFrameRef.current);
+      xformPublishFrameRef.current = null;
+    }
+    if (xformIdleCommitTimeoutRef.current !== null) {
+      clearTimeout(xformIdleCommitTimeoutRef.current);
+      xformIdleCommitTimeoutRef.current = null;
+    }
+  };
+  const previewXform = (tx, ty, sc) => {
+    queueXformState({ tx, ty, sc }, false);
+  };
+  const commitLiveXform = ({ immediate = false, delayMs = 140 } = {}) => {
+    pendingXformRef.current = { tx: txN.current, ty: tyN.current, sc: scN.current };
+
+    if (xformIdleCommitTimeoutRef.current !== null) {
+      clearTimeout(xformIdleCommitTimeoutRef.current);
+      xformIdleCommitTimeoutRef.current = null;
+    }
+
+    if (immediate || delayMs <= 0) {
+      publishXform(true);
+      return;
+    }
+
+    xformIdleCommitTimeoutRef.current = setTimeout(() => {
+      xformIdleCommitTimeoutRef.current = null;
+      publishXform(true);
+    }, delayMs);
+  };
+  const animateViewportTo = (rawTx, rawTy, rawSc, duration = 180) => {
+    const next = clampViewport(rawTx, rawTy, rawSc);
+    previewXform(next.tx, next.ty, next.sc);
+    txN.current = next.tx;
+    tyN.current = next.ty;
+    scN.current = next.sc;
+    txV.value = withTiming(next.tx, { duration });
+    tyV.value = withTiming(next.ty, { duration });
+    scV.value = withTiming(next.sc, { duration }, (finished) => {
+      if (finished) {
+        runOnJS(commitSharedXform)(next.tx, next.ty, next.sc);
+      }
+    });
+  };
+
   useEffect(() => {
     canvasWV.value = canvasSize.width || 400;
     canvasHV.value = canvasSize.height || 800;
+    canvasSizeRef.current = canvasSize;
   }, [canvasSize.width, canvasSize.height]);
 
-  const handleGoHome = () => {
+  useEffect(() => () => {
+    if (xformPublishFrameRef.current !== null) {
+      cancelAnimationFrame(xformPublishFrameRef.current);
+    }
+    if (xformIdleCommitTimeoutRef.current !== null) {
+      clearTimeout(xformIdleCommitTimeoutRef.current);
+    }
+  }, []);
+
+  const getHomeViewport = () => {
     const startNode = tR.current.nodes.find((n) => n.isStart);
-    if (!startNode) return;
-    const sc = 0.7;
-    const cx = canvasSize.width / 2;
-    const ch = canvasSize.height;
-    const tx = cx - startNode.x * sc;
-    const ty = ch / 2 - startNode.y * sc;
-    setLiveXform(tx, ty, sc);
-    commitLiveXform();
+    if (!startNode || !canvasSize.width || !canvasSize.height) return null;
+
+    return {
+      tx: (canvasSize.width / 2) - (startNode.x * HOME_VIEW_SCALE),
+      ty: (canvasSize.height * HOME_VIEW_Y_RATIO) - (startNode.y * HOME_VIEW_SCALE),
+      sc: HOME_VIEW_SCALE,
+    };
   };
+
+  const handleGoHome = () => {
+    const nextViewport = getHomeViewport();
+    if (!nextViewport) return;
+    animateViewportTo(nextViewport.tx, nextViewport.ty, nextViewport.sc, 220);
+  };
+
+  useEffect(() => {
+    if (initialViewportAppliedRef.current || !canvasSize.width || !canvasSize.height) {
+      return;
+    }
+
+    const nextViewport = getHomeViewport();
+    if (!nextViewport) {
+      return;
+    }
+
+    setLiveXform(nextViewport.tx, nextViewport.ty, nextViewport.sc);
+    commitLiveXform({ immediate: true });
+    initialViewportAppliedRef.current = true;
+  }, [canvasSize.height, canvasSize.width]);
 
   // TEMP: Zoom buttons for testing on emulator (remove before release)
   const handleZoom = (direction) => {
@@ -318,18 +479,14 @@ export default function TreeScreen({
     const nextSc = Math.min(Math.max(curSc * zoomFactor, MIN_SC), MAX_SC);
     const cx = canvasSize.width / 2;
     const cy = canvasSize.height / 2;
-    const svgX = (cx - txN.current) / curSc;
-    const svgY = (cy - tyN.current) / curSc;
+    const currentTx = txN.current;
+    const currentTy = tyN.current;
+    const svgX = (cx - currentTx) / curSc;
+    const svgY = (cy - currentTy) / curSc;
     const nextTx = cx - svgX * nextSc;
     const nextTy = cy - svgY * nextSc;
-    setLiveXform(nextTx, nextTy, nextSc);
-    commitLiveXform();
+    animateViewportTo(nextTx, nextTy, nextSc, 180);
   };
-
-  const glowDebounceRef = useRef(null);
-  useEffect(() => () => {
-    if (glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
-  }, []);
 
   const cL = useRef(0); const cT = useRef(0); const cRef = useRef(null);
   const measureC = () => cRef.current?.measure((_, __, _w, _h, px, py) => {
@@ -338,27 +495,109 @@ export default function TreeScreen({
     canvasLeftV.value = px;
     canvasTopV.value = py;
   });
+  const handleCanvasLayout = (evt) => {
+    const { width, height } = evt.nativeEvent.layout;
+    const nextSize = { width, height };
 
-  const toSVG = (px, py) => ({
-    x: (px - cL.current - txN.current) / scN.current,
-    y: (py - cT.current - tyN.current) / scN.current,
+    canvasSizeRef.current = nextSize;
+    setCanvasSize((prev) => (
+      prev.width === width && prev.height === height ? prev : nextSize
+    ));
+    requestAnimationFrame(measureC);
+  };
+
+  const toSVGFromLocal = (localX, localY) => ({
+    x: (localX - txN.current) / scN.current,
+    y: (localY - tyN.current) / scN.current,
   });
+  const toSVG = (px, py) => toSVGFromLocal(px - cL.current, py - cT.current);
+  const hitNodeAtLocal = (localX, localY) => {
+    const p = toSVGFromLocal(localX, localY);
+    const hitRadius = NODE_R + 14;
+    const candidates = querySpatialNodes(spatialIndex, {
+      left: p.x - hitRadius,
+      top: p.y - hitRadius,
+      right: p.x + hitRadius,
+      bottom: p.y + hitRadius,
+    });
+
+    return candidates.find((n) => Math.hypot(n.x - p.x, n.y - p.y) <= hitRadius) || null;
+  };
   const hitNode = (px, py) => {
     const p = toSVG(px, py);
     return tR.current.nodes.find((n) => Math.hypot(n.x - p.x, n.y - p.y) <= NODE_R + 14);
   };
+  const hitBackdropRockAtLocal = (localX, localY) => {
+    const { width, height } = canvasSizeRef.current;
+    if (!width || !height) {
+      return null;
+    }
+
+    const sceneMs = Date.now() - sceneEpochRef.current;
+    const rocks = buildBackdropRocks(canvasSizeRef.current);
+
+    for (let i = rocks.length - 1; i >= 0; i -= 1) {
+      const rock = rocks[i];
+      const state = getBackdropRockState(rock, sceneMs, isInteractingRef.current ? 0.72 : 1, 1);
+      if (state.opacity < 0.14) continue;
+
+      const rx = Math.max(22, rock.width * 0.96 * state.scale);
+      const ry = Math.max(14, rock.height * 1.12 * state.scale);
+      const dx = localX - state.x;
+      const dy = localY - state.y;
+      const ellipseHit = ((dx * dx) / (rx * rx)) + ((dy * dy) / (ry * ry));
+
+      if (ellipseHit <= 1.22) {
+        return {
+          id: rock.id,
+          x: state.x,
+          y: state.y,
+        };
+      }
+    }
+
+    return null;
+  };
+  const hitBackdropRock = (pageX, pageY) => hitBackdropRockAtLocal(pageX - cL.current, pageY - cT.current);
 
   const gSx = useRef(0); const gSy = useRef(0); const gLx = useRef(0); const gLy = useRef(0); const moved = useRef(false);
   const pOn = useRef(false); const pD0 = useRef(0); const pSc0 = useRef(1); const pTx0 = useRef(0); const pTy0 = useRef(0);
   const pMx0 = useRef(0); const pMy0 = useRef(0);
   const dId = useRef(null); const dNx = useRef(0); const dNy = useRef(0); const dPx = useRef(0); const dPy = useRef(0);
   const dragLive = useRef({ id: null, x: 0, y: 0 });
+  const glowDebounceRef = useRef(null);
   const [isInteracting, setIsInteracting] = useState(false);
   const interactionTier = useMemo(() => {
     if (!isInteracting) return 'idle';
     if (xform.sc < 0.4) return 'heavy';
     return xform.sc < 0.9 ? 'medium' : 'light';
   }, [isInteracting, xform.sc]);
+
+  useEffect(() => () => {
+    if (glowDebounceRef.current) {
+      clearTimeout(glowDebounceRef.current);
+    }
+  }, []);
+
+  const buildViewportBounds = useCallback((tx, ty, sc) => {
+    if (!canvasSize.width || !canvasSize.height || !sc) return null;
+    return {
+      left: (-tx) / sc,
+      top: (-ty) / sc,
+      right: (canvasSize.width - tx) / sc,
+      bottom: (canvasSize.height - ty) / sc,
+    };
+  }, [canvasSize.height, canvasSize.width]);
+
+  const expandBounds = useCallback((bounds, pad) => {
+    if (!bounds) return null;
+    return {
+      left: bounds.left - pad,
+      top: bounds.top - pad,
+      right: bounds.right + pad,
+      bottom: bounds.bottom + pad,
+    };
+  }, []);
 
   const setDragPos = (id, x, y) => {
     dragXV.value = x;
@@ -371,64 +610,187 @@ export default function TreeScreen({
     setDragId(null);
   };
   const beginInteraction = () => {
+    interactionSessionCountRef.current += 1;
+    if (xformIdleCommitTimeoutRef.current !== null) {
+      clearTimeout(xformIdleCommitTimeoutRef.current);
+      xformIdleCommitTimeoutRef.current = null;
+    }
     if (glowDebounceRef.current) {
       clearTimeout(glowDebounceRef.current);
       glowDebounceRef.current = null;
     }
+    if (isInteractingRef.current) {
+      return;
+    }
+    isInteractingRef.current = true;
     setIsInteracting(true);
   };
   const endInteraction = () => {
-    if (glowDebounceRef.current) clearTimeout(glowDebounceRef.current);
+    interactionSessionCountRef.current = Math.max(0, interactionSessionCountRef.current - 1);
+    if (interactionSessionCountRef.current > 0) {
+      return;
+    }
+    if (glowDebounceRef.current) {
+      clearTimeout(glowDebounceRef.current);
+    }
     glowDebounceRef.current = setTimeout(() => {
-      setIsInteracting(false);
+      isInteractingRef.current = false;
+      startTransition(() => {
+        setIsInteracting(false);
+      });
       glowDebounceRef.current = null;
     }, 90);
   };
 
-  const handleViewTap = (pageX, pageY) => {
-    const hit = hitNode(pageX, pageY);
-    if (hit) setSel({ ...hit });
+  const handleViewTap = (localX, localY, pageX, pageY) => {
+    const hit = Number.isFinite(localX) && Number.isFinite(localY)
+      ? hitNodeAtLocal(localX, localY)
+      : hitNode(pageX, pageY);
+    if (hit) {
+      setSel({ ...hit });
+      return;
+    }
+
+    const rockHit = Number.isFinite(localX) && Number.isFinite(localY)
+      ? hitBackdropRockAtLocal(localX, localY)
+      : hitBackdropRock(pageX, pageY);
+    if (!rockHit) {
+      return;
+    }
+
+    const burstId = `${rockHit.id}_${Date.now()}`;
+    if (rockBurstTimeoutRef.current) {
+      clearTimeout(rockBurstTimeoutRef.current);
+    }
+
+    setRockBurstFx({
+      id: burstId,
+      rockId: rockHit.id,
+      x: rockHit.x,
+      y: rockHit.y,
+    });
+    rockBurstProgressV.value = 0;
+    rockBurstProgressV.value = withTiming(1, { duration: 780 });
+    rockBurstTimeoutRef.current = setTimeout(() => {
+      setRockBurstFx((current) => (current?.id === burstId ? null : current));
+      rockBurstTimeoutRef.current = null;
+    }, 860);
   };
 
   const commitSharedXform = (rawTx, rawTy, sc) => {
-    const cw = canvasSize.width || 400;
-    const ch = canvasSize.height || 800;
-    const minTx = cw - boundsMaxX.value * sc;
-    const maxTx = -boundsMinX.value * sc;
-    const minTy = ch - boundsMaxY.value * sc;
-    const maxTy = -boundsMinY.value * sc;
-    const cTx = minTx > maxTx ? (minTx + maxTx) / 2 : Math.min(Math.max(rawTx, minTx), maxTx);
-    const cTy = minTy > maxTy ? minTy : Math.min(Math.max(rawTy, minTy), maxTy);
-    txN.current = cTx; tyN.current = cTy; scN.current = sc;
-    txV.value = cTx; tyV.value = cTy; scV.value = sc;
-    setXform((prev) => (
-      prev.tx === cTx && prev.ty === cTy && prev.sc === sc
-        ? prev
-        : { tx: cTx, ty: cTy, sc }
-    ));
+    const next = clampViewport(rawTx, rawTy, sc);
+    txN.current = next.tx; tyN.current = next.ty; scN.current = next.sc;
+    txV.value = next.tx; tyV.value = next.ty; scV.value = next.sc;
+    startTransition(() => {
+      setXform((prev) => (
+        prev.tx === next.tx && prev.ty === next.ty && prev.sc === next.sc
+          ? prev
+          : next
+      ));
+    });
+  };
+  const settleSharedXform = (rawTx, rawTy, sc, delayMs = 120) => {
+    const next = clampViewport(rawTx, rawTy, sc);
+    txN.current = next.tx; tyN.current = next.ty; scN.current = next.sc;
+    txV.value = next.tx; tyV.value = next.ty; scV.value = next.sc;
+    commitLiveXform({ immediate: delayMs <= 0, delayMs });
   };
 
   const navGesture = useMemo(() => {
-    const pan = Gesture.Pan()
-      .onBegin(() => {
+    const pan = Gesture.Manual()
+      .manualActivation(true)
+      .onTouchesDown((evt, manager) => {
+        if (pinchActiveV.value || evt.numberOfTouches !== 1 || !evt.allTouches.length) {
+          navModeV.value = 0;
+          navPointerCountV.value = evt.numberOfTouches;
+          navHasInteractedV.value = 0;
+          navMovedV.value = 0;
+          manager.fail();
+          return;
+        }
+
+        const touch = evt.allTouches[0];
+        navModeV.value = 1;
+        navPointerCountV.value = 1;
+        navHasInteractedV.value = 1;
+        navMovedV.value = 0;
         panStartTx.value = txV.value;
         panStartTy.value = tyV.value;
         panStartSc.value = scV.value;
-        runOnJS(beginInteraction)();
+        panStartAbsXV.value = touch.absoluteX;
+        panStartAbsYV.value = touch.absoluteY;
+        manager.begin();
+        runOnJS(cancelQueuedXformState)();
       })
-      .onUpdate((evt) => {
+      .onTouchesMove((evt, manager) => {
+        if (pinchActiveV.value || evt.numberOfTouches !== 1 || !evt.allTouches.length) {
+          navModeV.value = 0;
+          navPointerCountV.value = evt.numberOfTouches;
+          navHasInteractedV.value = 0;
+          navMovedV.value = 0;
+          manager.fail();
+          return;
+        }
+
+        const touch = evt.allTouches[0];
+        const dx = touch.absoluteX - panStartAbsXV.value;
+        const dy = touch.absoluteY - panStartAbsYV.value;
+
+        if (!navMovedV.value) {
+          if (Math.hypot(dx, dy) < 4) {
+            return;
+          }
+          navMovedV.value = 1;
+          navModeV.value = 2;
+          manager.activate();
+          runOnJS(beginInteraction)();
+        }
+
         const sc = panStartSc.value;
-        txV.value = clampTx(panStartTx.value + evt.translationX, sc);
-        tyV.value = clampTy(panStartTy.value + evt.translationY, sc);
+        txV.value = clampTx(panStartTx.value + dx, sc);
+        tyV.value = clampTy(panStartTy.value + dy, sc);
         scV.value = sc;
       })
-      .onFinalize(() => {
-        runOnJS(commitSharedXform)(txV.value, tyV.value, scV.value);
+      .onTouchesUp((evt, manager) => {
+        const didPan = !!navMovedV.value;
+        navModeV.value = 0;
+        navPointerCountV.value = evt.numberOfTouches;
+        navHasInteractedV.value = 0;
+        navMovedV.value = 0;
+
+        if (!didPan || pinchActiveV.value) {
+          manager.fail();
+          return;
+        }
+
+        manager.end();
+        runOnJS(settleSharedXform)(txV.value, tyV.value, scV.value, 90);
         runOnJS(endInteraction)();
+      })
+      .onTouchesCancelled((_, manager) => {
+        const didPan = !!navMovedV.value;
+        navModeV.value = 0;
+        navPointerCountV.value = 0;
+        navHasInteractedV.value = 0;
+        navMovedV.value = 0;
+
+        if (didPan) {
+          manager.end();
+          runOnJS(settleSharedXform)(txV.value, tyV.value, scV.value, 90);
+          runOnJS(endInteraction)();
+          return;
+        }
+
+        manager.fail();
       });
 
     const pinch = Gesture.Pinch()
       .onBegin((evt) => {
+        pinchActiveV.value = 1;
+        navModeV.value = 0;
+        navPointerCountV.value = 2;
+        navHasInteractedV.value = 1;
+        navMovedV.value = 1;
         pinchStartSc.value = scV.value;
         pinchStartTx.value = txV.value;
         pinchStartTy.value = tyV.value;
@@ -436,17 +798,39 @@ export default function TreeScreen({
         const fy = evt.focalY - canvasTopV.value;
         pinchStartSvgFx.value = (fx - pinchStartTx.value) / pinchStartSc.value;
         pinchStartSvgFy.value = (fy - pinchStartTy.value) / pinchStartSc.value;
+        navPreviewTxV.value = txV.value;
+        navPreviewTyV.value = tyV.value;
+        navPreviewScV.value = scV.value;
         runOnJS(beginInteraction)();
       })
       .onUpdate((evt) => {
         const nextSc = Math.min(Math.max(pinchStartSc.value * evt.scale, MIN_SC), MAX_SC);
         const fx = evt.focalX - canvasLeftV.value;
         const fy = evt.focalY - canvasTopV.value;
+        const nextTx = clampTx(fx - (pinchStartSvgFx.value * nextSc), nextSc);
+        const nextTy = clampTy(fy - (pinchStartSvgFy.value * nextSc), nextSc);
+
         scV.value = nextSc;
-        txV.value = clampTx(fx - pinchStartSvgFx.value * nextSc, nextSc);
-        tyV.value = clampTy(fy - pinchStartSvgFy.value * nextSc, nextSc);
+        txV.value = nextTx;
+        tyV.value = nextTy;
+
+        if (
+          Math.abs(nextSc - navPreviewScV.value) > 0.025
+          || Math.abs(nextTx - navPreviewTxV.value) > 28
+          || Math.abs(nextTy - navPreviewTyV.value) > 28
+        ) {
+          navPreviewTxV.value = nextTx;
+          navPreviewTyV.value = nextTy;
+          navPreviewScV.value = nextSc;
+          runOnJS(previewXform)(nextTx, nextTy, nextSc);
+        }
       })
       .onFinalize(() => {
+        pinchActiveV.value = 0;
+        navModeV.value = 0;
+        navPointerCountV.value = 0;
+        navHasInteractedV.value = 0;
+        navMovedV.value = 0;
         runOnJS(commitSharedXform)(txV.value, tyV.value, scV.value);
         runOnJS(endInteraction)();
       });
@@ -454,13 +838,12 @@ export default function TreeScreen({
     const tap = Gesture.Tap()
       .maxDistance(7)
       .onEnd((evt, success) => {
-        if (success) runOnJS(handleViewTap)(evt.absoluteX, evt.absoluteY);
+        if (success && !pinchActiveV.value) {
+          runOnJS(handleViewTap)(evt.x, evt.y, evt.absoluteX, evt.absoluteY);
+        }
       });
 
-    pan.maxPointers(1).minDistance(1).averageTouches(true);
-    tap.requireExternalGestureToFail(pan, pinch);
-
-    return Gesture.Exclusive(tap, Gesture.Simultaneous(pan, pinch));
+    return Gesture.Simultaneous(pinch, Gesture.Exclusive(pan, tap));
   }, []);
 
   const panR = useRef(PanResponder.create({
@@ -505,7 +888,16 @@ export default function TreeScreen({
         pMy0.current = (ts[0].pageY + ts[1].pageY) / 2 - cT.current;
         return;
       }
-      if (pOn.current && ts.length < 2) { pOn.current = false; return; }
+      if (pOn.current && ts.length < 2) {
+        pOn.current = false;
+        if (ts.length === 1) {
+          gSx.current = ts[0].pageX;
+          gSy.current = ts[0].pageY;
+          gLx.current = ts[0].pageX;
+          gLy.current = ts[0].pageY;
+        }
+        return;
+      }
       if (pOn.current && ts.length >= 2) {
         const d = Math.hypot(ts[0].pageX - ts[1].pageX, ts[0].pageY - ts[1].pageY);
         const newSc = Math.min(Math.max(pSc0.current * (d / pD0.current), MIN_SC), MAX_SC);
@@ -549,7 +941,10 @@ export default function TreeScreen({
       if (moved.current) return;
       const { pageX, pageY } = evt.nativeEvent;
       const hit = hitNode(pageX, pageY);
-      if (!bR.current) { if (hit) setSel({ ...hit }); return; }
+      if (!bR.current) {
+        handleViewTap(pageX - cL.current, pageY - cT.current, pageX, pageY);
+        return;
+      }
       if (tR2.current === 'move' && !hit) {
         const p = toSVG(pageX, pageY); pendingPos.current = { x: p.x, y: p.y }; showPrompt(true); return;
       }
@@ -610,12 +1005,51 @@ export default function TreeScreen({
     });
     showPrompt(false);
   };
+  const emitUnlockFx = (nextTree, nodeId) => {
+    const targetNode = nextTree.nodes.find((node) => node.id === nodeId);
+    if (!targetNode) {
+      return;
+    }
+
+    const prereqIds = nextTree.edges
+      .filter((edge) => edge.to === nodeId)
+      .map((edge) => edge.from);
+    const sourceId = prereqIds.find((candidateId) => {
+      const candidateNode = nextTree.nodes.find((node) => node.id === candidateId);
+      return candidateNode?.unlocked || candidateNode?.isStart;
+    }) || prereqIds[0] || null;
+    const startedAt = Date.now();
+    const id = `${nodeId}_${startedAt}`;
+
+    if (unlockFxTimeoutRef.current) {
+      clearTimeout(unlockFxTimeoutRef.current);
+    }
+
+    setUnlockFx({
+      id,
+      nodeId,
+      sourceId,
+      branch: resolveBranch(targetNode),
+      startedAt,
+    });
+    unlockFxProgressV.value = 0;
+    unlockFxProgressV.value = withTiming(1, { duration: 1960 });
+
+    unlockFxTimeoutRef.current = setTimeout(() => {
+      setUnlockFx((current) => (current?.id === id ? null : current));
+      unlockFxTimeoutRef.current = null;
+    }, 2140);
+  };
   const record = async (id) => {
     const t = { ...tR.current, nodes: tR.current.nodes.map((n) => (n.id === id ? { ...n, unlocked: true } : n)) };
-    await commitCloudProgress(t, (nextProgress) => Promise.all([
+    const didCommit = await commitCloudProgress(t, (nextProgress) => Promise.all([
       unlockNode(userId, id),
       saveXp(userId, nextProgress.xp, nextProgress.level),
     ]));
+
+    if (didCommit) {
+      emitUnlockFx(t, id);
+    }
   };
 
   const exportTree = async () => {
@@ -719,9 +1153,13 @@ export default function TreeScreen({
       },
     ]);
   };
-
-
   const nodeMap = useMemo(() => new Map(tree.nodes.map((n) => [n.id, n])), [tree.nodes]);
+  const nodeOrderMap = useMemo(() => new Map(tree.nodes.map((n, index) => [n.id, index])), [tree.nodes]);
+  const edgeOrderMap = useMemo(() => new Map(tree.edges.map((e, index) => [e, index])), [tree.edges]);
+  const spatialIndex = useMemo(
+    () => buildTreeSpatialIndex(tree.nodes, tree.edges, nodeMap),
+    [tree.edges, tree.nodes, nodeMap],
+  );
   const incomingByNode = useMemo(() => {
     const incoming = new Map();
     for (const e of tree.edges) {
@@ -753,6 +1191,40 @@ export default function TreeScreen({
     return status;
   }, [tree.nodes, bld, incomingByNode, nodeMap]);
 
+  const selectedPathState = useMemo(() => {
+    if (bld || !sel?.id) {
+      return { edgeDepths: null, edgeCount: 0 };
+    }
+
+    const edgeDepths = {};
+    const queue = [{ nodeId: sel.id, depth: 0 }];
+    const seenNodes = new Set([sel.id]);
+
+    while (queue.length) {
+      const current = queue.shift();
+      const prereqs = incomingByNode.get(current.nodeId) || [];
+
+      for (let i = 0; i < prereqs.length; i += 1) {
+        const fromId = prereqs[i];
+        const key = `${fromId}->${current.nodeId}`;
+
+        if (edgeDepths[key] === undefined || current.depth < edgeDepths[key]) {
+          edgeDepths[key] = current.depth;
+        }
+
+        if (!seenNodes.has(fromId)) {
+          seenNodes.add(fromId);
+          queue.push({ nodeId: fromId, depth: current.depth + 1 });
+        }
+      }
+    }
+
+    const edgeKeys = Object.keys(edgeDepths);
+    return edgeKeys.length
+      ? { edgeDepths, edgeCount: edgeKeys.length }
+      : { edgeDepths: null, edgeCount: 0 };
+  }, [bld, incomingByNode, sel?.id]);
+
   const wrap = (name) => {
     const words = name.split(' '); const lines = []; let cur = '';
     for (const w of words) {
@@ -770,7 +1242,7 @@ export default function TreeScreen({
 
   const visibleBounds = useMemo(() => {
     if (!canvasSize.width || !canvasSize.height) return null;
-    const interactionPad = isInteracting ? Math.max(520 / xform.sc, 320) : 0;
+    const interactionPad = isInteracting ? Math.max(120 / xform.sc, 80) : 0;
     return {
       left: (-xform.tx) / xform.sc - interactionPad,
       top: (-xform.ty) / xform.sc - interactionPad,
@@ -782,11 +1254,16 @@ export default function TreeScreen({
   const visibleNodes = useMemo(() => {
     if (!visibleBounds) return tree.nodes;
     const margin = Math.min(Math.max((NODE_R * 2) / xform.sc, NODE_R * 2), NODE_R * 12);
-    return tree.nodes.filter((n) => (
-      n.x >= visibleBounds.left - margin && n.x <= visibleBounds.right + margin
-      && n.y >= visibleBounds.top - margin && n.y <= visibleBounds.bottom + margin
-    ));
-  }, [tree.nodes, visibleBounds, xform.sc]);
+    const nodeBounds = {
+      left: visibleBounds.left - margin,
+      top: visibleBounds.top - margin,
+      right: visibleBounds.right + margin,
+      bottom: visibleBounds.bottom + margin,
+    };
+
+    return querySpatialNodes(spatialIndex, nodeBounds)
+      .sort((a, b) => (nodeOrderMap.get(a.id) ?? 0) - (nodeOrderMap.get(b.id) ?? 0));
+  }, [nodeOrderMap, spatialIndex, tree.nodes, visibleBounds, xform.sc]);
 
   const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((n) => n.id)), [visibleNodes]);
 
@@ -800,14 +1277,20 @@ export default function TreeScreen({
       bottom: visibleBounds.bottom + edgeMargin,
     };
 
-    return tree.edges.filter((e) => {
-      if (visibleNodeIds.has(e.from) || visibleNodeIds.has(e.to)) return true;
-      const fn = nodeMap.get(e.from);
-      const tn = nodeMap.get(e.to);
-      if (!fn || !tn) return false;
-      return segmentIntersectsRect(fn.x, fn.y, tn.x, tn.y, edgeRect);
-    });
-  }, [tree.edges, visibleNodeIds, visibleBounds, xform.sc, nodeMap]);
+    return querySpatialEdges(spatialIndex, edgeRect)
+      .filter((item) => {
+        if (visibleNodeIds.has(item.edge.from) || visibleNodeIds.has(item.edge.to)) return true;
+        return segmentIntersectsRect(
+          item.fromNode.x,
+          item.fromNode.y,
+          item.toNode.x,
+          item.toNode.y,
+          edgeRect,
+        );
+      })
+      .sort((a, b) => (edgeOrderMap.get(a.edge) ?? 0) - (edgeOrderMap.get(b.edge) ?? 0))
+      .map((item) => item.edge);
+  }, [edgeOrderMap, spatialIndex, tree.edges, visibleNodeIds, visibleBounds, xform.sc]);
 
   const lodTierRef = useRef('near');
   const lodTier = useMemo(() => {
@@ -832,18 +1315,21 @@ export default function TreeScreen({
     const isFar = lodTier === 'far';
     const isMid = lodTier === 'mid';
     const isNear = lodTier === 'near';
+    const simplifyLabels = isFar || (isMid && visibleNodes.length > 18);
 
     return {
       isFar,
       isMid,
       isNear,
       interactionTier,
+      simplifyScene: interactionTier === 'heavy' || isFar,
       showLabels: !isFar,
+      simplifyLabels,
       showOuterRing: !isFar,
       showEdgeGlow: isNear && interactionTier === 'idle',
       showDust: interactionTier === 'idle' && !isFar,
     };
-  }, [interactionTier, lodTier]);
+  }, [interactionTier, lodTier, visibleNodes.length]);
 
   const nodeStyles = useMemo(() => {
     const nb = BRANCH_COLORS.neutral;
@@ -1006,18 +1492,19 @@ export default function TreeScreen({
 
   return (
     <View style={styles.root}>
+      <AuthBackdrop style={styles.backdrop} rockBurstFx={rockBurstFx} treeMode />
       {!bld && (
         <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
           <View style={styles.barContent}>
-            <TouchableOpacity style={styles.barIconBtn} onPress={() => onNavigate?.('Profile')} activeOpacity={0.7}>
-              <Ionicons name="person-outline" size={22} color="rgba(255,255,255,0.8)" />
+            <TouchableOpacity style={[styles.barIconBtn, styles.profileBtn]} onPress={() => onNavigate?.('Profile')} activeOpacity={0.7}>
+              <Ionicons name="person-outline" size={22} color="#BFE2FF" />
             </TouchableOpacity>
             <View style={styles.eloWrap}>
               <Text style={styles.eloIcon}>🏆</Text>
               <Text style={styles.eloText}>{eloRating}</Text>
             </View>
-            <TouchableOpacity style={styles.barIconBtn} onPress={() => onNavigate?.('Settings')} activeOpacity={0.7}>
-              <Ionicons name="settings-outline" size={22} color="rgba(255,255,255,0.8)" />
+            <TouchableOpacity style={[styles.barIconBtn, styles.settingsBtn]} onPress={() => onNavigate?.('Settings')} activeOpacity={0.7}>
+              <Ionicons name="settings-outline" size={22} color="#FFE8A6" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1074,12 +1561,9 @@ export default function TreeScreen({
       {bld ? (
         <View
           ref={cRef}
+          collapsable={false}
           style={styles.canvas}
-          onLayout={(evt) => {
-            const { width, height } = evt.nativeEvent.layout;
-            setCanvasSize({ width, height });
-            setTimeout(measureC, 50);
-          }}
+          onLayout={handleCanvasLayout}
           {...panR.panHandlers}
         >
           {!!canvasSize.width && !!canvasSize.height && (
@@ -1103,6 +1587,12 @@ export default function TreeScreen({
               canvasSize={canvasSize}
               nodeStyles={nodeStyles}
               visibleBounds={visibleBounds}
+              unlockFx={unlockFx}
+              unlockFxProgressV={unlockFxProgressV}
+              rockBurstFx={rockBurstFx}
+              rockBurstProgressV={rockBurstProgressV}
+              selectedPathEdgeDepths={selectedPathState.edgeDepths}
+              selectedPathEdgeCount={selectedPathState.edgeCount}
             />
           )}
         </View>
@@ -1110,12 +1600,9 @@ export default function TreeScreen({
         <GestureDetector gesture={navGesture}>
           <View
             ref={cRef}
+            collapsable={false}
             style={styles.canvas}
-            onLayout={(evt) => {
-              const { width, height } = evt.nativeEvent.layout;
-              setCanvasSize({ width, height });
-              setTimeout(measureC, 50);
-            }}
+            onLayout={handleCanvasLayout}
           >
             {!!canvasSize.width && !!canvasSize.height && (
               <SkiaTreeCanvas
@@ -1138,6 +1625,12 @@ export default function TreeScreen({
                 canvasSize={canvasSize}
                 nodeStyles={nodeStyles}
                 visibleBounds={visibleBounds}
+                unlockFx={unlockFx}
+                unlockFxProgressV={unlockFxProgressV}
+                rockBurstFx={rockBurstFx}
+                rockBurstProgressV={rockBurstProgressV}
+                selectedPathEdgeDepths={selectedPathState.edgeDepths}
+                selectedPathEdgeCount={selectedPathState.edgeCount}
               />
             )}
           </View>
@@ -1216,6 +1709,7 @@ export default function TreeScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background.primary },
+  backdrop: { ...StyleSheet.absoluteFillObject },
   zoomBtns: {
     position: 'absolute',
     right: 16,
@@ -1265,7 +1759,27 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(30,30,40,0.75)',
+    backgroundColor: 'rgba(8,12,22,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  profileBtn: {
+    backgroundColor: 'rgba(43,93,150,0.18)',
+    borderColor: 'rgba(140,200,255,0.2)',
+    shadowColor: '#4AA8FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  settingsBtn: {
+    backgroundColor: 'rgba(120,92,20,0.18)',
+    borderColor: 'rgba(255,216,74,0.18)',
+    shadowColor: '#FFD84A',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 9,
+    elevation: 2,
   },
   titleSlot: {
     position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
@@ -1452,7 +1966,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.4)',
     fontSize: 12,
   },
-  canvas: { flex: 1, backgroundColor: '#0A0A0A', overflow: 'hidden' },
+  canvas: { flex: 1, backgroundColor: 'transparent', overflow: 'hidden' },
   legend: {
     flexDirection: 'row', justifyContent: 'center', gap: 28, paddingVertical: 12,
     backgroundColor: '#060A10', borderTopWidth: 1, borderColor: Colors.border.default,
