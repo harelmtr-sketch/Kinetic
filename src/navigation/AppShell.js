@@ -1,8 +1,8 @@
 import React, {
-  useCallback, useEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'react';
 import {
-  Alert, ActivityIndicator, Text, TouchableOpacity, View, StyleSheet, StatusBar,
+  Alert, ActivityIndicator, Animated, Easing, Text, TouchableOpacity, View, StyleSheet, StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +18,16 @@ import { applyUnlockedNodesToTree } from '../services/progressService';
 import { useAuthSession } from '../hooks/useAuthSession';
 
 const DEFAULT_TREE = normalizeTree(INIT);
+const ENTRY_STARS = [
+  { left: '12%', top: '18%', size: 3 },
+  { left: '24%', top: '32%', size: 2 },
+  { left: '78%', top: '21%', size: 3 },
+  { left: '68%', top: '38%', size: 2 },
+  { left: '18%', top: '68%', size: 2 },
+  { left: '82%', top: '72%', size: 2 },
+  { left: '48%', top: '16%', size: 1.5 },
+  { left: '58%', top: '62%', size: 1.5 },
+];
 
 function LoadingState() {
   return (
@@ -29,12 +39,51 @@ function LoadingState() {
   );
 }
 
+function EntryTransition({ progress }) {
+  const overlayOpacity = progress.interpolate({ inputRange: [0, 0.78, 1], outputRange: [1, 0.9, 0] });
+  const bloomScale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.72, 2.8] });
+  const bloomOpacity = progress.interpolate({ inputRange: [0, 0.48, 1], outputRange: [0.08, 0.32, 0] });
+  const ringScale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.82, 2.2] });
+  const ringOpacity = progress.interpolate({ inputRange: [0, 0.56, 1], outputRange: [0.32, 0.16, 0] });
+  const starOpacity = progress.interpolate({ inputRange: [0, 0.82, 1], outputRange: [0.78, 0.52, 0] });
+  const starDrift = progress.interpolate({ inputRange: [0, 1], outputRange: [0, -24] });
+
+  return (
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.entryOverlay, { opacity: overlayOpacity }]}>
+      <View style={styles.entryTint} />
+      {ENTRY_STARS.map((star, index) => (
+        <Animated.View
+          key={`entry_star_${index}`}
+          style={[
+            styles.entryStar,
+            {
+              left: star.left,
+              top: star.top,
+              width: star.size,
+              height: star.size,
+              borderRadius: star.size,
+              opacity: starOpacity,
+              transform: [{ translateY: starDrift }],
+            },
+          ]}
+        />
+      ))}
+      <Animated.View style={[styles.entryBloom, { opacity: bloomOpacity, transform: [{ scale: bloomScale }] }]} />
+      <Animated.View style={[styles.entryRing, { opacity: ringOpacity, transform: [{ scale: ringScale }] }]} />
+    </Animated.View>
+  );
+}
+
 export default function AppShell() {
   const [tab, setTab] = useState('Tree');
   const [treeSnapshot, setTreeSnapshot] = useState(DEFAULT_TREE);
   const [skippedAuth, setSkippedAuth] = useState(false);
+  const [showEntryTransition, setShowEntryTransition] = useState(false);
+  const [hasResolvedInitialAuth, setHasResolvedInitialAuth] = useState(false);
   const insets = useSafeAreaInsets();
   const treeActionsRef = useRef({ reset: null, unlockAll: null, enterEditMode: null });
+  const authScreenWasVisibleRef = useRef(false);
+  const entryProgress = useRef(new Animated.Value(1)).current;
   const {
     session,
     user,
@@ -48,6 +97,7 @@ export default function AppShell() {
     progress: { xp: 0, level: 1 },
     unlockedNodes: [],
   };
+  const isAuthenticated = !!session && !!user;
   const isAdmin = skippedAuth || resolvedUserData.profile?.role === 'admin';
 
   useEffect(() => {
@@ -61,6 +111,39 @@ export default function AppShell() {
 
     setTreeSnapshot((currentTree) => applyUnlockedNodesToTree(currentTree || DEFAULT_TREE, resolvedUserData.unlockedNodes));
   }, [resolvedUserData.unlockedNodes, session, skippedAuth]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setHasResolvedInitialAuth(true);
+    }
+  }, [isLoading]);
+
+  useEffect(() => {
+    if (!isLoading && !skippedAuth && !isAuthenticated) {
+      authScreenWasVisibleRef.current = true;
+    }
+  }, [isAuthenticated, isLoading, skippedAuth]);
+
+  useLayoutEffect(() => {
+    if (skippedAuth || !isAuthenticated || !authScreenWasVisibleRef.current) {
+      return;
+    }
+
+    authScreenWasVisibleRef.current = false;
+    setShowEntryTransition(true);
+    entryProgress.stopAnimation();
+    entryProgress.setValue(0);
+    Animated.timing(entryProgress, {
+      toValue: 1,
+      duration: 780,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setShowEntryTransition(false);
+      }
+    });
+  }, [entryProgress, isAuthenticated, skippedAuth]);
 
   const handleResetProgress = useCallback(() => {
     if (!isAdmin) return;
@@ -100,8 +183,11 @@ export default function AppShell() {
   const statusBar = useMemo(() => (
     <StatusBar barStyle="light-content" backgroundColor={C.bg} />
   ), []);
+  const appEntryOpacity = entryProgress.interpolate({ inputRange: [0, 1], outputRange: [0.84, 1] });
+  const appEntryScale = entryProgress.interpolate({ inputRange: [0, 1], outputRange: [1.025, 1] });
+  const appEntryTranslateY = entryProgress.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
 
-  if (isLoading) {
+  if (isLoading && !hasResolvedInitialAuth) {
     return <LoadingState />;
   }
 
@@ -118,7 +204,7 @@ export default function AppShell() {
     <View style={styles.root}>
       {statusBar}
 
-      <View style={styles.contentWrap}>
+      <Animated.View style={[styles.contentWrap, { opacity: appEntryOpacity, transform: [{ scale: appEntryScale }, { translateY: appEntryTranslateY }] }]}>
         <View style={[StyleSheet.absoluteFill, { zIndex: tab === 'Tree' ? 1 : 0, opacity: tab === 'Tree' ? 1 : 0, pointerEvents: tab === 'Tree' ? 'auto' : 'none' }]}>
           <TreeScreen
             onTreeChange={setTreeSnapshot}
@@ -147,7 +233,7 @@ export default function AppShell() {
             userRole={resolvedUserData.profile?.role || 'user'}
           />
         )}
-      </View>
+      </Animated.View>
 
       {tab !== 'Tree' && (
         <TouchableOpacity
@@ -158,6 +244,7 @@ export default function AppShell() {
           <Ionicons name="arrow-back" size={20} color="rgba(255,255,255,0.8)" />
         </TouchableOpacity>
       )}
+      {showEntryTransition && <EntryTransition progress={entryProgress} />}
     </View>
   );
 }
@@ -188,5 +275,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     letterSpacing: 0.4,
+  },
+  entryOverlay: {
+    zIndex: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#01030A',
+  },
+  entryTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(1, 4, 12, 0.92)',
+  },
+  entryStar: {
+    position: 'absolute',
+    backgroundColor: '#D7ECFF',
+    shadowColor: '#D7ECFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 12,
+  },
+  entryBloom: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: 'rgba(125, 211, 252, 0.18)',
+    shadowColor: '#7DD3FC',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 28,
+  },
+  entryRing: {
+    position: 'absolute',
+    width: 148,
+    height: 148,
+    borderRadius: 74,
+    borderWidth: 1.6,
+    borderColor: 'rgba(196, 232, 255, 0.44)',
   },
 });
