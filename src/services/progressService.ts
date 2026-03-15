@@ -47,18 +47,35 @@ export async function ensureStarterData(user) {
     };
   }
 
-  const [profileResult, progressResult] = await Promise.all([
-    supabase
+  const profilePayload = {
+    id: user.id,
+    email: user.email ?? null,
+    display_name: user.user_metadata?.display_name
+      || user.user_metadata?.full_name
+      || user.email?.split('@')[0]
+      || null,
+  };
+
+  let profileResult = await supabase
+    .from('profiles')
+    .upsert(profilePayload, { onConflict: 'id' })
+    .select('*')
+    .maybeSingle();
+
+  // Older databases may not have the social columns yet. Fall back to the legacy shape.
+  if (profileResult.error) {
+    profileResult = await supabase
       .from('profiles')
       .upsert({ id: user.id }, { onConflict: 'id' })
       .select('*')
-      .maybeSingle(),
-    supabase
-      .from('user_progress')
-      .upsert({ user_id: user.id, ...DEFAULT_PROGRESS }, { onConflict: 'user_id' })
-      .select('user_id, xp, level')
-      .maybeSingle(),
-  ]);
+      .maybeSingle();
+  }
+
+  const progressResult = await supabase
+    .from('user_progress')
+    .upsert({ user_id: user.id, ...DEFAULT_PROGRESS }, { onConflict: 'user_id' })
+    .select('user_id, xp, level')
+    .maybeSingle();
 
   if (profileResult.error) {
     throw profileResult.error;

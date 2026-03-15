@@ -46,6 +46,18 @@
         "projectId": "c595f20a-a0c3-44fd-b992-c36e025cb55b"
       }
     },
-    "owner": "xbam2"
+    "owner": "xbam2",
+    "plugins": [
+      "expo-asset",
+      "expo-video",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Kinetic to access your library so you can attach skill attempts.",
+          "cameraPermission": "Allow Kinetic to use your camera so you can record skill attempts.",
+          "microphonePermission": "Allow Kinetic to record audio with your skill attempts."
+        }
+      ]
+    ]
   }
 }

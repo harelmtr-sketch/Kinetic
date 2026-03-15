@@ -4,17 +4,21 @@ import React, {
 import {
   Alert, ActivityIndicator, Animated, Easing, Text, TouchableOpacity, View, StyleSheet, StatusBar,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import TreeScreen from '../screens/TreeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import FriendsScreen from '../screens/FriendsScreen';
+import CameraScreen from '../screens/CameraScreen';
 import AuthScreen from '../screens/AuthScreen';
 import { Colors, C } from '../theme/colors';
 import { INIT } from '../data/initialTree';
 import { normalizeTree } from '../utils/treeUtils';
 import { signOut } from '../services/authService';
 import { applyUnlockedNodesToTree } from '../services/progressService';
+import { loadSkillVideoMap } from '../services/skillVideoService';
 import { useAuthSession } from '../hooks/useAuthSession';
 
 const DEFAULT_TREE = normalizeTree(INIT);
@@ -77,12 +81,21 @@ function EntryTransition({ progress }) {
 export default function AppShell() {
   const [tab, setTab] = useState('Tree');
   const [treeSnapshot, setTreeSnapshot] = useState(DEFAULT_TREE);
+  const [treePrefs, setTreePrefs] = useState({ showParticles: true, highQuality: true });
+  const [skillVideos, setSkillVideos] = useState({});
+  const [activeSkillAttempt, setActiveSkillAttempt] = useState(null);
   const [skippedAuth, setSkippedAuth] = useState(false);
   const [showEntryTransition, setShowEntryTransition] = useState(false);
   const [hasResolvedInitialAuth, setHasResolvedInitialAuth] = useState(false);
   const insets = useSafeAreaInsets();
-  const treeActionsRef = useRef({ reset: null, unlockAll: null, enterEditMode: null });
+  const treeActionsRef = useRef({
+    reset: null,
+    unlockAll: null,
+    completeSkill: null,
+    enterEditMode: null,
+  });
   const authScreenWasVisibleRef = useRef(false);
+  const initialEntryPlayedRef = useRef(false);
   const entryProgress = useRef(new Animated.Value(1)).current;
   const {
     session,
@@ -97,6 +110,19 @@ export default function AppShell() {
     progress: { xp: 0, level: 1 },
     unlockedNodes: [],
   };
+
+  useEffect(() => {
+    AsyncStorage.getItem('@kinetic/treePrefs').then((raw) => {
+      if (raw) {
+        try { setTreePrefs((p) => ({ ...p, ...JSON.parse(raw) })); } catch { /* ignore */ }
+      }
+    });
+  }, []);
+
+  const handleTreePrefsChange = useCallback((nextPrefs) => {
+    setTreePrefs(nextPrefs);
+    AsyncStorage.setItem('@kinetic/treePrefs', JSON.stringify(nextPrefs));
+  }, []);
   const isAuthenticated = !!session && !!user;
   const isAdmin = skippedAuth || resolvedUserData.profile?.role === 'admin';
 
@@ -105,12 +131,33 @@ export default function AppShell() {
       if (!skippedAuth) {
         setTab('Tree');
         setTreeSnapshot(DEFAULT_TREE);
+        setSkillVideos({});
+        setActiveSkillAttempt(null);
       }
       return;
     }
 
     setTreeSnapshot((currentTree) => applyUnlockedNodesToTree(currentTree || DEFAULT_TREE, resolvedUserData.unlockedNodes));
   }, [resolvedUserData.unlockedNodes, session, skippedAuth]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const hydrateSkillVideos = async () => {
+      const nextVideos = await loadSkillVideoMap();
+      if (isMounted) {
+        setSkillVideos(nextVideos);
+      }
+    };
+
+    if (session || skippedAuth) {
+      void hydrateSkillVideos();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session, skippedAuth, user?.id]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -125,10 +172,18 @@ export default function AppShell() {
   }, [isAuthenticated, isLoading, skippedAuth]);
 
   useLayoutEffect(() => {
-    if (skippedAuth || !isAuthenticated || !authScreenWasVisibleRef.current) {
+    const shouldPlayInitialEntry = !initialEntryPlayedRef.current
+      && hasResolvedInitialAuth
+      && (skippedAuth || isAuthenticated);
+    const shouldPlayPostAuthEntry = !skippedAuth
+      && isAuthenticated
+      && authScreenWasVisibleRef.current;
+
+    if (!shouldPlayInitialEntry && !shouldPlayPostAuthEntry) {
       return;
     }
 
+    initialEntryPlayedRef.current = true;
     authScreenWasVisibleRef.current = false;
     setShowEntryTransition(true);
     entryProgress.stopAnimation();
@@ -143,7 +198,7 @@ export default function AppShell() {
         setShowEntryTransition(false);
       }
     });
-  }, [entryProgress, isAuthenticated, skippedAuth]);
+  }, [entryProgress, hasResolvedInitialAuth, isAuthenticated, skippedAuth]);
 
   const handleResetProgress = useCallback(() => {
     if (!isAdmin) return;
@@ -213,6 +268,12 @@ export default function AppShell() {
             userId={user?.id ?? null}
             userData={resolvedUserData}
             onCloudDataChange={handleCloudDataChange}
+            skillVideos={skillVideos}
+            treePrefs={treePrefs}
+            onStartSkillAttempt={(node) => {
+              setActiveSkillAttempt(node);
+              setTab('Camera');
+            }}
           />
         </View>
         {tab === 'Profile' && (
@@ -221,6 +282,12 @@ export default function AppShell() {
             user={user}
             profile={resolvedUserData.profile}
             progress={resolvedUserData.progress}
+            onProfileUpdate={(updates) => {
+              handleCloudDataChange((base) => ({
+                ...base,
+                profile: { ...(base.profile || {}), ...updates },
+              }));
+            }}
           />
         )}
         {tab === 'Settings' && (
@@ -230,7 +297,39 @@ export default function AppShell() {
             onEditTree={isAdmin ? handleEditTree : undefined}
             onSignOut={handleSignOut}
             userEmail={user?.email ?? ''}
+            username={resolvedUserData.profile?.username ?? null}
             userRole={resolvedUserData.profile?.role || 'user'}
+            treePrefs={treePrefs}
+            onTreePrefsChange={handleTreePrefsChange}
+          />
+        )}
+        {tab === 'Friends' && (
+          <FriendsScreen currentUser={user} />
+        )}
+        {tab === 'Camera' && (
+          <CameraScreen
+            node={activeSkillAttempt}
+            existingVideo={activeSkillAttempt ? skillVideos[activeSkillAttempt.id] : null}
+            userId={user?.id ?? null}
+            onCancel={() => {
+              setActiveSkillAttempt(null);
+              setTab('Tree');
+            }}
+            onSaved={async (savedRecord) => {
+              setSkillVideos((current) => ({
+                ...current,
+                [savedRecord.nodeId]: savedRecord,
+              }));
+
+              if (savedRecord?.nodeId) {
+                await treeActionsRef.current?.completeSkill?.(savedRecord.nodeId, {
+                  deferUntilClose: true,
+                });
+              }
+
+              setActiveSkillAttempt(null);
+              setTab('Tree');
+            }}
           />
         )}
       </Animated.View>
@@ -241,7 +340,8 @@ export default function AppShell() {
           onPress={() => setTab('Tree')}
           activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={20} color="rgba(255,255,255,0.8)" />
+          <Ionicons name="chevron-back" size={18} color="#D7ECFF" />
+          <Text style={styles.backBtnText}>Tree</Text>
         </TouchableOpacity>
       )}
       {showEntryTransition && <EntryTransition progress={entryProgress} />}
@@ -256,12 +356,27 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     zIndex: 100,
-    width: 42,
     height: 42,
-    borderRadius: 21,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
     justifyContent: 'center',
-    backgroundColor: 'rgba(15,15,20,0.65)',
+    backgroundColor: 'rgba(8,12,22,0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(140,200,255,0.14)',
+    shadowColor: '#7DD3FC',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 4,
+  },
+  backBtnText: {
+    color: 'rgba(225,240,255,0.88)',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
   loadingRoot: {
     flex: 1,

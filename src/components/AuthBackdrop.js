@@ -26,9 +26,7 @@ const Starfield = React.memo(function Starfield({
   treeMode,
 }) {
   const rocks = treeMode ? BACKDROP_ROCKS.slice(0, 2) : BACKDROP_ROCKS;
-  const stars = treeMode
-    ? AUTH_BACKDROP_ALL_STARS.filter((_, index) => index < 12 || index % 2 === 0)
-    : AUTH_BACKDROP_ALL_STARS;
+  const stars = AUTH_BACKDROP_ALL_STARS;
 
   return (
     <View pointerEvents="none" style={styles.starfield}>
@@ -208,8 +206,8 @@ const AuthBackdrop = React.memo(function AuthBackdrop({
       Animated.timing(driftValue, { toValue: 0, duration: 4200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
     ]));
     const twinkleLoop = Animated.loop(Animated.sequence([
-      Animated.timing(twinkleValue, { toValue: 1, duration: 5200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(twinkleValue, { toValue: 0, duration: 5200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(twinkleValue, { toValue: 1, duration: treeMode ? 6200 : 5200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(twinkleValue, { toValue: 0, duration: treeMode ? 6200 : 5200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
     ]));
     const rockLoop = Animated.loop(Animated.sequence([
       Animated.timing(rockValue, { toValue: 1, duration: 16000, easing: Easing.linear, useNativeDriver: true }),
@@ -225,7 +223,7 @@ const AuthBackdrop = React.memo(function AuthBackdrop({
       twinkleLoop.stop();
       rockLoop.stop();
     };
-  }, [driftValue, rockValue, twinkleValue, useManagedAnimation]);
+  }, [driftValue, rockValue, treeMode, twinkleValue, useManagedAnimation]);
 
   useEffect(() => {
     if (!rockBurstFx?.id) {

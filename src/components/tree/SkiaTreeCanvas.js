@@ -19,9 +19,10 @@ import { buildEdgePath, mulberry32, pointOnQuadraticEdge } from '../../utils/ski
  
 const TAU = Math.PI * 2;
 const FOCUS_PULSE_MIN_SCALE = 0.92;
-const FOCUS_PULSE_MAX_VISIBLE_NODES = 8;
+const FOCUS_PULSE_MAX_VISIBLE_NODES = 5;
 const FOCUS_PULSE_CYCLE_MS = 3800;
 const FOCUS_PULSE_DRIFT_MS = 1420;
+// Hot-reload compatibility: older Metro chunks may still reference this symbol.
 const STAR_NODE_CULL_RADIUS_SQ = (NODE_R * 0.18) ** 2;
 const MAX_SELECTED_PATH_EDGES_VISIBLE = 20;
 
@@ -95,6 +96,49 @@ function particleSeed(id = '') {
 
   return seed >>> 0;
 }
+
+// ── Node Particle Ring ─────────────────────────────────────────────────────
+// Orbiting colored particles around a single node. Each NodeParticleRing
+// manages its own derived values so there are no hook-in-loop violations.
+const NodeParticleRing = React.memo(function NodeParticleRing({
+  nodeId, x, y, branch, status, pulseClock,
+}) {
+  const branchColor = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
+  const color = branchColor.ring || branchColor.main;
+  const isMastered = status === 'mastered' || status === 'start';
+
+  const particles = useMemo(() => {
+    const rand = mulberry32(particleSeed(`pr:${nodeId}`));
+    return [
+      { baseAngle: rand() * TAU, radius: NODE_R * (1.62 + rand() * 0.44), speed: 0.00026 + rand() * 0.00018, size: 1.9 + rand() * 1.3, dir: 1 },
+      { baseAngle: rand() * TAU, radius: NODE_R * (1.82 + rand() * 0.52), speed: 0.00019 + rand() * 0.00015, size: 1.4 + rand() * 1.0, dir: -1 },
+      { baseAngle: rand() * TAU, radius: NODE_R * (1.46 + rand() * 0.38), speed: 0.00022 + rand() * 0.00020, size: 1.1 + rand() * 0.8, dir: 1 },
+      { baseAngle: rand() * TAU, radius: NODE_R * (2.05 + rand() * 0.58), speed: 0.00014 + rand() * 0.00013, size: 0.9 + rand() * 0.7, dir: -1 },
+    ];
+  }, [nodeId]);
+
+  const opacityBase = isMastered ? 0.78 : 0.52;
+  const pSeed = useMemo(() => particleSeed(`po:${nodeId}`) * 0.00001, [nodeId]);
+
+  const p0cx = useDerivedValue(() => x + Math.cos(particles[0].baseAngle + pulseClock.value * particles[0].speed * particles[0].dir) * particles[0].radius, [x, particles]);
+  const p0cy = useDerivedValue(() => y + Math.sin(particles[0].baseAngle + pulseClock.value * particles[0].speed * particles[0].dir) * particles[0].radius, [y, particles]);
+  const p1cx = useDerivedValue(() => x + Math.cos(particles[1].baseAngle + pulseClock.value * particles[1].speed * particles[1].dir) * particles[1].radius, [x, particles]);
+  const p1cy = useDerivedValue(() => y + Math.sin(particles[1].baseAngle + pulseClock.value * particles[1].speed * particles[1].dir) * particles[1].radius, [y, particles]);
+  const p2cx = useDerivedValue(() => x + Math.cos(particles[2].baseAngle + pulseClock.value * particles[2].speed * particles[2].dir) * particles[2].radius, [x, particles]);
+  const p2cy = useDerivedValue(() => y + Math.sin(particles[2].baseAngle + pulseClock.value * particles[2].speed * particles[2].dir) * particles[2].radius, [y, particles]);
+  const p3cx = useDerivedValue(() => x + Math.cos(particles[3].baseAngle + pulseClock.value * particles[3].speed * particles[3].dir) * particles[3].radius, [x, particles]);
+  const p3cy = useDerivedValue(() => y + Math.sin(particles[3].baseAngle + pulseClock.value * particles[3].speed * particles[3].dir) * particles[3].radius, [y, particles]);
+  const pOpacity = useDerivedValue(() => opacityBase * (0.55 + (0.5 - Math.cos(pulseClock.value * 0.00038 + pSeed) * 0.5) * 0.45), [opacityBase, pSeed]);
+
+  return (
+    <Group>
+      <Circle cx={p0cx} cy={p0cy} r={particles[0].size} color={color} opacity={pOpacity} />
+      <Circle cx={p1cx} cy={p1cy} r={particles[1].size} color={color} opacity={pOpacity} />
+      <Circle cx={p2cx} cy={p2cy} r={particles[2].size} color={color} opacity={pOpacity} />
+      <Circle cx={p3cx} cy={p3cy} r={particles[3].size} color={color} opacity={pOpacity} />
+    </Group>
+  );
+});
 
 const EdgeMotionOverlay = React.memo(function EdgeMotionOverlay({
   id,
@@ -265,6 +309,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   rockBurstProgressV,
   selectedPathEdgeDepths,
   selectedPathEdgeCount,
+  showParticles = true,
+  highQuality = true,
 }) {
   const labelFont = useMemo(() => {
     try {
@@ -274,7 +320,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     }
   }, []);
   const pulseClock = useClock();
-  const preserveInteractionLighting = false;
+  const preserveInteractionLighting = true;
 
   const sceneTransform = useDerivedValue(() => ([
     { translateX: txV.value },
@@ -360,7 +406,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const coolColors = ['#a8d4ff', '#b8e0ff', '#c4e8ff', '#d0f0ff'];
 
     // Layer 1: Dense background dust field
-    for (let i = 0; i < 1100; i++) {
+    for (let i = 0; i < 96; i++) {
       stars.push({
         x: cx + (rand() - 0.5) * worldWidth,
         y: cy + (rand() - 0.5) * worldHeight,
@@ -371,7 +417,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     }
 
     // Layer 2: Visible small stars — always present
-    for (let i = 0; i < 540; i++) {
+    for (let i = 0; i < 42; i++) {
       const isWarm = rand() < 0.15;
       const isCool = !isWarm && rand() < 0.12;
       const color = isWarm
@@ -391,7 +437,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     }
 
     // Layer 3: Medium bright stars with halos
-    for (let i = 0; i < 160; i++) {
+    for (let i = 0; i < 12; i++) {
       stars.push({
         x: cx + (rand() - 0.5) * worldWidth,
         y: cy + (rand() - 0.5) * worldHeight,
@@ -405,38 +451,29 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       });
     }
 
-    // Layer 4: Bright feature stars — galaxy landmarks
-    for (let i = 0; i < 44; i++) {
-      const color = rand() < 0.45
-        ? accentColors[Math.floor(rand() * accentColors.length)]
-        : starColors[Math.floor(rand() * starColors.length)];
-      stars.push({
-        x: cx + (rand() - 0.5) * worldWidth,
-        y: cy + (rand() - 0.5) * worldHeight,
-        r: 2.2 + rand() * 1.6,
-        color,
-        opacity: 0.4 + rand() * 0.25,
-        glowRadius: 8.0 + rand() * 6.0,
-        glowOpacity: 0.05 + rand() * 0.06,
-      });
-    }
-
-    // Layer 5: Brilliant beacon stars with big soft halos
-    for (let i = 0; i < 12; i++) {
-      const color = accentColors[Math.floor(rand() * accentColors.length)];
-      stars.push({
-        x: cx + (rand() - 0.5) * worldWidth,
-        y: cy + (rand() - 0.5) * worldHeight,
-        r: 2.8 + rand() * 1.8,
-        color,
-        opacity: 0.38 + rand() * 0.2,
-        glowRadius: 12.0 + rand() * 8.0,
-        glowOpacity: 0.04 + rand() * 0.05,
-      });
-    }
-
     return stars;
   }, [starBounds]);
+  const spaceStarLayers = useMemo(() => {
+    const layers = {
+      farDust: [],
+      farStars: [],
+      midStars: [],
+    };
+
+    for (let i = 0; i < spaceStars.length; i += 1) {
+      const star = spaceStars[i];
+
+      if (!star.glowRadius && star.r < 1) {
+        layers.farDust.push(star);
+      } else if (star.glowRadius >= 4.6 || star.r > 1.45) {
+        layers.midStars.push(star);
+      } else {
+        layers.farStars.push(star);
+      }
+    }
+
+    return layers;
+  }, [spaceStars]);
   const rockBurstMeta = useMemo(() => {
     if (!rockBurstFx?.id) {
       return null;
@@ -633,9 +670,6 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   const lockedNodeRingOpacity = useDerivedValue(() => (
     (0.06 + (lockedNodeShimmerBase.value * 0.07)) * nodeLifeMix.value
   ), []);
-  const lockedNodeSpecularOpacity = useDerivedValue(() => (
-    (0.02 + (lockedNodeShimmerBase.value * 0.05)) * nodeLifeMix.value
-  ), []);
   const masteredNodePulseBase = useDerivedValue(() => (
     softWave01(pulseClock.value, 8400, 5200, 0.18, 0.76, 0.22, 0.08)
   ), []);
@@ -658,7 +692,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     (0.085 + (readyNodeSignalBase.value * 0.09)) * sceneFadeMix.value
   ), []);
   const fallbackLockedAuraOpacity = useDerivedValue(() => (
-    (0.045 + (lockedNodeShimmerBase.value * 0.055)) * sceneFadeMix.value
+    (0.36 + (lockedNodeShimmerBase.value * 0.22)) * sceneFadeMix.value
   ), []);
   const farLitAuraOpacity = useDerivedValue(() => (
     (0.26 + (litNodeBreathBase.value * 0.16)) * sceneFadeMix.value
@@ -667,19 +701,19 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     (0.21 + (readyNodeSignalBase.value * 0.15)) * sceneFadeMix.value
   ), []);
   const farLockedAuraOpacity = useDerivedValue(() => (
-    (0.12 + (lockedNodeShimmerBase.value * 0.09)) * sceneFadeMix.value
+    (0.44 + (lockedNodeShimmerBase.value * 0.24)) * sceneFadeMix.value
   ), []);
   const interactionMasteredEdgeOpacity = useDerivedValue(() => (
-    0.74 + (pulse01(pulseClock.value, 5200, 0.18) * 0.12)
+    0.82 + (pulse01(pulseClock.value, 5200, 0.18) * 0.12)
   ), []);
   const interactionReadyEdgeOpacity = useDerivedValue(() => (
-    0.46 + (pulse01(pulseClock.value, 3600, 0.42) * 0.16)
+    0.6 + (pulse01(pulseClock.value, 3600, 0.42) * 0.16)
   ), []);
   const persistentMasteredEdgeGlowOpacity = useDerivedValue(() => (
-    (0.18 + (pulse01(pulseClock.value, 5200, 0.18) * 0.08)) * sceneFadeMix.value
+    (0.28 + (pulse01(pulseClock.value, 5200, 0.18) * 0.12)) * sceneFadeMix.value
   ), []);
   const persistentReadyEdgeGlowOpacity = useDerivedValue(() => (
-    (0.1 + (pulse01(pulseClock.value, 3600, 0.42) * 0.08)) * sceneFadeMix.value
+    (0.18 + (pulse01(pulseClock.value, 3600, 0.42) * 0.1)) * sceneFadeMix.value
   ), []);
   const persistentLockedEdgeGlowOpacity = useDerivedValue(() => (
     (0.05 + (lockedNodeShimmerBase.value * 0.05)) * sceneFadeMix.value
@@ -687,98 +721,76 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
   const lockedEdgeFlickerOpacity = useDerivedValue(() => (
     0.74 + (softWave01(pulseClock.value, 3200, 1800, 0.22, 0.84, 0.2, 0.12) * 0.26)
   ), []);
-  const lockedEdgeSparkOpacity = useDerivedValue(() => (
-    0.04 + (pulse01(pulseClock.value, 2400, 0.38) * 0.08)
-  ), []);
 
   const visibleStarLayers = useMemo(() => {
     const throttleInteractionVisuals = isInteracting && !preserveInteractionLighting;
-    const layers = {
-      farDust: [],
-      farStars: [],
-      midStars: [],
-      accentStars: [],
-      beacons: [],
-    };
-    const brightNodes = glowFieldSources.bright;
+    if (throttleInteractionVisuals) {
+      return {
+        farDust: [],
+        farStars: [],
+        midStars: [],
+      };
+    }
     const edgePressureScale = visibleEdges.length > 72
       ? 0.68
       : visibleEdges.length > 42
         ? 0.84
         : 1;
+    const qualityScale = highQuality ? 1 : 0.4;
     const starDensityScale = (visibleNodes.length > 54
       ? (throttleInteractionVisuals ? 0.52 : 0.68)
       : visibleNodes.length > 34
         ? (throttleInteractionVisuals ? 0.66 : 0.82)
-        : (throttleInteractionVisuals ? 0.84 : 1)) * edgePressureScale;
+        : (throttleInteractionVisuals ? 0.84 : 1)) * edgePressureScale * qualityScale;
     const capLimit = (value) => Math.max(0, Math.round(value * starDensityScale));
     const limits = LOD.isFar
       ? {
-        farDust: LOD.showDust ? capLimit(240) : 0,
-        farStars: capLimit(180),
-        midStars: capLimit(36),
-        accentStars: 0,
-        beacons: 0,
+        farDust: LOD.showDust ? capLimit(16) : 0,
+        farStars: capLimit(18),
+        midStars: capLimit(5),
       }
       : LOD.isMid
         ? {
-          farDust: LOD.showDust ? capLimit(throttleInteractionVisuals ? 240 : 320) : 0,
-          farStars: capLimit(throttleInteractionVisuals ? 200 : 280),
-          midStars: capLimit(throttleInteractionVisuals ? 44 : 64),
-          accentStars: 0,
-          beacons: 0,
+          farDust: LOD.showDust ? capLimit(throttleInteractionVisuals ? 18 : 26) : 0,
+          farStars: capLimit(throttleInteractionVisuals ? 20 : 28),
+          midStars: capLimit(throttleInteractionVisuals ? 6 : 8),
         }
         : {
-          farDust: LOD.showDust ? capLimit(throttleInteractionVisuals ? 280 : 420) : 0,
-          farStars: capLimit(throttleInteractionVisuals ? 240 : 360),
-          midStars: capLimit(throttleInteractionVisuals ? 52 : 84),
-          accentStars: 0,
-          beacons: 0,
+          farDust: LOD.showDust ? capLimit(throttleInteractionVisuals ? 20 : 30) : 0,
+          farStars: capLimit(throttleInteractionVisuals ? 22 : 32),
+          midStars: capLimit(throttleInteractionVisuals ? 6 : 10),
         };
-    const pad = LOD.isFar ? 220 : 320;
+    const pad = LOD.isFar ? 180 : LOD.isMid ? 240 : 280;
     const left = visibleBounds ? visibleBounds.left - pad : -Infinity;
     const right = visibleBounds ? visibleBounds.right + pad : Infinity;
     const top = visibleBounds ? visibleBounds.top - pad : -Infinity;
     const bottom = visibleBounds ? visibleBounds.bottom + pad : Infinity;
+    const collectVisibleStars = (stars, limit) => {
+      if (!limit || stars.length === 0) {
+        return [];
+      }
 
-    const classifyStar = (star) => {
-      if (!star.glowRadius && star.r < 1) return 'farDust';
-      if (star.glowRadius >= 11 || star.r > 2.6) return 'beacons';
-      if (star.glowRadius >= 7 || star.r > 2.05) return 'accentStars';
-      if (star.glowRadius >= 4.6 || star.r > 1.45) return 'midStars';
-      return 'farStars';
+      const result = [];
+
+      for (let i = 0; i < stars.length && result.length < limit; i += 1) {
+        const star = stars[i];
+
+        if (!(star.x >= left && star.x <= right && star.y >= top && star.y <= bottom)) {
+          continue;
+        }
+
+        result.push(star);
+      }
+
+      return result;
     };
 
-    for (let i = 0; i < spaceStars.length; i += 1) {
-      const star = spaceStars[i];
-      const layerKey = classifyStar(star);
-
-      if (layers[layerKey].length >= limits[layerKey]) {
-        continue;
-      }
-
-      if (!(star.x >= left && star.x <= right && star.y >= top && star.y <= bottom)) {
-        continue;
-      }
-
-      let occludedByNode = false;
-      for (let j = 0; j < brightNodes.length; j += 1) {
-        const { node } = brightNodes[j];
-        const dx = node.x - star.x;
-        const dy = node.y - star.y;
-        if ((dx * dx) + (dy * dy) < STAR_NODE_CULL_RADIUS_SQ) {
-          occludedByNode = true;
-          break;
-        }
-      }
-
-      if (!occludedByNode) {
-        layers[layerKey].push(star);
-      }
-    }
-
-    return layers;
-  }, [LOD.isFar, LOD.isMid, LOD.showDust, glowFieldSources, isInteracting, preserveInteractionLighting, spaceStars, visibleBounds, visibleEdges.length, visibleNodes.length]);
+    return {
+      farDust: collectVisibleStars(spaceStarLayers.farDust, limits.farDust),
+      farStars: collectVisibleStars(spaceStarLayers.farStars, limits.farStars),
+      midStars: collectVisibleStars(spaceStarLayers.midStars, limits.midStars),
+    };
+  }, [LOD.isFar, LOD.isMid, LOD.showDust, isInteracting, preserveInteractionLighting, spaceStarLayers, visibleBounds, visibleEdges.length, visibleNodes.length]);
   const starOpacityScale = LOD.isNear ? 0.88 : LOD.isMid ? 0.94 : 1;
 
   const unlockMeta = useMemo(() => {
@@ -796,12 +808,14 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     const sourceNode = unlockFx.sourceId ? nodeMap.get(unlockFx.sourceId) || null : null;
     const rand = mulberry32(particleSeed(unlockFx.id || unlockFx.nodeId));
     const particles = [];
+    const isHeroUnlock = unlockFx.intensity === 'hero';
+    const particleCount = isHeroUnlock ? 12 : 7;
 
-    for (let i = 0; i < 7; i += 1) {
+    for (let i = 0; i < particleCount; i += 1) {
       particles.push({
         angle: rand() * TAU,
-        radius: 2 + rand() * 3.2,
-        distance: NODE_R * (1.2 + rand() * 1.8),
+        radius: 2 + rand() * (isHeroUnlock ? 4.2 : 3.2),
+        distance: NODE_R * ((isHeroUnlock ? 1.35 : 1.2) + rand() * (isHeroUnlock ? 2.05 : 1.8)),
         delay: rand() * 0.22,
       });
     }
@@ -811,28 +825,32 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       sourceNode,
       targetNode,
       particles,
+      burstScale: isHeroUnlock ? 1.18 : 1,
+      shellScale: isHeroUnlock ? 1.16 : 1,
+      sceneZoom: isHeroUnlock ? 0.022 : 0.014,
+      popAmplitude: isHeroUnlock ? 0.12 : 0.08,
     };
   }, [nodeMap, unlockFx]);
   const unlockProgress = useDerivedValue(() => (
     unlockMeta ? clamp01(unlockFxProgressV?.value ?? 1) : 1
   ), [unlockMeta, unlockFxProgressV]);
   const sceneNudgeTransform = useDerivedValue(() => {
-    if (!unlockMeta?.targetNode || isInteracting || !canvasSize.width || !canvasSize.height) {
-      return [
-        { translateX: 0 },
-        { translateY: 0 },
-      ];
+    if (!unlockMeta?.targetNode) {
+      return [{ scale: 1 }];
     }
 
-    const settle = Math.sin(clamp01(unlockProgress.value / 0.82) * Math.PI);
-    const targetScreenX = (unlockMeta.targetNode.x * scV.value) + txV.value;
-    const targetScreenY = (unlockMeta.targetNode.y * scV.value) + tyV.value;
+    const pulse = Math.sin(clamp01(unlockProgress.value / 0.44) * Math.PI);
+    const scale = 1 + (pulse * unlockMeta.sceneZoom);
+    const { x, y } = unlockMeta.targetNode;
 
     return [
-      { translateX: ((canvasSize.width * 0.5) - targetScreenX) * 0.02 * settle },
-      { translateY: ((canvasSize.height * 0.58) - targetScreenY) * 0.028 * settle },
+      { translateX: x },
+      { translateY: y },
+      { scale },
+      { translateX: -x },
+      { translateY: -y },
     ];
-  }, [canvasSize.height, canvasSize.width, isInteracting, unlockMeta]);
+  }, [unlockMeta]);
 
   // ── Edge data ──
   const edgePathCache = useRef(new Map());
@@ -932,14 +950,14 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     if (!labelFont) return {};
     const metrics = {};
 
-    for (let i = 0; i < nodes.length; i += 1) {
-      const node = nodes[i];
+    for (let i = 0; i < visibleNodes.length; i += 1) {
+      const node = visibleNodes[i];
       const lines = wrappedLabels[node.id] || [node.name];
       metrics[node.id] = lines.map((line) => labelFont.measureText(line).width);
     }
 
     return metrics;
-  }, [labelFont, nodes, wrappedLabels]);
+  }, [labelFont, visibleNodes, wrappedLabels]);
 
   const draggedNodeMeta = useMemo(() => {
     if (!dragId) return null;
@@ -966,25 +984,38 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
       useFocusedPulse: focusedPulseCandidate && isLit,
     };
   }, [dragId, focusedPulseCandidate, nodeStatusMap, nodeStyles, nodes, wrappedLabels]);
-  const useEnhancedLitNodeLife = !isInteracting && !LOD.isFar && visibleNodes.length <= (LOD.isNear ? 28 : 16);
-  const useEnhancedReadyNodeLife = !isInteracting && !LOD.isFar && visibleNodes.length <= (LOD.isNear ? 30 : 18);
-  const useEnhancedLockedNodeLife = !isInteracting && LOD.isNear && visibleNodes.length <= 22;
-  const showAnimatedEdgeLife = !bld
-    && LOD.interactionTier === 'idle'
+  const allowRichInteractionLighting = !isInteracting
+    || visibleNodes.length <= (LOD.isNear ? 26 : 18);
+  const useEnhancedLitNodeLife = allowRichInteractionLighting
+    && !LOD.isFar
+    && visibleNodes.length <= (LOD.isNear ? 20 : 14);
+  const useEnhancedReadyNodeLife = allowRichInteractionLighting
+    && !LOD.isFar
+    && visibleNodes.length <= (LOD.isNear ? 22 : 16);
+  const useEnhancedLockedNodeLife = allowRichInteractionLighting
     && LOD.isNear
-    && visibleEdges.length <= 16
-    && visibleNodes.length <= 18;
+    && visibleNodes.length <= 14;
+  const showAnimatedEdgeLife = false;
   const showSelectedPathLife = !bld
     && !LOD.isFar
     && selectedPathEdgeCount > 0
-    && selectedPathEdgeCount <= MAX_SELECTED_PATH_EDGES_VISIBLE;
-  const showBaseEdgeGlow = !bld
-    && LOD.interactionTier === 'idle'
+    && selectedPathEdgeCount <= Math.min(MAX_SELECTED_PATH_EDGES_VISIBLE, 10);
+  const showBaseEdgeGlow = !!LOD.showEdgeGlow
     && !LOD.isFar
-    && visibleEdges.length <= (LOD.isNear ? 42 : 24);
-  const simplifyNodeShells = !!LOD.simplifyScene;
-  const simplifyEdgeRendering = !bld || !!LOD.simplifyScene;
-  const showPersistentEdgeGlow = !bld && LOD.interactionTier === 'idle';
+    && !bld
+    && visibleEdges.length <= (LOD.isNear ? 20 : 12)
+    && visibleNodes.length <= (LOD.isNear ? 18 : 12);
+  const simplifyNodeShells = !!LOD.simplifyScene
+    || (!bld && (visibleNodes.length > (LOD.isNear ? 15 : 11) || visibleEdges.length > (LOD.isNear ? 22 : 16)));
+  const simplifyEdgeRendering = !!LOD.simplifyScene
+    || (!bld && (visibleEdges.length > (LOD.isNear ? 28 : 18) || visibleNodes.length > (LOD.isNear ? 18 : 12)));
+  const hardInteractionShells = simplifyNodeShells
+    && isInteracting
+    && !preserveInteractionLighting
+    && (visibleNodes.length > (LOD.isNear ? 18 : 14) || visibleEdges.length > (LOD.isNear ? 24 : 18));
+  const showPersistentEdgeGlow = !!LOD.showEdgeGlow
+    && visibleEdges.length <= (LOD.isNear ? 34 : 22)
+    && visibleNodes.length <= (LOD.isNear ? 26 : 18);
   const persistentEdgeGlowScale = useMemo(() => {
     if (edgeSegments.length > 180) return LOD.isFar ? 0.38 : 0.34;
     if (edgeSegments.length > 128) return LOD.isFar ? 0.48 : 0.46;
@@ -1029,20 +1060,21 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
         : meta.isReady
           ? farReadyAuraOpacity
           : farLockedAuraOpacity;
+      // Larger radii so the glow stays visible even when zoomed far out
       const farAmbientRadius = meta.isStart
-        ? NODE_R * 1.98
+        ? NODE_R * 3.4
         : meta.isLit
-          ? NODE_R * 1.52
+          ? NODE_R * 2.8
           : meta.isReady
-            ? NODE_R * 1.26
-            : NODE_R * 1.02;
+            ? NODE_R * 2.2
+            : NODE_R * 1.6;
       const farPulseRadius = meta.isStart
-        ? NODE_R * 1.28
+        ? NODE_R * 2.1
         : meta.isLit
-          ? NODE_R * 1.02
+          ? NODE_R * 1.7
           : meta.isReady
-            ? NODE_R * 0.88
-            : NODE_R * 0.74;
+            ? NODE_R * 1.35
+            : NODE_R * 1.05;
 
       return (
         <Group>
@@ -1109,6 +1141,61 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     }
 
     if (simplifyNodeShells) {
+      if (hardInteractionShells) {
+        return (
+          <Group>
+            {meta.isLit && (
+              <Circle
+                cx={cx}
+                cy={cy}
+                r={meta.isStart ? renderR * 1.34 : renderR * 1.16}
+                color={meta.visual.glowOuter || toRGBA(meta.visual.stroke, meta.isStart ? 0.12 : 0.1)}
+                opacity={fallbackLitAuraOpacity}
+              />
+            )}
+            {meta.isReady && (
+              <Circle
+                cx={cx}
+                cy={cy}
+                r={renderR * 1.08}
+                color={toRGBA(meta.visual.stroke, 0.12)}
+                opacity={fallbackReadyAuraOpacity}
+              />
+            )}
+            {meta.isLocked && (
+              <Circle
+                cx={cx}
+                cy={cy}
+                r={renderR * 1.62}
+                color={meta.visual.glowOuter || toRGBA(meta.visual.stroke, 0.22)}
+                opacity={fallbackLockedAuraOpacity}
+              />
+            )}
+            <Circle cx={cx} cy={cy} r={renderR} color={meta.visual.fill || (!meta.isLit ? '#13100E' : '#091018')} />
+            {meta.isLit && (
+              <Circle cx={cx} cy={cy} r={renderR - 5.4} color={meta.visual.innerFill || '#0B1320'} />
+            )}
+            <Circle
+              cx={cx}
+              cy={cy}
+              r={primaryRingR}
+              style="stroke"
+              strokeWidth={meta.isStart ? Math.max(meta.visual.sw * 0.84, 2) : Math.max(meta.visual.sw * 0.72, 1.2)}
+              color={meta.visual.stroke}
+              opacity={0.94}
+            />
+            {meta.isLit && (
+              <Circle
+                cx={cx}
+                cy={cy}
+                r={Math.max(renderR - 13, renderR * 0.24)}
+                color={meta.visual.core || 'rgba(255,255,255,0.03)'}
+                opacity={0.72}
+              />
+            )}
+          </Group>
+        );
+      }
       const simplifiedOuterAuraR = meta.isStart ? renderR * 1.74 : meta.isMastered ? renderR * 1.48 : renderR * 1.34;
       const simplifiedInnerAuraR = meta.isStart ? renderR * 1.36 : meta.isMastered ? renderR * 1.22 : renderR * 1.14;
       const simplifiedReadyAuraR = renderR * 1.2;
@@ -1161,8 +1248,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             <Circle
               cx={cx}
               cy={cy}
-              r={renderR * 1.03}
-              color={toRGBA(meta.visual.stroke, 0.1)}
+              r={renderR * 1.62}
+              color={toRGBA(meta.visual.stroke, 0.22)}
               opacity={fallbackLockedAuraOpacity}
             />
           )}
@@ -1263,8 +1350,8 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           <Circle
             cx={cx}
             cy={cy}
-            r={renderR * 1.04}
-            color={toRGBA(meta.visual.stroke, 0.08)}
+            r={renderR * 1.62}
+            color={toRGBA(meta.visual.stroke, 0.22)}
             opacity={fallbackLockedAuraOpacity}
           />
         )}
@@ -1355,24 +1442,6 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             opacity={bloomOpacity}
           />
         )}
-        {meta.useFocusedPulse && USE_GLOW && meta.isLit && (
-          <Circle
-            cx={cx}
-            cy={cy}
-            r={outerGlowR * 1.11}
-            color={meta.visual.glowInner || toRGBA(meta.visual.ring, meta.isStart ? 0.18 : 0.14)}
-            opacity={bloomOpacity}
-          />
-        )}
-        {USE_GLOW && meta.isLit && (
-          <Circle
-            cx={cx}
-            cy={cy}
-            r={ambientR}
-            color={meta.visual.ambient || toRGBA(meta.visual.stroke, meta.isStart ? 0.05 : 0.03)}
-            opacity={glowOpacity}
-          />
-        )}
         {USE_GLOW && meta.isLit && (
           <Circle
             cx={cx}
@@ -1452,35 +1521,17 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
             opacity={readyNodeCoreOpacity}
           />
         )}
-        {useEnhancedLockedNodeLife && meta.isLocked && (
-          <Circle
-            cx={cx - (renderR * 0.16)}
-            cy={cy - (renderR * 0.22)}
-            r={NODE_R * 0.055}
-            color={meta.visual.specular || 'rgba(226,214,198,0.08)'}
-            opacity={lockedNodeSpecularOpacity}
-          />
-        )}
         {useEnhancedLitNodeLife && meta.isLit && (
           <Circle cx={cx} cy={cy} r={Math.max(renderR - 17, renderR * 0.16)} color={meta.visual.core || 'rgba(255,255,255,0.03)'} />
         )}
         {meta.isLit && (
-          <>
-            <Circle
-              cx={cx - (renderR * 0.22)}
-              cy={cy - (renderR * 0.28)}
-              r={litNodeSpecularRadius}
-              color={meta.visual.specular || 'rgba(240,246,255,0.12)'}
-              opacity={litNodeSpecularOpacity}
-            />
-            <Circle
-              cx={cx + (renderR * 0.15)}
-              cy={cy + (renderR * 0.12)}
-              r={NODE_R * 0.05}
-              color={toRGBA(meta.visual.ring, 0.2)}
-              opacity={litNodeCoreAliveOpacity}
-            />
-          </>
+          <Circle
+            cx={cx - (renderR * 0.22)}
+            cy={cy - (renderR * 0.28)}
+            r={litNodeSpecularRadius}
+            color={meta.visual.specular || 'rgba(240,246,255,0.12)'}
+            opacity={litNodeSpecularOpacity}
+          />
         )}
         <Circle
           cx={cx}
@@ -1601,15 +1652,15 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     return 0.2 + (unlockTrailSettledBaseOpacity.value * 0.8);
   }, [unlockMeta]);
   const unlockOuterRingRadius = useDerivedValue(() => (
-    unlockMeta ? lerp(NODE_R * 1.02, NODE_R * 2.45, easeOutCubic(unlockProgress.value)) : NODE_R
+    unlockMeta ? lerp(NODE_R * 1.02, NODE_R * 2.45 * unlockMeta.burstScale, easeOutCubic(unlockProgress.value)) : NODE_R
   ), [unlockMeta]);
   const unlockOuterRingOpacity = useDerivedValue(() => (
-    unlockMeta ? 0.34 * (1 - easeOutQuad(unlockProgress.value)) : 0
+    unlockMeta ? 0.38 * (1 - easeOutQuad(unlockProgress.value)) : 0
   ), [unlockMeta]);
   const unlockInnerRingRadius = useDerivedValue(() => {
     if (!unlockMeta) return NODE_R;
     const delayed = clamp01((unlockProgress.value - 0.14) / 0.72);
-    return lerp(NODE_R * 0.9, NODE_R * 1.86, easeOutCubic(delayed));
+    return lerp(NODE_R * 0.9, NODE_R * 1.86 * unlockMeta.burstScale, easeOutCubic(delayed));
   }, [unlockMeta]);
   const unlockInnerRingOpacity = useDerivedValue(() => {
     if (!unlockMeta) return 0;
@@ -1617,7 +1668,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     return 0.24 * (1 - easeOutQuad(delayed));
   }, [unlockMeta]);
   const unlockCoreFlashRadius = useDerivedValue(() => (
-    unlockMeta ? lerp(NODE_R * 0.32, NODE_R * 1.18, easeOutCubic(clamp01(unlockProgress.value / 0.34))) : 0
+    unlockMeta ? lerp(NODE_R * 0.32, NODE_R * 1.24 * unlockMeta.burstScale, easeOutCubic(clamp01(unlockProgress.value / 0.34))) : 0
   ), [unlockMeta]);
   const unlockCoreFlashOpacity = useDerivedValue(() => {
     if (!unlockMeta) return 0;
@@ -1625,12 +1676,12 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     return 0.22 * (1 - easeOutQuad(burst));
   }, [unlockMeta]);
   const unlockShellGlowRadius = useDerivedValue(() => (
-    unlockMeta ? lerp(NODE_R * 1.08, NODE_R * 1.72, easeOutCubic(clamp01(unlockProgress.value / 0.38))) : NODE_R
+    unlockMeta ? lerp(NODE_R * 1.08, NODE_R * 1.72 * unlockMeta.shellScale, easeOutCubic(clamp01(unlockProgress.value / 0.38))) : NODE_R
   ), [unlockMeta]);
   const unlockShellGlowOpacity = useDerivedValue(() => {
     if (!unlockMeta) return 0;
     const burst = clamp01(unlockProgress.value / 0.58);
-    return 0.18 * (1 - easeOutQuad(burst));
+    return 0.22 * (1 - easeOutQuad(burst));
   }, [unlockMeta]);
   const unlockCoreIgniteRadius = useDerivedValue(() => (
     unlockMeta ? lerp(NODE_R * 0.18, NODE_R * 0.74, easeOutCubic(clamp01(unlockProgress.value / 0.26))) : 0
@@ -1646,7 +1697,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     return 0.86 * (1 - burst);
   }, [unlockMeta]);
   const unlockParticleScale = useDerivedValue(() => (
-    unlockMeta ? lerp(0.32, 1.04, easeOutCubic(clamp01((unlockProgress.value - 0.04) / 0.62))) : 1
+    unlockMeta ? lerp(0.32, 1.12 * unlockMeta.burstScale, easeOutCubic(clamp01((unlockProgress.value - 0.04) / 0.62))) : 1
   ), [unlockMeta]);
   const unlockNodePopTransform = useDerivedValue(() => {
     if (!unlockMeta?.targetNode) {
@@ -1654,7 +1705,7 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
     }
 
     const t = clamp01(unlockProgress.value / 0.42);
-    const popScale = 1 + (Math.sin(t * Math.PI) * 0.08);
+    const popScale = 1 + (Math.sin(t * Math.PI) * unlockMeta.popAmplitude);
     const { x, y } = unlockMeta.targetNode;
     return [
       { translateX: x },
@@ -1834,12 +1885,10 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                   style="stroke"
                   strokeWidth={isLocked
                     ? (LOD.isFar ? width + 0.55 : LOD.isMid ? width + 0.9 : width + 1.15)
-                    : (LOD.isFar ? width + 1.2 : LOD.isMid ? width + 2.2 : width + 2.8)}
+                    : (LOD.isFar ? width + 1.35 : LOD.isMid ? width + 2.5 : width + 3.3)}
                   color={isLocked
                     ? toRGBA(edge.branchColor.main, LOD.isFar ? 0.08 : 0.11)
-                    : isMastered
-                      ? glowOuterColor
-                      : toRGBA(edge.branchColor.main, LOD.isFar ? 0.1 : 0.14)}
+                    : glowOuterColor}
                   strokeCap="round"
                   opacity={isLocked
                     ? persistentLockedEdgeGlowOpacityScaled
@@ -1951,16 +2000,6 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                 </>
               ) : simplifyEdgeRendering ? (
                 <>
-                  {!isLocked && (
-                    <Path
-                      path={edge.path}
-                      style="stroke"
-                      strokeWidth={simplifiedWidth + (isMastered ? 2.2 : 1.4)}
-                      color={isMastered ? toRGBA(edge.branchColor.glow, 0.22) : toRGBA(edge.branchColor.main, 0.12)}
-                      strokeCap="round"
-                      opacity={simplifiedOpacity}
-                    />
-                  )}
                   <Path
                     path={edge.path}
                     style="stroke"
@@ -1975,18 +2014,6 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
                   <Path path={edge.path} style="stroke" strokeWidth={width} color={mainColor} strokeCap="round" opacity={baseEdgeOpacity}>
                     {!isMastered && !bld && <DashPathEffect intervals={dashIntervals} />}
                   </Path>
-                  {showAnimatedEdgeLife && isLocked && (
-                    <Path
-                      path={edge.path}
-                      style="stroke"
-                      strokeWidth={width + 0.42}
-                      color={toRGBA(edge.branchColor.main, 0.18)}
-                      strokeCap="round"
-                      opacity={lockedEdgeSparkOpacity}
-                    >
-                      <DashPathEffect intervals={dashIntervals} />
-                    </Path>
-                  )}
                 </>
               )}
 
@@ -2098,6 +2125,23 @@ const SkiaTreeCanvas = React.memo(function SkiaTreeCanvas({
           );
         })}
           </>
+
+        {/* ── Node particles ── */}
+        {showParticles && !LOD.isFar && !isInteracting && nodeRenderData.map((item) => {
+          if (!item.isLit && !item.isReady) return null;
+          const branch = resolveBranch(item.n);
+          return (
+            <NodeParticleRing
+              key={`particles_${item.n.id}`}
+              nodeId={item.n.id}
+              x={item.n.x}
+              y={item.n.y}
+              branch={branch}
+              status={nodeStatusMap[item.n.id] || 'locked'}
+              pulseClock={pulseClock}
+            />
+          );
+        })}
 
         {/* ── Dragged node ── */}
         {draggedNodeMeta !== null && (
