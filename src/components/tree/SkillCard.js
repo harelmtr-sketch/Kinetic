@@ -1,72 +1,319 @@
 import React from 'react';
-import { Modal, View, TouchableOpacity, Text, StyleSheet } from 'react-native';
-import DiffBar from '../common/DiffBar';
-import { Colors, C } from '../../theme/colors';
-import { toRGBA, canUnlock } from '../../utils/treeUtils';
+import {
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import SafeVideoPlayer from '../common/SafeVideoPlayer';
+import { HAS_NATIVE_IMAGE_PICKER } from '../../services/safeMediaPicker';
+import { BRANCH_COLORS } from '../../theme/colors';
+import { canUnlock, resolveBranch, toRGBA } from '../../utils/treeUtils';
 
-export default function SkillCard({ node, nodes, edges, info, onClose, onRecord }) {
-  const skillInfo = info || { desc: '', str: 5, bal: 5, tec: 5 };
+function InfoTile({ icon, label, value, color }) {
+  return (
+    <View style={[styles.infoTile, { borderColor: `${color}24`, backgroundColor: `${color}10` }]}>
+      <View style={[styles.infoTileIcon, { backgroundColor: `${color}16` }]}>
+        <Ionicons name={icon} size={16} color={color} />
+      </View>
+      <Text style={styles.infoTileLabel}>{label}</Text>
+      <Text style={[styles.infoTileValue, { color }]}>{value}</Text>
+    </View>
+  );
+}
+
+function VideoPanel({
+  uri,
+  title,
+  body,
+  accentColor,
+  emptyIcon = 'play-circle-outline',
+}) {
+  return (
+    <View style={styles.videoPanel}>
+      <View style={styles.videoPanelHeader}>
+        <Text style={styles.videoPanelTitle}>{title}</Text>
+        <Ionicons name={uri ? 'videocam' : emptyIcon} size={16} color={accentColor} />
+      </View>
+      <SafeVideoPlayer
+        uri={uri}
+        style={styles.videoStage}
+        accentColor={accentColor}
+        emptyIcon={emptyIcon}
+        emptyBody={body}
+        openLabel="Open Clip"
+      />
+    </View>
+  );
+}
+
+export default function SkillCard({
+  node,
+  nodes,
+  edges,
+  info,
+  videoRecord,
+  onClose,
+  onAttempt,
+  pendingUnlock = false,
+  disableBackdropClose = false,
+}) {
+  const skillInfo = info || {
+    desc: '',
+    str: 5,
+    bal: 5,
+    tec: 5,
+    guideVideoUrl: '',
+  };
   const unlockable = !node.isStart && canUnlock(node.id, nodes, edges);
-  const prereqs = edges.filter((e) => e.to === node.id).map((e) => nodes.find((n) => n.id === e.from)).filter(Boolean);
-  const unmetPrereqs = prereqs.filter((p) => !p.unlocked);
+  const prereqs = edges
+    .filter((edge) => edge.to === node.id)
+    .map((edge) => nodes.find((candidate) => candidate.id === edge.from))
+    .filter(Boolean);
+  const unmetPrereqs = prereqs.filter((candidate) => !candidate.unlocked && !candidate.isStart);
+  const branch = resolveBranch(node);
+  const branchColor = BRANCH_COLORS[branch] || BRANCH_COLORS.neutral;
+  const guideVideoUri = typeof skillInfo.guideVideoUrl === 'string' && skillInfo.guideVideoUrl.trim()
+    ? skillInfo.guideVideoUrl.trim()
+    : null;
+  const attemptVideoUri = videoRecord?.remoteUrl || videoRecord?.localUri || null;
+  const hasAttemptVideo = !!attemptVideoUri;
+  const canRecordAttempt = !pendingUnlock && !!onAttempt && (unlockable || node.unlocked);
 
-  let statusText; let statusColor;
-  if (node.isStart) { statusText = 'ORIGIN'; statusColor = '#60A5FA'; }
-  else if (node.unlocked) { statusText = 'MASTERED'; statusColor = '#4ADE80'; }
-  else if (unlockable) { statusText = 'READY'; statusColor = '#FBBF24'; }
-  else { statusText = 'LOCKED'; statusColor = '#F87171'; }
+  let statusText;
+  let statusColor;
+  let statusIcon;
+  if (pendingUnlock) {
+    statusText = 'Video Saved';
+    statusColor = '#7DD3FC';
+    statusIcon = 'sparkles-outline';
+  } else if (node.isStart) {
+    statusText = 'Origin';
+    statusColor = '#7DD3FC';
+    statusIcon = 'planet-outline';
+  } else if (node.unlocked) {
+    statusText = hasAttemptVideo ? 'Verified' : 'Mastered';
+    statusColor = '#4ADE80';
+    statusIcon = 'checkmark-circle-outline';
+  } else if (unlockable) {
+    statusText = 'Ready';
+    statusColor = '#FBBF24';
+    statusIcon = 'flash-outline';
+  } else {
+    statusText = 'Locked';
+    statusColor = '#F87171';
+    statusIcon = 'lock-closed-outline';
+  }
+
+  let focusTitle;
+  let focusBody;
+  if (pendingUnlock) {
+    focusTitle = 'Ready to unlock';
+    focusBody = 'Your clip is saved. Close this card to play the unlock animation and apply the ELO gain.';
+  } else if (node.isStart) {
+    focusTitle = 'Starting point';
+    focusBody = 'This is the base of your tree.';
+  } else if (node.unlocked) {
+    focusTitle = hasAttemptVideo ? 'Attempt saved' : 'Skill complete';
+    focusBody = hasAttemptVideo
+      ? 'You already have a saved attempt on this node.'
+      : 'This node is complete, but it does not have a saved clip yet.';
+  } else if (unlockable) {
+    focusTitle = HAS_NATIVE_IMAGE_PICKER ? 'Ready to record' : 'Ready to upload';
+    focusBody = HAS_NATIVE_IMAGE_PICKER
+      ? 'Record a clean attempt to complete this skill.'
+      : 'Choose a video from your device to complete this skill.';
+  } else {
+    focusTitle = 'Finish prerequisites first';
+    focusBody = 'Complete the locked skills below before this node can be attempted.';
+  }
+
+  const attemptLabel = hasAttemptVideo
+    ? (HAS_NATIVE_IMAGE_PICKER ? 'Update Attempt' : 'Update Video')
+    : (HAS_NATIVE_IMAGE_PICKER ? 'Record Attempt' : 'Upload Attempt');
+  const attemptSub = unlockable && !node.unlocked
+    ? (HAS_NATIVE_IMAGE_PICKER
+      ? 'Film a rep to complete this skill.'
+      : 'Choose a clip to complete this skill.')
+    : (HAS_NATIVE_IMAGE_PICKER
+      ? 'Record again or upload a better clip.'
+      : 'Choose a new clip for this node.');
+  const attemptIcon = HAS_NATIVE_IMAGE_PICKER ? 'camera-outline' : 'cloud-upload-outline';
 
   return (
-    <Modal transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={!!node}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={() => onClose?.('system')}
+    >
       <View style={styles.overlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
-        <View style={styles.card}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={() => onClose?.('backdrop')}
+          disabled={disableBackdropClose}
+        />
+
+        <View style={[styles.card, { borderColor: toRGBA(branchColor.main, 0.18) }]}>
+          <View style={[styles.cardAccent, { backgroundColor: branchColor.main }]} />
           <View style={styles.handle} />
 
           <View style={styles.header}>
-            <View style={[styles.statusPill, { backgroundColor: toRGBA(statusColor, 0.15) }]}>
-              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-              <Text style={[styles.statusT, { color: statusColor }]}>{statusText}</Text>
+            <View style={styles.headerMeta}>
+              <View style={[styles.branchPill, { borderColor: toRGBA(branchColor.main, 0.22), backgroundColor: toRGBA(branchColor.main, 0.1) }]}>
+                <Ionicons name="git-branch-outline" size={13} color={branchColor.main} />
+                <Text style={[styles.branchPillText, { color: branchColor.ring }]}>{branch.toUpperCase()}</Text>
+              </View>
+
+              <View style={[styles.statusPill, { backgroundColor: toRGBA(statusColor, 0.14), borderColor: toRGBA(statusColor, 0.18) }]}>
+                <Ionicons name={statusIcon} size={13} color={statusColor} />
+                <Text style={[styles.statusText, { color: statusColor }]}>{statusText.toUpperCase()}</Text>
+              </View>
             </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}>
-              <Text style={styles.closeT}>✕</Text>
+
+            <TouchableOpacity
+              style={[styles.closeBtn, pendingUnlock && styles.closeBtnPending]}
+              onPress={() => onClose?.('close-button')}
+              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+            >
+              <Ionicons name="close" size={18} color="rgba(255,255,255,0.72)" />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.title}>{node.name.toUpperCase()}</Text>
-          {!!skillInfo.desc && <Text style={styles.desc}>{skillInfo.desc}</Text>}
-
-          {!node.isStart && (
-            <View style={styles.diffSection}>
-              <Text style={styles.sectionLabel}>DIFFICULTY</Text>
-              <DiffBar label="Strength" value={skillInfo.str} color="#c04040" glowColor="#ff2020" />
-              <DiffBar label="Balance" value={skillInfo.bal} color="#3a70d0" glowColor="#2060ff" />
-              <DiffBar label="Technique" value={skillInfo.tec} color="#b09020" glowColor="#ffd030" />
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.heroBlock}>
+              <Text style={styles.title}>{node.name}</Text>
+              <Text style={styles.desc}>
+                {skillInfo.desc || 'No notes yet for this skill.'}
+              </Text>
             </View>
-          )}
 
-          <View style={styles.mediaBg}>
-            <Text style={styles.mediaLabel}>VIDEO</Text>
-            <Text style={styles.mediaHint}>Add skill footage</Text>
-          </View>
-
-          {unmetPrereqs.length > 0 && (
-            <View style={styles.prereqBox}>
-              <Text style={styles.prereqTitle}>PREREQUISITES</Text>
-              {unmetPrereqs.map((p) => <Text key={p.id} style={styles.prereqItem}>• {p.name}</Text>)}
+            <View style={[styles.focusCard, pendingUnlock && styles.focusCardPending]}>
+              <Text style={styles.focusTitle}>{focusTitle}</Text>
+              <Text style={styles.focusBody}>{focusBody}</Text>
             </View>
-          )}
+
+            {!node.isStart && (
+              <View style={styles.infoRow}>
+                <InfoTile icon="barbell-outline" label="Strength" value={`${skillInfo.str}/10`} color="#F87171" />
+                <InfoTile icon="pulse-outline" label="Balance" value={`${skillInfo.bal}/10`} color="#60A5FA" />
+                <InfoTile icon="sparkles-outline" label="Technique" value={`${skillInfo.tec}/10`} color="#FBBF24" />
+              </View>
+            )}
+
+            {prereqs.length > 0 && (
+              <View style={styles.prereqBox}>
+                <View style={styles.prereqHeader}>
+                  <Text style={styles.prereqTitle}>PREREQUISITES</Text>
+                  <Text style={styles.prereqMeta}>{unmetPrereqs.length ? `${unmetPrereqs.length} locked` : 'All clear'}</Text>
+                </View>
+
+                <View style={styles.prereqChipWrap}>
+                  {prereqs.map((prereq) => {
+                    const met = prereq.unlocked || prereq.isStart;
+                    return (
+                      <View
+                        key={prereq.id}
+                        style={[
+                          styles.prereqChip,
+                          met ? styles.prereqChipMet : styles.prereqChipLocked,
+                        ]}
+                      >
+                        <Ionicons
+                          name={met ? 'checkmark-circle' : 'lock-closed-outline'}
+                          size={13}
+                          color={met ? '#86EFAC' : '#FCA5A5'}
+                        />
+                        <Text style={[styles.prereqChipText, met ? styles.prereqChipTextMet : styles.prereqChipTextLocked]}>
+                          {prereq.name}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                {unmetPrereqs.length > 0 && (
+                  <Text style={styles.prereqWarning}>
+                    Finish the locked skills to activate this attempt button.
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {(hasAttemptVideo || guideVideoUri) && (
+              <View style={styles.mediaStack}>
+                {hasAttemptVideo && (
+                  <VideoPanel
+                    uri={attemptVideoUri}
+                    title="Your Attempt"
+                    body={HAS_NATIVE_IMAGE_PICKER
+                      ? 'Record again anytime if you want a cleaner clip.'
+                      : 'Choose another clip anytime if you want to replace this one.'}
+                    accentColor="#7DD3FC"
+                    emptyIcon="videocam-outline"
+                  />
+                )}
+
+                {guideVideoUri && (
+                  <VideoPanel
+                    uri={guideVideoUri}
+                    title="Guide Video"
+                    body="This node has a reference video attached."
+                    accentColor={branchColor.main}
+                  />
+                )}
+
+                {videoRecord?.createdAt && (
+                  <Text style={styles.videoMeta}>
+                    Saved {new Date(videoRecord.createdAt).toLocaleString()}
+                  </Text>
+                )}
+              </View>
+            )}
+          </ScrollView>
 
           {node.isStart ? (
-            <View style={styles.actionBtn}><Text style={styles.actionBtnT}>THE BEGINNING</Text></View>
-          ) : node.unlocked ? (
-            <View style={[styles.actionBtn, styles.masteredBtn]}><Text style={[styles.actionBtnT, { color: '#4ADE80' }]}>MASTERED</Text></View>
-          ) : unlockable ? (
-            <TouchableOpacity style={[styles.actionBtn, styles.attemptBtn]} onPress={() => onRecord(node.id)} activeOpacity={0.8}>
-              <Text style={[styles.actionBtnT, { color: '#60A5FA' }]}>ATTEMPT</Text>
+            <View style={[styles.actionBtn, styles.staticAction]}>
+              <Ionicons name="planet-outline" size={18} color="#7DD3FC" />
+              <View style={styles.actionCopy}>
+                <Text style={[styles.actionBtnT, { color: '#D9F1FF' }]}>Starting Point</Text>
+                <Text style={styles.actionSub}>This node anchors the rest of the tree.</Text>
+              </View>
+            </View>
+          ) : pendingUnlock ? (
+            <View style={[styles.actionBtn, styles.pendingUnlockAction]}>
+              <Ionicons name="sparkles-outline" size={18} color="#BFE2FF" />
+              <View style={styles.actionCopy}>
+                <Text style={[styles.actionBtnT, { color: '#E7F5FF' }]}>Close to Unlock</Text>
+                <Text style={styles.actionSub}>Tap the close button above to finish the unlock.</Text>
+              </View>
+            </View>
+          ) : canRecordAttempt ? (
+            <TouchableOpacity style={[styles.actionBtn, styles.attemptBtn]} onPress={() => onAttempt?.(node)} activeOpacity={0.84}>
+              <Ionicons name={attemptIcon} size={20} color="#BFE2FF" />
+              <View style={styles.actionCopy}>
+                <Text style={[styles.actionBtnT, { color: '#E7F5FF' }]}>{attemptLabel}</Text>
+                <Text style={styles.actionSub}>{attemptSub}</Text>
+              </View>
+              <Ionicons name="arrow-forward" size={18} color="#BFE2FF" />
             </TouchableOpacity>
           ) : (
-            <View style={[styles.actionBtn, styles.lockedActionBtn]}><Text style={[styles.actionBtnT, { color: 'rgba(255,255,255,0.3)', fontSize: 13 }]}>COMPLETE PREREQUISITES</Text></View>
+            <View style={[styles.actionBtn, styles.lockedActionBtn]}>
+              <Ionicons name="lock-closed-outline" size={18} color="rgba(255,255,255,0.42)" />
+              <View style={styles.actionCopy}>
+                <Text style={[styles.actionBtnT, { color: 'rgba(255,255,255,0.62)' }]}>Complete Prerequisites</Text>
+                <Text style={styles.actionSub}>This node becomes attempt-ready once the locked skills are done.</Text>
+              </View>
+            </View>
           )}
         </View>
       </View>
@@ -77,149 +324,294 @@ export default function SkillCard({ node, nodes, edges, info, onClose, onRecord 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.68)',
     justifyContent: 'flex-end',
   },
   card: {
-    backgroundColor: 'rgba(16,16,22,0.97)',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    backgroundColor: 'rgba(10,14,22,0.98)',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    borderWidth: 1,
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 560,
     alignSelf: 'center',
-    paddingBottom: 16,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.38,
+    shadowRadius: 28,
     elevation: 24,
+  },
+  cardAccent: {
+    height: 3,
+    width: '100%',
   },
   handle: {
     alignSelf: 'center',
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
     marginTop: 10,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 20,
-    paddingBottom: 6,
+    paddingBottom: 8,
+    gap: 14,
+  },
+  headerMeta: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    flex: 1,
+  },
+  branchPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  branchPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
     gap: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusT: {
+  statusText: {
     fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.5,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
   closeBtn: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
-  closeT: { color: 'rgba(255,255,255,0.4)', fontSize: 14 },
-  title: {
-    textAlign: 'center',
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: 3,
-    color: '#fff',
+  closeBtnPending: {
+    backgroundColor: 'rgba(13,58,86,0.86)',
+    borderColor: 'rgba(125,211,252,0.18)',
+    shadowColor: '#7DD3FC',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  scroll: {
+    maxHeight: 540,
+  },
+  scrollContent: {
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingBottom: 16,
+    gap: 14,
+  },
+  heroBlock: {
+    gap: 8,
+  },
+  title: {
+    color: '#F8FBFF',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   desc: {
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(225,236,248,0.68)',
     fontSize: 14,
-    lineHeight: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-    textAlign: 'center',
+    lineHeight: 21,
   },
-  diffSection: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 4,
+  focusCard: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    padding: 16,
+    gap: 6,
   },
-  sectionLabel: {
-    color: 'rgba(255,255,255,0.35)',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 2,
-    textAlign: 'center',
-    marginBottom: 14,
+  focusCardPending: {
+    backgroundColor: 'rgba(13,58,86,0.2)',
+    borderColor: 'rgba(125,211,252,0.12)',
   },
-  mediaBg: {
-    marginHorizontal: 20,
-    marginVertical: 10,
-    height: 140,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 16,
+  focusTitle: {
+    color: '#F8FBFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  focusBody: {
+    color: 'rgba(215,236,255,0.64)',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  infoTile: {
+    flex: 1,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  infoTileIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 10,
   },
-  mediaLabel: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 12,
+  infoTileLabel: {
+    color: 'rgba(255,255,255,0.42)',
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 2,
-    marginBottom: 4,
+    letterSpacing: 0.4,
+    marginBottom: 3,
   },
-  mediaHint: { color: 'rgba(255,255,255,0.2)', fontSize: 12 },
+  infoTileValue: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
   prereqBox: {
-    marginHorizontal: 20,
-    marginBottom: 8,
-    padding: 14,
-    backgroundColor: 'rgba(248,113,113,0.08)',
-    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    padding: 16,
+    gap: 12,
+  },
+  prereqHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   prereqTitle: {
-    color: '#F87171',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 2,
-    marginBottom: 8,
+    color: '#F8FBFF',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 1.1,
   },
-  prereqItem: { color: 'rgba(252,165,165,0.8)', fontSize: 14, marginBottom: 3 },
-  actionBtn: {
-    marginHorizontal: 20,
-    marginTop: 10,
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  actionBtnT: {
+  prereqMeta: {
     color: 'rgba(255,255,255,0.4)',
-    fontSize: 15,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  prereqChipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  prereqChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  prereqChipMet: {
+    backgroundColor: 'rgba(74,222,128,0.1)',
+    borderColor: 'rgba(74,222,128,0.16)',
+  },
+  prereqChipLocked: {
+    backgroundColor: 'rgba(248,113,113,0.08)',
+    borderColor: 'rgba(248,113,113,0.12)',
+  },
+  prereqChipText: {
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 3,
+  },
+  prereqChipTextMet: {
+    color: '#D8FFE8',
+  },
+  prereqChipTextLocked: {
+    color: '#FFD4D4',
+  },
+  prereqWarning: {
+    color: '#FCA5A5',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  mediaStack: {
+    gap: 14,
+  },
+  videoPanel: {
+    gap: 10,
+  },
+  videoPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  videoPanelTitle: {
+    color: '#F8FBFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  videoStage: {
+    height: 190,
+    borderRadius: 22,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(6,13,22,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(125,211,252,0.14)',
+  },
+  videoMeta: {
+    color: 'rgba(255,255,255,0.46)',
+    fontSize: 12,
+  },
+  actionBtn: {
+    minHeight: 84,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
   },
   attemptBtn: {
-    backgroundColor: 'rgba(96,165,250,0.12)',
+    backgroundColor: 'rgba(13,58,86,0.72)',
   },
-  masteredBtn: {
-    backgroundColor: 'rgba(74,222,128,0.1)',
+  pendingUnlockAction: {
+    backgroundColor: 'rgba(10,36,56,0.76)',
+  },
+  staticAction: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
   lockedActionBtn: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  actionCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  actionBtnT: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  actionSub: {
+    color: 'rgba(225,236,248,0.58)',
+    fontSize: 12,
+    lineHeight: 18,
   },
 });

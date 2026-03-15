@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Alert,
   ScrollView,
@@ -11,7 +11,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthBackdrop from '../components/AuthBackdrop';
-import { Colors } from '../theme/colors';
 
 function SettingsRow({
   icon,
@@ -22,52 +21,60 @@ function SettingsRow({
   onPress,
   isLast = false,
 }) {
-  const content = (
-    <View style={[styles.row, !isLast && styles.rowBorder]}>
-      <View style={styles.rowLeft}>
-        <View style={[styles.rowIconWrap, { backgroundColor: `${accent}18`, borderColor: `${accent}28` }]}>
-          <Ionicons name={icon} size={18} color={accent} />
-        </View>
-        <Text style={styles.label}>{label}</Text>
-      </View>
-      {children || <Text style={styles.valueDim}>{value}</Text>}
-    </View>
-  );
-
-  if (!onPress) {
-    return content;
-  }
+  const interactive = !!onPress;
 
   return (
-    <TouchableOpacity activeOpacity={0.75} onPress={onPress}>
-      {content}
+    <TouchableOpacity activeOpacity={interactive ? 0.75 : 1} onPress={onPress} disabled={!interactive}>
+      <View style={[styles.row, !isLast && styles.rowBorder]}>
+        <View style={styles.rowLeft}>
+          <View style={[styles.rowIconWrap, { borderColor: `${accent}28`, backgroundColor: `${accent}12` }]}>
+            <View style={[styles.rowIconAccent, { backgroundColor: `${accent}18` }]} />
+            <Ionicons name={icon} size={18} color={accent} />
+          </View>
+          <Text style={styles.label}>{label}</Text>
+        </View>
+
+        {children || (
+          <View style={styles.rowRight}>
+            <Text style={styles.valueDim}>{value}</Text>
+            {interactive && <Ionicons name="chevron-forward" size={16} color="rgba(191,226,255,0.36)" />}
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
 
 function ActionButton({
   label,
+  subtitle,
   tone = 'blue',
   onPress,
 }) {
   const toneMap = {
     red: {
-      bg: 'rgba(248,113,113,0.12)',
-      border: 'rgba(248,113,113,0.18)',
-      text: '#FCA5A5',
-      glow: 'rgba(248,113,113,0.12)',
+      bg: 'rgba(84,20,26,0.68)',
+      border: 'rgba(248,113,113,0.24)',
+      text: '#FFE1E1',
+      sub: 'rgba(252,165,165,0.72)',
+      icon: '#FCA5A5',
+      iconName: 'refresh-outline',
     },
     green: {
-      bg: 'rgba(74,222,128,0.12)',
-      border: 'rgba(74,222,128,0.18)',
-      text: '#86EFAC',
-      glow: 'rgba(74,222,128,0.12)',
+      bg: 'rgba(10,34,26,0.76)',
+      border: 'rgba(74,222,128,0.22)',
+      text: '#D8FFE7',
+      sub: 'rgba(134,239,172,0.72)',
+      icon: '#86EFAC',
+      iconName: 'flash-outline',
     },
     blue: {
-      bg: 'rgba(96,165,250,0.12)',
-      border: 'rgba(125,211,252,0.18)',
-      text: '#BFE2FF',
-      glow: 'rgba(96,165,250,0.12)',
+      bg: 'rgba(8,28,46,0.76)',
+      border: 'rgba(125,211,252,0.24)',
+      text: '#E2F4FF',
+      sub: 'rgba(125,211,252,0.72)',
+      icon: '#7DD3FC',
+      iconName: 'sparkles-outline',
     },
   };
 
@@ -76,11 +83,17 @@ function ActionButton({
   return (
     <TouchableOpacity
       style={[styles.actionBtn, { backgroundColor: resolved.bg, borderColor: resolved.border }]}
-      activeOpacity={0.78}
+      activeOpacity={0.82}
       onPress={onPress}
     >
-      <View style={[styles.actionGlow, { backgroundColor: resolved.glow }]} />
-      <Text style={[styles.actionBtnT, { color: resolved.text }]}>{label}</Text>
+      <View style={[styles.actionIconWrap, { backgroundColor: `${resolved.icon}14`, borderColor: `${resolved.icon}24` }]}>
+        <Ionicons name={resolved.iconName} size={18} color={resolved.icon} />
+      </View>
+      <View style={styles.actionTextWrap}>
+        <Text style={[styles.actionBtnT, { color: resolved.text }]}>{label}</Text>
+        <Text style={[styles.actionBtnSub, { color: resolved.sub }]}>{subtitle}</Text>
+      </View>
+      <Ionicons name="arrow-forward" size={18} color={resolved.icon} />
     </TouchableOpacity>
   );
 }
@@ -91,13 +104,17 @@ export default function SettingsScreen({
   onEditTree,
   onSignOut,
   userEmail,
+  username,
   userRole,
+  treePrefs,
+  onTreePrefsChange,
 }) {
-  const [notifications, setNotifications] = useState(true);
-  const [darkMode, setDarkMode] = useState(true);
   const insets = useSafeAreaInsets();
   const normalizedRole = String(userRole || 'user').toUpperCase();
   const isAdmin = normalizedRole === 'ADMIN';
+  const showParticles = treePrefs?.showParticles ?? true;
+  const highQuality = treePrefs?.highQuality ?? true;
+  const displayName = username ? `@${username}` : (userEmail || 'Unknown account');
 
   return (
     <View style={styles.root}>
@@ -106,50 +123,62 @@ export default function SettingsScreen({
 
       <ScrollView style={styles.page} contentContainerStyle={[styles.content, { paddingTop: insets.top + 72 }]}>
         <View style={styles.heroCard}>
-          <View style={styles.heroGlow} />
+          <View style={styles.heroCorner} />
           <Text style={styles.eyebrow}>SETTINGS</Text>
           <Text style={styles.pageTitle}>Control Room</Text>
           <Text style={styles.pageBody}>
-            Account state, sync behavior, tree admin tools, and session controls all live here with the same neon-space language as the tree.
+            Session controls, sync state, admin tree tools, and local preferences all live here in a cleaner command-deck layout.
           </Text>
 
           <View style={styles.heroMetaRow}>
             <View style={styles.heroMetaPill}>
               <Text style={styles.heroMetaLabel}>SIGNED IN</Text>
-              <Text style={styles.heroMetaValue}>{userEmail || 'Unknown account'}</Text>
+              <Text style={styles.heroMetaValue}>{displayName}</Text>
             </View>
             <View style={[styles.roleBadge, isAdmin ? styles.roleBadgeAdmin : styles.roleBadgeUser]}>
-              <Text style={[styles.roleBadgeText, isAdmin ? styles.roleBadgeTextAdmin : styles.roleBadgeTextUser]}>{normalizedRole}</Text>
+              <Ionicons
+                name={isAdmin ? 'shield-checkmark-outline' : 'sparkles-outline'}
+                size={14}
+                color={isAdmin ? '#DDD6FE' : '#BBF7D0'}
+              />
+              <Text style={[styles.roleBadgeText, isAdmin ? styles.roleBadgeTextAdmin : styles.roleBadgeTextUser]}>
+                {normalizedRole}
+              </Text>
             </View>
           </View>
         </View>
 
         <Text style={styles.sectionHeader}>Account</Text>
         <View style={styles.section}>
-          <SettingsRow icon="mail-outline" accent="#7DD3FC" label="Signed In" value={userEmail || 'Unknown account'} />
+          <SettingsRow
+            icon={username ? 'at-outline' : 'mail-outline'}
+            accent="#7DD3FC"
+            label="Signed In"
+            value={displayName}
+          />
           <SettingsRow icon="shield-checkmark-outline" accent={isAdmin ? '#C4B5FD' : '#86EFAC'} label="Role" value={normalizedRole} />
           <SettingsRow icon="cloud-done-outline" accent="#60A5FA" label="Data Sync" value="Supabase" isLast />
         </View>
 
-        <Text style={styles.sectionHeader}>Preferences</Text>
+        <Text style={styles.sectionHeader}>Tree Display</Text>
         <View style={styles.section}>
-          <SettingsRow icon="notifications-outline" accent="#7DD3FC" label="Notifications">
+          <SettingsRow icon="sparkles-outline" accent="#FDE68A" label="Node Particles">
             <Switch
-              value={notifications}
-              onValueChange={setNotifications}
-              trackColor={{ false: 'rgba(255,255,255,0.1)', true: 'rgba(96,165,250,0.38)' }}
-              thumbColor={notifications ? '#BFE2FF' : 'rgba(255,255,255,0.55)'}
+              value={showParticles}
+              onValueChange={(v) => onTreePrefsChange?.({ ...treePrefs, showParticles: v })}
+              trackColor={{ false: 'rgba(255,255,255,0.1)', true: 'rgba(253,230,138,0.36)' }}
+              thumbColor={showParticles ? '#FEF3C7' : 'rgba(255,255,255,0.62)'}
             />
           </SettingsRow>
-          <SettingsRow icon="moon-outline" accent="#86EFAC" label="Dark Theme">
+          <SettingsRow icon="diamond-outline" accent="#C4B5FD" label="High Quality Effects">
             <Switch
-              value={darkMode}
-              onValueChange={setDarkMode}
-              trackColor={{ false: 'rgba(255,255,255,0.1)', true: 'rgba(74,222,128,0.32)' }}
-              thumbColor={darkMode ? '#B7F5CC' : 'rgba(255,255,255,0.55)'}
+              value={highQuality}
+              onValueChange={(v) => onTreePrefsChange?.({ ...treePrefs, highQuality: v })}
+              trackColor={{ false: 'rgba(255,255,255,0.1)', true: 'rgba(196,181,253,0.36)' }}
+              thumbColor={highQuality ? '#EDE9FE' : 'rgba(255,255,255,0.62)'}
             />
           </SettingsRow>
-          <SettingsRow icon="sparkles-outline" accent="#FDE68A" label="Cloud Save" value="Automatic" isLast />
+          <SettingsRow icon="cloud-done-outline" accent="#60A5FA" label="Cloud Save" value="Automatic" isLast />
         </View>
 
         {!!onEditTree && (
@@ -173,12 +202,13 @@ export default function SettingsScreen({
             <Text style={styles.sectionHeader}>Danger Zone</Text>
             <View style={styles.section}>
               <Text style={styles.dangerBody}>
-                Use these only when you want to fully reset or fully reveal the current tree.
+                Use these only when you intentionally want to wipe or fully reveal the current tree state.
               </Text>
               <View style={styles.actionStack}>
                 {onResetProgress && (
                   <ActionButton
                     label="Reset Progress"
+                    subtitle="Lock every node but keep the current layout"
                     tone="red"
                     onPress={() => {
                       Alert.alert('Reset Progress', 'Set all skills back to locked? Your tree structure stays intact.', [
@@ -191,6 +221,7 @@ export default function SettingsScreen({
                 {onUnlockAll && (
                   <ActionButton
                     label="Unlock Entire Tree"
+                    subtitle="Reveal every skill in the current tree"
                     tone="green"
                     onPress={() => {
                       Alert.alert('Unlock Entire Tree', 'Unlock every skill in the current tree?', [
@@ -206,8 +237,7 @@ export default function SettingsScreen({
         )}
 
         {onSignOut && (
-          <TouchableOpacity style={styles.signOutBtn} activeOpacity={0.8} onPress={onSignOut}>
-            <View style={styles.signOutGlow} />
+          <TouchableOpacity style={styles.signOutBtn} activeOpacity={0.82} onPress={onSignOut}>
             <View style={styles.signOutIconWrap}>
               <Ionicons name="log-out-outline" size={18} color="#FCA5A5" />
             </View>
@@ -215,6 +245,7 @@ export default function SettingsScreen({
               <Text style={styles.signOutBtnT}>Sign Out</Text>
               <Text style={styles.signOutBtnSub}>End this session and return to the auth screen</Text>
             </View>
+            <Ionicons name="arrow-forward" size={18} color="#FCA5A5" />
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -223,11 +254,11 @@ export default function SettingsScreen({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#05070E' },
-  backdrop: { opacity: 0.68 },
+  root: { flex: 1, backgroundColor: '#04070D' },
+  backdrop: { opacity: 0.62 },
   pageTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(3,5,10,0.72)',
+    backgroundColor: 'rgba(3,6,12,0.76)',
   },
   page: {
     flex: 1,
@@ -239,45 +270,45 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   eyebrow: {
-    color: 'rgba(255,232,166,0.7)',
+    color: 'rgba(164,212,255,0.76)',
     fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 2.1,
+    letterSpacing: 2.2,
   },
   heroCard: {
     position: 'relative',
     overflow: 'hidden',
-    backgroundColor: 'rgba(8,12,22,0.72)',
-    borderRadius: 28,
+    backgroundColor: 'rgba(8,12,22,0.8)',
+    borderRadius: 30,
     borderWidth: 1,
-    borderColor: 'rgba(255,216,74,0.12)',
-    padding: 20,
+    borderColor: 'rgba(125,211,252,0.16)',
+    padding: 22,
     gap: 12,
   },
-  heroGlow: {
+  heroCorner: {
     position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 999,
-    top: -140,
-    right: -82,
-    backgroundColor: 'rgba(255,216,74,0.08)',
+    width: 118,
+    height: 84,
+    bottom: -32,
+    left: -26,
+    borderRadius: 28,
+    backgroundColor: 'rgba(253,230,138,0.06)',
+    transform: [{ rotate: '-16deg' }],
   },
   pageTitle: {
-    color: '#FFFFFF',
+    color: '#F8FBFF',
     fontSize: 30,
     fontWeight: '800',
     letterSpacing: 0.2,
   },
   pageBody: {
-    color: 'rgba(215,236,255,0.62)',
+    color: 'rgba(215,236,255,0.68)',
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 21,
   },
   heroMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
     marginTop: 4,
   },
@@ -291,11 +322,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
   },
   heroMetaLabel: {
-    color: 'rgba(191,226,255,0.4)',
+    color: 'rgba(191,226,255,0.44)',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1.2,
-    marginBottom: 3,
+    marginBottom: 4,
   },
   heroMetaValue: {
     color: '#F8FBFF',
@@ -303,7 +334,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   roleBadge: {
-    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
@@ -313,22 +347,18 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(196,181,253,0.22)',
   },
   roleBadgeUser: {
-    backgroundColor: 'rgba(134,239,172,0.1)',
+    backgroundColor: 'rgba(134,239,172,0.12)',
     borderColor: 'rgba(134,239,172,0.2)',
   },
   roleBadgeText: {
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
   },
-  roleBadgeTextAdmin: {
-    color: '#DDD6FE',
-  },
-  roleBadgeTextUser: {
-    color: '#BBF7D0',
-  },
+  roleBadgeTextAdmin: { color: '#DDD6FE' },
+  roleBadgeTextUser: { color: '#BBF7D0' },
   sectionHeader: {
-    color: 'rgba(255,255,255,0.42)',
+    color: 'rgba(255,255,255,0.44)',
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1.2,
@@ -336,7 +366,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   section: {
-    backgroundColor: 'rgba(8,12,22,0.68)',
+    backgroundColor: 'rgba(8,12,22,0.72)',
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
@@ -361,61 +391,81 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   rowIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
+    position: 'relative',
+    width: 36,
+    height: 36,
+    borderRadius: 13,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  rowIconAccent: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 8,
+    top: -4,
+    right: -4,
   },
   label: {
-    color: 'rgba(255,255,255,0.86)',
+    color: 'rgba(255,255,255,0.88)',
     fontSize: 15,
     fontWeight: '600',
   },
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '48%',
+  },
   valueDim: {
-    color: 'rgba(255,255,255,0.38)',
+    color: 'rgba(225,236,248,0.46)',
     fontSize: 14,
     fontWeight: '600',
-    maxWidth: '45%',
     textAlign: 'right',
   },
   dangerBody: {
-    color: 'rgba(255,255,255,0.42)',
+    color: 'rgba(255,255,255,0.46)',
     fontSize: 13,
     lineHeight: 19,
     paddingTop: 14,
-    paddingBottom: 10,
+    paddingBottom: 12,
   },
   actionStack: {
     gap: 10,
     paddingBottom: 12,
   },
   actionBtn: {
-    position: 'relative',
-    overflow: 'hidden',
-    minHeight: 50,
+    minHeight: 60,
     borderRadius: 18,
     borderWidth: 1,
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
   },
-  actionGlow: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 999,
-    top: -52,
-    right: -24,
+  actionIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionTextWrap: {
+    flex: 1,
   },
   actionBtnT: {
     fontSize: 14,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  actionBtnSub: {
+    fontSize: 12,
+    lineHeight: 17,
   },
   signOutBtn: {
-    position: 'relative',
-    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
@@ -426,15 +476,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(72,18,22,0.34)',
     borderWidth: 1,
     borderColor: 'rgba(248,113,113,0.16)',
-  },
-  signOutGlow: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 999,
-    top: -110,
-    right: -70,
-    backgroundColor: 'rgba(248,113,113,0.08)',
   },
   signOutIconWrap: {
     width: 40,
