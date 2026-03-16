@@ -25,31 +25,6 @@ function InfoTile({ icon, label, value, color }) {
   );
 }
 
-function VideoPanel({
-  uri,
-  title,
-  body,
-  accentColor,
-  emptyIcon = 'play-circle-outline',
-}) {
-  return (
-    <View style={styles.videoPanel}>
-      <View style={styles.videoPanelHeader}>
-        <Text style={styles.videoPanelTitle}>{title}</Text>
-        <Ionicons name={uri ? 'videocam' : emptyIcon} size={16} color={accentColor} />
-      </View>
-      <SafeVideoPlayer
-        uri={uri}
-        style={styles.videoStage}
-        accentColor={accentColor}
-        emptyIcon={emptyIcon}
-        emptyBody={body}
-        openLabel="Open Clip"
-      />
-    </View>
-  );
-}
-
 export default function SkillCard({
   node,
   nodes,
@@ -58,16 +33,11 @@ export default function SkillCard({
   videoRecord,
   onClose,
   onAttempt,
+  onSelectPrereq,
   pendingUnlock = false,
   disableBackdropClose = false,
 }) {
-  const skillInfo = info || {
-    desc: '',
-    str: 5,
-    bal: 5,
-    tec: 5,
-    guideVideoUrl: '',
-  };
+  const skillInfo = info || { desc: '', str: 5, bal: 5, tec: 5, guideVideoUrl: '' };
   const unlockable = !node.isStart && canUnlock(node.id, nodes, edges);
   const prereqs = edges
     .filter((edge) => edge.to === node.id)
@@ -108,39 +78,9 @@ export default function SkillCard({
     statusIcon = 'lock-closed-outline';
   }
 
-  let focusTitle;
-  let focusBody;
-  if (pendingUnlock) {
-    focusTitle = 'Ready to unlock';
-    focusBody = 'Your clip is saved. Close this card to play the unlock animation and apply the ELO gain.';
-  } else if (node.isStart) {
-    focusTitle = 'Starting point';
-    focusBody = 'This is the base of your tree.';
-  } else if (node.unlocked) {
-    focusTitle = hasAttemptVideo ? 'Attempt saved' : 'Skill complete';
-    focusBody = hasAttemptVideo
-      ? 'You already have a saved attempt on this node.'
-      : 'This node is complete, but it does not have a saved clip yet.';
-  } else if (unlockable) {
-    focusTitle = HAS_NATIVE_IMAGE_PICKER ? 'Ready to record' : 'Ready to upload';
-    focusBody = HAS_NATIVE_IMAGE_PICKER
-      ? 'Record a clean attempt to complete this skill.'
-      : 'Choose a video from your device to complete this skill.';
-  } else {
-    focusTitle = 'Finish prerequisites first';
-    focusBody = 'Complete the locked skills below before this node can be attempted.';
-  }
-
   const attemptLabel = hasAttemptVideo
     ? (HAS_NATIVE_IMAGE_PICKER ? 'Update Attempt' : 'Update Video')
     : (HAS_NATIVE_IMAGE_PICKER ? 'Record Attempt' : 'Upload Attempt');
-  const attemptSub = unlockable && !node.unlocked
-    ? (HAS_NATIVE_IMAGE_PICKER
-      ? 'Film a rep to complete this skill.'
-      : 'Choose a clip to complete this skill.')
-    : (HAS_NATIVE_IMAGE_PICKER
-      ? 'Record again or upload a better clip.'
-      : 'Choose a new clip for this node.');
   const attemptIcon = HAS_NATIVE_IMAGE_PICKER ? 'camera-outline' : 'cloud-upload-outline';
 
   return (
@@ -192,14 +132,9 @@ export default function SkillCard({
           >
             <View style={styles.heroBlock}>
               <Text style={styles.title}>{node.name}</Text>
-              <Text style={styles.desc}>
-                {skillInfo.desc || 'No notes yet for this skill.'}
-              </Text>
-            </View>
-
-            <View style={[styles.focusCard, pendingUnlock && styles.focusCardPending]}>
-              <Text style={styles.focusTitle}>{focusTitle}</Text>
-              <Text style={styles.focusBody}>{focusBody}</Text>
+              {!!skillInfo.desc && (
+                <Text style={styles.desc}>{skillInfo.desc}</Text>
+              )}
             </View>
 
             {!node.isStart && (
@@ -216,17 +151,16 @@ export default function SkillCard({
                   <Text style={styles.prereqTitle}>PREREQUISITES</Text>
                   <Text style={styles.prereqMeta}>{unmetPrereqs.length ? `${unmetPrereqs.length} locked` : 'All clear'}</Text>
                 </View>
-
                 <View style={styles.prereqChipWrap}>
                   {prereqs.map((prereq) => {
                     const met = prereq.unlocked || prereq.isStart;
                     return (
-                      <View
+                      <TouchableOpacity
                         key={prereq.id}
-                        style={[
-                          styles.prereqChip,
-                          met ? styles.prereqChipMet : styles.prereqChipLocked,
-                        ]}
+                        style={[styles.prereqChip, met ? styles.prereqChipMet : styles.prereqChipLocked]}
+                        onPress={() => onSelectPrereq?.(prereq)}
+                        activeOpacity={0.72}
+                        disabled={!onSelectPrereq}
                       >
                         <Ionicons
                           name={met ? 'checkmark-circle' : 'lock-closed-outline'}
@@ -236,47 +170,32 @@ export default function SkillCard({
                         <Text style={[styles.prereqChipText, met ? styles.prereqChipTextMet : styles.prereqChipTextLocked]}>
                           {prereq.name}
                         </Text>
-                      </View>
+                      </TouchableOpacity>
                     );
                   })}
                 </View>
-
-                {unmetPrereqs.length > 0 && (
-                  <Text style={styles.prereqWarning}>
-                    Finish the locked skills to activate this attempt button.
-                  </Text>
-                )}
               </View>
             )}
 
-            {(hasAttemptVideo || guideVideoUri) && (
-              <View style={styles.mediaStack}>
-                {hasAttemptVideo && (
-                  <VideoPanel
-                    uri={attemptVideoUri}
-                    title="Your Attempt"
-                    body={HAS_NATIVE_IMAGE_PICKER
-                      ? 'Record again anytime if you want a cleaner clip.'
-                      : 'Choose another clip anytime if you want to replace this one.'}
-                    accentColor="#7DD3FC"
-                    emptyIcon="videocam-outline"
-                  />
-                )}
+            {hasAttemptVideo && (
+              <SafeVideoPlayer
+                uri={attemptVideoUri}
+                style={styles.videoStage}
+                accentColor="#7DD3FC"
+                emptyIcon="videocam-outline"
+                openLabel="Open Clip"
+              />
+            )}
 
-                {guideVideoUri && (
-                  <VideoPanel
-                    uri={guideVideoUri}
-                    title="Guide Video"
-                    body="This node has a reference video attached."
-                    accentColor={branchColor.main}
-                  />
-                )}
-
-                {videoRecord?.createdAt && (
-                  <Text style={styles.videoMeta}>
-                    Saved {new Date(videoRecord.createdAt).toLocaleString()}
-                  </Text>
-                )}
+            {guideVideoUri && (
+              <View style={styles.guideBlock}>
+                <Text style={styles.guideLabel}>Guide</Text>
+                <SafeVideoPlayer
+                  uri={guideVideoUri}
+                  style={styles.videoStage}
+                  accentColor={branchColor.main}
+                  openLabel="Open Guide"
+                />
               </View>
             )}
           </ScrollView>
@@ -284,35 +203,23 @@ export default function SkillCard({
           {node.isStart ? (
             <View style={[styles.actionBtn, styles.staticAction]}>
               <Ionicons name="planet-outline" size={18} color="#7DD3FC" />
-              <View style={styles.actionCopy}>
-                <Text style={[styles.actionBtnT, { color: '#D9F1FF' }]}>Starting Point</Text>
-                <Text style={styles.actionSub}>This node anchors the rest of the tree.</Text>
-              </View>
+              <Text style={[styles.actionBtnT, { color: '#D9F1FF' }]}>Starting Point</Text>
             </View>
           ) : pendingUnlock ? (
             <View style={[styles.actionBtn, styles.pendingUnlockAction]}>
               <Ionicons name="sparkles-outline" size={18} color="#BFE2FF" />
-              <View style={styles.actionCopy}>
-                <Text style={[styles.actionBtnT, { color: '#E7F5FF' }]}>Close to Unlock</Text>
-                <Text style={styles.actionSub}>Tap the close button above to finish the unlock.</Text>
-              </View>
+              <Text style={[styles.actionBtnT, { color: '#E7F5FF' }]}>Close to Unlock</Text>
             </View>
           ) : canRecordAttempt ? (
             <TouchableOpacity style={[styles.actionBtn, styles.attemptBtn]} onPress={() => onAttempt?.(node)} activeOpacity={0.84}>
               <Ionicons name={attemptIcon} size={20} color="#BFE2FF" />
-              <View style={styles.actionCopy}>
-                <Text style={[styles.actionBtnT, { color: '#E7F5FF' }]}>{attemptLabel}</Text>
-                <Text style={styles.actionSub}>{attemptSub}</Text>
-              </View>
+              <Text style={[styles.actionBtnT, { color: '#E7F5FF' }]}>{attemptLabel}</Text>
               <Ionicons name="arrow-forward" size={18} color="#BFE2FF" />
             </TouchableOpacity>
           ) : (
             <View style={[styles.actionBtn, styles.lockedActionBtn]}>
               <Ionicons name="lock-closed-outline" size={18} color="rgba(255,255,255,0.42)" />
-              <View style={styles.actionCopy}>
-                <Text style={[styles.actionBtnT, { color: 'rgba(255,255,255,0.62)' }]}>Complete Prerequisites</Text>
-                <Text style={styles.actionSub}>This node becomes attempt-ready once the locked skills are done.</Text>
-              </View>
+              <Text style={[styles.actionBtnT, { color: 'rgba(255,255,255,0.62)' }]}>Complete Prerequisites First</Text>
             </View>
           )}
         </View>
@@ -417,7 +324,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   scroll: {
-    maxHeight: 540,
+    maxHeight: 500,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -425,7 +332,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   heroBlock: {
-    gap: 8,
+    gap: 6,
   },
   title: {
     color: '#F8FBFF',
@@ -437,28 +344,6 @@ const styles = StyleSheet.create({
     color: 'rgba(225,236,248,0.68)',
     fontSize: 14,
     lineHeight: 21,
-  },
-  focusCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    padding: 16,
-    gap: 6,
-  },
-  focusCardPending: {
-    backgroundColor: 'rgba(13,58,86,0.2)',
-    borderColor: 'rgba(125,211,252,0.12)',
-  },
-  focusTitle: {
-    color: '#F8FBFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  focusBody: {
-    color: 'rgba(215,236,255,0.64)',
-    fontSize: 13,
-    lineHeight: 19,
   },
   infoRow: {
     flexDirection: 'row',
@@ -546,27 +431,6 @@ const styles = StyleSheet.create({
   prereqChipTextLocked: {
     color: '#FFD4D4',
   },
-  prereqWarning: {
-    color: '#FCA5A5',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  mediaStack: {
-    gap: 14,
-  },
-  videoPanel: {
-    gap: 10,
-  },
-  videoPanelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  videoPanelTitle: {
-    color: '#F8FBFF',
-    fontSize: 15,
-    fontWeight: '800',
-  },
   videoStage: {
     height: 190,
     borderRadius: 22,
@@ -575,17 +439,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(125,211,252,0.14)',
   },
-  videoMeta: {
-    color: 'rgba(255,255,255,0.46)',
+  guideBlock: {
+    gap: 8,
+  },
+  guideLabel: {
+    color: 'rgba(255,255,255,0.42)',
     fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   actionBtn: {
-    minHeight: 84,
-    paddingHorizontal: 18,
+    minHeight: 68,
+    paddingHorizontal: 20,
     paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.06)',
   },
@@ -601,17 +471,9 @@ const styles = StyleSheet.create({
   lockedActionBtn: {
     backgroundColor: 'rgba(255,255,255,0.02)',
   },
-  actionCopy: {
-    flex: 1,
-    gap: 4,
-  },
   actionBtnT: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '800',
-  },
-  actionSub: {
-    color: 'rgba(225,236,248,0.58)',
-    fontSize: 12,
-    lineHeight: 18,
   },
 });

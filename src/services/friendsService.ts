@@ -11,6 +11,7 @@ export type FriendRecord = {
   displayName: string | null;
   username: string | null;
   avatarUrl: string | null;
+  status: 'online' | 'away' | 'offline' | null;
   addedAt: number;
   source: 'remote' | 'local';
 };
@@ -78,7 +79,7 @@ export async function loadFriends(currentUserId: string | null) {
 
     const profilesResult = await supabase
       .from('profiles')
-      .select('id, email, display_name, username, avatar_url')
+      .select('id, email, display_name, username, avatar_url, status')
       .in('id', friendIds);
 
     if (profilesResult.error) {
@@ -96,6 +97,7 @@ export async function loadFriends(currentUserId: string | null) {
         username: profile?.username || null,
         avatarUrl: profile?.avatar_url || null,
         displayName: profile?.display_name || profile?.username || profile?.email?.split('@')[0] || 'Friend',
+        status: (profile?.status as FriendRecord['status']) || null,
         addedAt: relation?.created_at ? new Date(relation.created_at).getTime() : Date.now(),
         source: 'remote' as const,
       };
@@ -180,62 +182,33 @@ async function upsertFriendship(userId: string, friendId: string) {
 
 export async function addFriendByUsername(currentUserId: string | null, username: string) {
   const normalized = username.trim().toLowerCase().replace(/^@/, '');
-  const localMap = await readLocalFriends();
 
   if (!normalized) throw new Error('Enter a username first.');
+  if (!currentUserId) throw new Error('Sign in to add friends by username.');
 
-  if (!currentUserId) {
-    const localFriend: FriendRecord = {
-      id: `local:@${normalized}`,
-      email: null,
-      username: normalized,
-      avatarUrl: null,
-      displayName: `@${normalized}`,
-      addedAt: Date.now(),
-      source: 'local',
-    };
-    const nextMap = { ...localMap, [localFriend.id]: localFriend };
-    await writeLocalFriends(nextMap);
-    return { friend: localFriend, friends: sortFriends(Object.values(nextMap)), usedLocalFallback: true };
-  }
+  const profileResult = await supabase
+    .from('profiles')
+    .select('id, email, display_name, username, avatar_url')
+    .ilike('username', normalized)
+    .maybeSingle();
 
-  try {
-    const profileResult = await supabase
-      .from('profiles')
-      .select('id, email, display_name, username, avatar_url')
-      .ilike('username', normalized)
-      .maybeSingle();
+  if (profileResult.error) throw new Error('Connection error — check your internet and try again.');
+  if (!profileResult.data?.id) throw new Error(`No account found with username "@${normalized}". Check the spelling and try again.`);
+  if (profileResult.data.id === currentUserId) throw new Error('You cannot add yourself.');
 
-    if (profileResult.error) throw profileResult.error;
-    if (!profileResult.data?.id) throw new Error(`No user found with username "@${normalized}".`);
-    if (profileResult.data.id === currentUserId) throw new Error('You cannot add yourself.');
+  await upsertFriendship(currentUserId, profileResult.data.id);
 
-    await upsertFriendship(currentUserId, profileResult.data.id);
-
-    const friend: FriendRecord = {
-      id: profileResult.data.id,
-      email: profileResult.data.email || null,
-      username: profileResult.data.username || normalized,
-      avatarUrl: profileResult.data.avatar_url || null,
-      displayName: profileResult.data.display_name || profileResult.data.username || `@${normalized}`,
-      addedAt: Date.now(),
-      source: 'remote',
-    };
-    return { friend, friends: await loadFriends(currentUserId), usedLocalFallback: false };
-  } catch (error) {
-    const localFriend: FriendRecord = {
-      id: `local:@${normalized}`,
-      email: null,
-      username: normalized,
-      avatarUrl: null,
-      displayName: `@${normalized}`,
-      addedAt: Date.now(),
-      source: 'local',
-    };
-    const nextMap = { ...localMap, [localFriend.id]: localFriend };
-    await writeLocalFriends(nextMap);
-    return { friend: localFriend, friends: sortFriends(Object.values(nextMap)), usedLocalFallback: true, error };
-  }
+  const friend: FriendRecord = {
+    id: profileResult.data.id,
+    email: profileResult.data.email || null,
+    username: profileResult.data.username || normalized,
+    avatarUrl: profileResult.data.avatar_url || null,
+    status: null,
+    displayName: profileResult.data.display_name || profileResult.data.username || `@${normalized}`,
+    addedAt: Date.now(),
+    source: 'remote',
+  };
+  return { friend, friends: await loadFriends(currentUserId), usedLocalFallback: false };
 }
 
 export async function removeFriend(currentUserId: string | null, friendId: string) {

@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthBackdrop from '../components/AuthBackdrop';
+import { useTheme } from '../theme/ThemeContext';
 
 function SettingsRow({
   icon,
@@ -22,16 +23,16 @@ function SettingsRow({
   isLast = false,
 }) {
   const interactive = !!onPress;
+  const theme = useTheme();
 
   return (
     <TouchableOpacity activeOpacity={interactive ? 0.75 : 1} onPress={onPress} disabled={!interactive}>
       <View style={[styles.row, !isLast && styles.rowBorder]}>
         <View style={styles.rowLeft}>
           <View style={[styles.rowIconWrap, { borderColor: `${accent}28`, backgroundColor: `${accent}12` }]}>
-            <View style={[styles.rowIconAccent, { backgroundColor: `${accent}18` }]} />
             <Ionicons name={icon} size={18} color={accent} />
           </View>
-          <Text style={styles.label}>{label}</Text>
+          <Text style={[styles.label, { color: theme.textPrimary }]}>{label}</Text>
         </View>
 
         {children || (
@@ -102,7 +103,6 @@ export default function SettingsScreen({
   onResetProgress,
   onUnlockAll,
   onEditTree,
-  onSignOut,
   userEmail,
   username,
   userRole,
@@ -112,21 +112,22 @@ export default function SettingsScreen({
   const insets = useSafeAreaInsets();
   const normalizedRole = String(userRole || 'user').toUpperCase();
   const isAdmin = normalizedRole === 'ADMIN';
+  const theme = useTheme();
   const showParticles = treePrefs?.showParticles ?? true;
   const highQuality = treePrefs?.highQuality ?? true;
+  const replayUnlockAnim = treePrefs?.replayUnlockAnim ?? false;
   const displayName = username ? `@${username}` : (userEmail || 'Unknown account');
 
   return (
-    <View style={styles.root}>
-      <AuthBackdrop style={styles.backdrop} />
-      <View style={styles.pageTint} />
+    <View style={[styles.root, { backgroundColor: theme.screenBg }]}>
+      {theme.dark && <AuthBackdrop style={styles.backdrop} />}
+      <View style={[styles.pageTint, { backgroundColor: theme.pageTint }]} />
 
       <ScrollView style={styles.page} contentContainerStyle={[styles.content, { paddingTop: insets.top + 72 }]}>
-        <View style={styles.heroCard}>
-          <View style={styles.heroCorner} />
-          <Text style={styles.eyebrow}>SETTINGS</Text>
-          <Text style={styles.pageTitle}>Control Room</Text>
-          <Text style={styles.pageBody}>
+        <View style={[styles.heroCard, { backgroundColor: theme.heroBg, borderColor: theme.heroBorder }]}>
+          <Text style={[styles.eyebrow, { color: theme.dark ? 'rgba(164,212,255,0.76)' : 'rgba(15,23,42,0.5)' }]}>SETTINGS</Text>
+          <Text style={[styles.pageTitle, { color: theme.textPrimary }]}>Control Room</Text>
+          <Text style={[styles.pageBody, { color: theme.textSecondary }]}>
             Session controls, sync state, admin tree tools, and local preferences all live here in a cleaner command-deck layout.
           </Text>
 
@@ -148,8 +149,8 @@ export default function SettingsScreen({
           </View>
         </View>
 
-        <Text style={styles.sectionHeader}>Account</Text>
-        <View style={styles.section}>
+        <Text style={[styles.sectionHeader, { color: theme.textDim }]}>Account</Text>
+        <View style={[styles.section, { backgroundColor: theme.sectionBg, borderColor: theme.sectionBorder }]}>
           <SettingsRow
             icon={username ? 'at-outline' : 'mail-outline'}
             accent="#7DD3FC"
@@ -160,8 +161,8 @@ export default function SettingsScreen({
           <SettingsRow icon="cloud-done-outline" accent="#60A5FA" label="Data Sync" value="Supabase" isLast />
         </View>
 
-        <Text style={styles.sectionHeader}>Tree Display</Text>
-        <View style={styles.section}>
+        <Text style={[styles.sectionHeader, { color: theme.textDim }]}>Tree Display</Text>
+        <View style={[styles.section, { backgroundColor: theme.sectionBg, borderColor: theme.sectionBorder }]}>
           <SettingsRow icon="sparkles-outline" accent="#FDE68A" label="Node Particles">
             <Switch
               value={showParticles}
@@ -178,13 +179,29 @@ export default function SettingsScreen({
               thumbColor={highQuality ? '#EDE9FE' : 'rgba(255,255,255,0.62)'}
             />
           </SettingsRow>
+          <SettingsRow icon="refresh-outline" accent="#86EFAC" label="Replay Unlock Animation">
+            <Switch
+              value={replayUnlockAnim}
+              onValueChange={(v) => onTreePrefsChange?.({ ...treePrefs, replayUnlockAnim: v })}
+              trackColor={{ false: 'rgba(255,255,255,0.1)', true: 'rgba(134,239,172,0.36)' }}
+              thumbColor={replayUnlockAnim ? '#BBF7D0' : 'rgba(255,255,255,0.62)'}
+            />
+          </SettingsRow>
+          <SettingsRow icon="moon-outline" accent="#818CF8" label="Dark Mode">
+            <Switch
+              value={treePrefs?.darkMode ?? true}
+              onValueChange={(v) => onTreePrefsChange?.({ ...treePrefs, darkMode: v })}
+              trackColor={{ false: 'rgba(255,255,255,0.1)', true: 'rgba(129,140,248,0.36)' }}
+              thumbColor={(treePrefs?.darkMode ?? true) ? '#C7D2FE' : 'rgba(255,255,255,0.62)'}
+            />
+          </SettingsRow>
           <SettingsRow icon="cloud-done-outline" accent="#60A5FA" label="Cloud Save" value="Automatic" isLast />
         </View>
 
         {!!onEditTree && (
           <>
-            <Text style={styles.sectionHeader}>Tree Tools</Text>
-            <View style={styles.section}>
+            <Text style={[styles.sectionHeader, { color: theme.textDim }]}>Tree Tools</Text>
+            <View style={[styles.section, { backgroundColor: theme.sectionBg, borderColor: theme.sectionBorder }]}>
               <SettingsRow
                 icon="construct-outline"
                 accent="#7DD3FC"
@@ -199,8 +216,8 @@ export default function SettingsScreen({
 
         {(onResetProgress || onUnlockAll) && (
           <>
-            <Text style={styles.sectionHeader}>Danger Zone</Text>
-            <View style={styles.section}>
+            <Text style={[styles.sectionHeader, { color: theme.textDim }]}>Danger Zone</Text>
+            <View style={[styles.section, { backgroundColor: theme.sectionBg, borderColor: theme.sectionBorder }]}>
               <Text style={styles.dangerBody}>
                 Use these only when you intentionally want to wipe or fully reveal the current tree state.
               </Text>
@@ -236,18 +253,7 @@ export default function SettingsScreen({
           </>
         )}
 
-        {onSignOut && (
-          <TouchableOpacity style={styles.signOutBtn} activeOpacity={0.82} onPress={onSignOut}>
-            <View style={styles.signOutIconWrap}>
-              <Ionicons name="log-out-outline" size={18} color="#FCA5A5" />
-            </View>
-            <View style={styles.signOutTextWrap}>
-              <Text style={styles.signOutBtnT}>Sign Out</Text>
-              <Text style={styles.signOutBtnSub}>End this session and return to the auth screen</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={18} color="#FCA5A5" />
-          </TouchableOpacity>
-        )}
+
       </ScrollView>
     </View>
   );
@@ -284,16 +290,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(125,211,252,0.16)',
     padding: 22,
     gap: 12,
-  },
-  heroCorner: {
-    position: 'absolute',
-    width: 118,
-    height: 84,
-    bottom: -32,
-    left: -26,
-    borderRadius: 28,
-    backgroundColor: 'rgba(253,230,138,0.06)',
-    transform: [{ rotate: '-16deg' }],
   },
   pageTitle: {
     color: '#F8FBFF',
@@ -399,14 +395,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-  },
-  rowIconAccent: {
-    position: 'absolute',
-    width: 22,
-    height: 22,
-    borderRadius: 8,
-    top: -4,
-    right: -4,
   },
   label: {
     color: 'rgba(255,255,255,0.88)',

@@ -12,8 +12,10 @@ import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import CameraScreen from '../screens/CameraScreen';
+import ChatScreen from '../screens/ChatScreen';
 import AuthScreen from '../screens/AuthScreen';
 import { Colors, C } from '../theme/colors';
+import { ThemeProvider } from '../theme/ThemeContext';
 import { INIT } from '../data/initialTree';
 import { normalizeTree } from '../utils/treeUtils';
 import { signOut } from '../services/authService';
@@ -80,6 +82,7 @@ function EntryTransition({ progress }) {
 
 export default function AppShell() {
   const [tab, setTab] = useState('Tree');
+  const [chatHasConversation, setChatHasConversation] = useState(false);
   const [treeSnapshot, setTreeSnapshot] = useState(DEFAULT_TREE);
   const [treePrefs, setTreePrefs] = useState({ showParticles: true, highQuality: true });
   const [skillVideos, setSkillVideos] = useState({});
@@ -125,6 +128,10 @@ export default function AppShell() {
   }, []);
   const isAuthenticated = !!session && !!user;
   const isAdmin = skippedAuth || resolvedUserData.profile?.role === 'admin';
+
+  useEffect(() => {
+    if (tab !== 'Chat') setChatHasConversation(false);
+  }, [tab]);
 
   useEffect(() => {
     if (!session) {
@@ -227,12 +234,22 @@ export default function AppShell() {
     });
   }, [setUserData]);
 
-  const handleSignOut = useCallback(async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      Alert.alert('Sign out failed', error?.message || 'Unable to sign out right now.');
-    }
+  const handleSignOut = useCallback(() => {
+    Alert.alert(
+      'Sign Out?',
+      "You'll be returned to the login screen. Your progress is saved.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out', style: 'destructive',
+          onPress: async () => {
+            try { await signOut(); } catch (error) {
+              Alert.alert('Sign out failed', error?.message || 'Unable to sign out right now.');
+            }
+          },
+        },
+      ],
+    );
   }, []);
 
   const statusBar = useMemo(() => (
@@ -255,9 +272,11 @@ export default function AppShell() {
     );
   }
 
+  const darkMode = treePrefs?.darkMode ?? true;
   return (
-    <View style={styles.root}>
-      {statusBar}
+    <ThemeProvider darkMode={darkMode}>
+      <View style={styles.root}>
+        {statusBar}
 
       <Animated.View style={[styles.contentWrap, { opacity: appEntryOpacity, transform: [{ scale: appEntryScale }, { translateY: appEntryTranslateY }] }]}>
         <View style={[StyleSheet.absoluteFill, { zIndex: tab === 'Tree' ? 1 : 0, opacity: tab === 'Tree' ? 1 : 0, pointerEvents: tab === 'Tree' ? 'auto' : 'none' }]}>
@@ -270,6 +289,7 @@ export default function AppShell() {
             onCloudDataChange={handleCloudDataChange}
             skillVideos={skillVideos}
             treePrefs={treePrefs}
+            onSignOut={handleSignOut}
             onStartSkillAttempt={(node) => {
               setActiveSkillAttempt(node);
               setTab('Camera');
@@ -295,7 +315,6 @@ export default function AppShell() {
             onResetProgress={isAdmin ? handleResetProgress : undefined}
             onUnlockAll={isAdmin ? handleUnlockAll : undefined}
             onEditTree={isAdmin ? handleEditTree : undefined}
-            onSignOut={handleSignOut}
             userEmail={user?.email ?? ''}
             username={resolvedUserData.profile?.username ?? null}
             userRole={resolvedUserData.profile?.role || 'user'}
@@ -306,6 +325,13 @@ export default function AppShell() {
         {tab === 'Friends' && (
           <FriendsScreen currentUser={user} />
         )}
+        {tab === 'Chat' && (
+          <ChatScreen
+            userData={resolvedUserData}
+            currentUser={user}
+            onConversationChange={setChatHasConversation}
+          />
+        )}
         {tab === 'Camera' && (
           <CameraScreen
             node={activeSkillAttempt}
@@ -315,37 +341,34 @@ export default function AppShell() {
               setActiveSkillAttempt(null);
               setTab('Tree');
             }}
-            onSaved={async (savedRecord) => {
+            onSaved={(savedRecord) => {
               setSkillVideos((current) => ({
                 ...current,
                 [savedRecord.nodeId]: savedRecord,
               }));
-
-              if (savedRecord?.nodeId) {
-                await treeActionsRef.current?.completeSkill?.(savedRecord.nodeId, {
-                  deferUntilClose: true,
-                });
-              }
-
               setActiveSkillAttempt(null);
               setTab('Tree');
+              // Fire-and-forget: switch to Tree first, then play the animation sequence
+              if (savedRecord?.nodeId) {
+                treeActionsRef.current?.completeSkill?.(savedRecord.nodeId);
+              }
             }}
           />
         )}
       </Animated.View>
 
-      {tab !== 'Tree' && (
+      {tab !== 'Tree' && !(tab === 'Chat' && chatHasConversation) && (
         <TouchableOpacity
           style={[styles.backBtn, { top: insets.top + 12 }]}
           onPress={() => setTab('Tree')}
           activeOpacity={0.7}
         >
-          <Ionicons name="chevron-back" size={18} color="#D7ECFF" />
-          <Text style={styles.backBtnText}>Tree</Text>
+          <Ionicons name="chevron-back" size={20} color="#D7ECFF" />
         </TouchableOpacity>
       )}
-      {showEntryTransition && <EntryTransition progress={entryProgress} />}
-    </View>
+        {showEntryTransition && <EntryTransition progress={entryProgress} />}
+      </View>
+    </ThemeProvider>
   );
 }
 
@@ -356,12 +379,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     zIndex: 100,
+    width: 42,
     height: 42,
-    paddingHorizontal: 14,
     borderRadius: 16,
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
     justifyContent: 'center',
     backgroundColor: 'rgba(8,12,22,0.84)',
     borderWidth: 1,
@@ -371,12 +392,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 14,
     elevation: 4,
-  },
-  backBtnText: {
-    color: 'rgba(225,240,255,0.88)',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.4,
   },
   loadingRoot: {
     flex: 1,

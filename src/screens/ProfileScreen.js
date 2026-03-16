@@ -1,11 +1,12 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  Alert, Image, ScrollView, Text, TextInput, TouchableOpacity, View, StyleSheet, ActivityIndicator,
+  Alert, Image, ScrollView, Switch, Text, TextInput, TouchableOpacity, View, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AuthBackdrop from '../components/AuthBackdrop';
+import { useTheme } from '../theme/ThemeContext';
 import { BRANCH_COLORS, Colors } from '../theme/colors';
 import { INIT } from '../data/initialTree';
 import { getTreeStats } from '../utils/treeUtils';
@@ -86,6 +87,7 @@ export default function ProfileScreen({
   onProfileUpdate,
 }) {
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
   const stats = useMemo(() => getTreeStats(tree || INIT), [tree]);
   const leadingBranch = stats.leadingBranch || 'core';
   const leadingColor = BRANCH_COLORS[leadingBranch]?.main || '#60A5FA';
@@ -100,7 +102,39 @@ export default function ProfileScreen({
   const [isSavingUsername, setIsSavingUsername] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [localAvatarUri, setLocalAvatarUri] = useState(null);
+  const [isPublic, setIsPublic] = useState(profile?.is_public ?? true);
+  const [isSavingVisibility, setIsSavingVisibility] = useState(false);
+  const [onlineStatus, setOnlineStatus] = useState(profile?.status ?? 'online');
+  const [isSavingStatus, setIsSavingStatus] = useState(false);
   const usernameInputRef = useRef(null);
+
+  const handleToggleVisibility = useCallback(async (value) => {
+    if (!user?.id) return;
+    setIsPublic(value);
+    setIsSavingVisibility(true);
+    try {
+      await saveProfile(user.id, { is_public: value });
+      onProfileUpdate?.({ ...profile, is_public: value });
+    } catch {
+      setIsPublic(!value); // revert on error
+    } finally {
+      setIsSavingVisibility(false);
+    }
+  }, [user?.id, profile, onProfileUpdate]);
+
+  const handleSetStatus = useCallback(async (value) => {
+    if (!user?.id) return;
+    setOnlineStatus(value);
+    setIsSavingStatus(true);
+    try {
+      await saveProfile(user.id, { status: value });
+      onProfileUpdate?.({ ...profile, status: value });
+    } catch {
+      setOnlineStatus(onlineStatus); // revert
+    } finally {
+      setIsSavingStatus(false);
+    }
+  }, [user?.id, profile, onProfileUpdate, onlineStatus]);
 
   const avatarUrl = localAvatarUri || profile?.avatar_url || null;
   const username = profile?.username || null;
@@ -169,17 +203,15 @@ export default function ProfileScreen({
   }, [user?.id, usernameDraft, username, profile, onProfileUpdate]);
 
   return (
-    <View style={styles.root}>
-      <AuthBackdrop style={styles.backdrop} />
-      <View style={styles.pageTint} />
+    <View style={[styles.root, { backgroundColor: theme.screenBg }]}>
+      {theme.dark && <AuthBackdrop style={styles.backdrop} />}
+      <View style={[styles.pageTint, { backgroundColor: theme.pageTint }]} />
 
       <ScrollView style={styles.page} contentContainerStyle={[styles.content, { paddingTop: insets.top + 72 }]}>
 
         {/* ── Hero card ── */}
-        <View style={[styles.heroCard, { borderColor: `${leadingColor}22` }]}>
-          <View style={[styles.heroBeam, { backgroundColor: `${leadingColor}10` }]} />
-          <View style={[styles.heroCorner, { backgroundColor: `${leadingRing}0A` }]} />
-          <Text style={styles.eyebrow}>PROFILE</Text>
+        <View style={[styles.heroCard, { backgroundColor: theme.heroBg, borderColor: theme.dark ? `${leadingColor}22` : theme.heroBorder }]}>
+          <Text style={[styles.eyebrow, { color: theme.dark ? 'rgba(191,226,255,0.74)' : 'rgba(15,23,42,0.5)' }]}>PROFILE</Text>
 
           <View style={styles.profileHeader}>
             {/* Avatar */}
@@ -235,7 +267,7 @@ export default function ProfileScreen({
                 </View>
               ) : (
                 <TouchableOpacity style={styles.nameRow} onPress={handleStartEditUsername} activeOpacity={0.72}>
-                  <Text style={styles.name}>{displayName}</Text>
+                  <Text style={[styles.name, { color: theme.textPrimary }]}>{displayName}</Text>
                   <Ionicons name="pencil-outline" size={14} color="rgba(255,255,255,0.32)" />
                   {isAdmin && (
                     <View style={styles.adminBadge}>
@@ -264,9 +296,9 @@ export default function ProfileScreen({
         </View>
 
         {/* ── Snapshot ── */}
-        <View style={styles.sectionCard}>
+        <View style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Snapshot</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Snapshot</Text>
             <Text style={styles.sectionHint}>Current account state</Text>
           </View>
           <View style={styles.statGrid}>
@@ -278,9 +310,9 @@ export default function ProfileScreen({
         </View>
 
         {/* ── Branch Momentum ── */}
-        <View style={styles.sectionCard}>
+        <View style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Branch Momentum</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Branch Momentum</Text>
             <Text style={styles.sectionHint}>How your unlocks are distributed</Text>
           </View>
           {['push', 'pull', 'core'].map((branch) => {
@@ -307,14 +339,14 @@ export default function ProfileScreen({
         </View>
 
         {/* ── Cloud Save ── */}
-        <View style={styles.sectionCard}>
+        <View style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Cloud Save</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Cloud Save</Text>
             <Text style={styles.sectionHint}>What syncs automatically</Text>
           </View>
           <View style={styles.infoRow}>
             <View style={[styles.infoDot, { backgroundColor: '#7DD3FC' }]} />
-            <Text style={styles.bodyText}>Your account session restores automatically on startup.</Text>
+            <Text style={[styles.bodyText, { color: theme.textSecondary }]}>Your account session restores automatically on startup.</Text>
           </View>
           <View style={styles.infoRow}>
             <View style={[styles.infoDot, { backgroundColor: '#4ADE80' }]} />
@@ -325,6 +357,68 @@ export default function ProfileScreen({
             <Text style={styles.bodyTextDim}>Imported layouts and local tree variants stay on this device.</Text>
           </View>
         </View>
+
+        {/* ── Visibility ── */}
+        <View style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Visibility</Text>
+            <Text style={styles.sectionHint}>Who can see your profile</Text>
+          </View>
+          <View style={styles.visibilityRow}>
+            <View style={styles.visibilityLeft}>
+              <View style={[styles.visibilityIconWrap, { backgroundColor: isPublic ? 'rgba(74,222,128,0.1)' : 'rgba(148,163,184,0.1)', borderColor: isPublic ? 'rgba(74,222,128,0.24)' : 'rgba(148,163,184,0.18)' }]}>
+                <Ionicons name={isPublic ? 'globe-outline' : 'lock-closed-outline'} size={18} color={isPublic ? '#4ADE80' : '#94A3B8'} />
+              </View>
+              <View style={styles.visibilityText}>
+                <Text style={styles.visibilityTitle}>{isPublic ? 'Public Profile' : 'Private Profile'}</Text>
+                <Text style={styles.visibilityHint}>{isPublic ? 'Friends can find and view your profile' : 'Only you can see your profile'}</Text>
+              </View>
+            </View>
+            {isSavingVisibility
+              ? <ActivityIndicator size="small" color={isPublic ? '#4ADE80' : '#94A3B8'} />
+              : (
+                <Switch
+                  value={isPublic}
+                  onValueChange={handleToggleVisibility}
+                  trackColor={{ false: 'rgba(255,255,255,0.1)', true: 'rgba(74,222,128,0.36)' }}
+                  thumbColor={isPublic ? '#BBF7D0' : 'rgba(255,255,255,0.62)'}
+                />
+              )}
+          </View>
+        </View>
+
+        {/* ── Online Status ── */}
+        <View style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Online Status</Text>
+            <Text style={styles.sectionHint}>How you appear to friends</Text>
+            {isSavingStatus && <ActivityIndicator size="small" color="#7DD3FC" />}
+          </View>
+          {[
+            { value: 'online',  dot: '#4ADE80', label: 'Online',           hint: 'Show as active and available' },
+            { value: 'away',    dot: '#FB923C', label: 'Away',             hint: 'Show as away or idle' },
+            { value: 'offline', dot: '#94A3B8', label: 'Appear Offline',   hint: 'Present as offline to others' },
+          ].map((opt) => {
+            const isSelected = onlineStatus === opt.value;
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.statusOption, isSelected && styles.statusOptionActive]}
+                onPress={() => handleSetStatus(opt.value)}
+                activeOpacity={0.74}
+                disabled={isSavingStatus}
+              >
+                <View style={[styles.statusDot, { backgroundColor: opt.dot, shadowColor: opt.dot, shadowOpacity: isSelected ? 0.7 : 0, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } }]} />
+                <View style={styles.statusOptionText}>
+                  <Text style={[styles.statusOptionLabel, isSelected && { color: '#F8FBFF' }]}>{opt.label}</Text>
+                  <Text style={styles.statusOptionHint}>{opt.hint}</Text>
+                </View>
+                {isSelected && <Ionicons name="checkmark-circle" size={18} color={opt.dot} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
 
       </ScrollView>
     </View>
@@ -343,8 +437,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(8,12,22,0.8)', borderRadius: 30, borderWidth: 1,
     padding: 22, gap: 18,
   },
-  heroBeam: { position: 'absolute', width: 160, height: 94, top: -18, right: -28, borderRadius: 34, transform: [{ rotate: '18deg' }] },
-  heroCorner: { position: 'absolute', width: 122, height: 86, bottom: -34, left: -26, borderRadius: 28, transform: [{ rotate: '-16deg' }] },
   profileHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
   avatarShell: {
     width: 84, height: 84, borderRadius: 22, borderWidth: 1.5,
@@ -405,4 +497,23 @@ const styles = StyleSheet.create({
   infoDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
   bodyText: { flex: 1, color: 'rgba(255,255,255,0.6)', fontSize: 14, lineHeight: 20 },
   bodyTextDim: { flex: 1, color: 'rgba(255,255,255,0.36)', fontSize: 13, lineHeight: 19 },
+  visibilityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  visibilityLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  visibilityIconWrap: { width: 40, height: 40, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  visibilityText: { flex: 1, gap: 3 },
+  visibilityTitle: { color: 'rgba(255,255,255,0.88)', fontSize: 15, fontWeight: '600' },
+  visibilityHint: { color: 'rgba(191,226,255,0.46)', fontSize: 12, lineHeight: 17 },
+  statusOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, paddingHorizontal: 14, borderRadius: 16,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  statusOptionActive: {
+    borderColor: 'rgba(125,211,252,0.22)', backgroundColor: 'rgba(125,211,252,0.06)',
+  },
+  statusDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5, borderColor: 'rgba(8,12,22,0.5)' },
+  statusOptionText: { flex: 1, gap: 2 },
+  statusOptionLabel: { color: 'rgba(255,255,255,0.62)', fontSize: 14, fontWeight: '700' },
+  statusOptionHint: { color: 'rgba(191,226,255,0.36)', fontSize: 12, lineHeight: 17 },
 });

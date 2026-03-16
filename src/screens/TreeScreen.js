@@ -45,19 +45,119 @@ import {
 const HOME_VIEW_SCALE = 0.95;
 const HOME_VIEW_Y_RATIO = 0.76;
 const PAN_STATE_SYNC_DELAY_MS = 220;
-const PAN_STATE_SYNC_MIN_SCREEN_DELTA = 54;
-const PAN_STATE_SYNC_MIN_SCALE_DELTA = 0.035;
+const PAN_STATE_SYNC_MIN_SCREEN_DELTA = 160;
+const PAN_STATE_SYNC_MIN_SCALE_DELTA = 0.12;
 const INTERACTION_IDLE_DELAY_MS = 180;
 const NODE_HIT_RADIUS = NODE_R + 60;
 const DRAG_MOVE_THRESHOLD = 10;
 const TAP_MOVE_TOLERANCE = 20;
-const UNLOCK_FX_DURATION_MS = 2680;
+const UNLOCK_FX_DURATION_MS = 2000;
 const UNLOCK_FX_CLEANUP_BUFFER_MS = 260;
-const UNLOCK_FOCUS_DELAY_MS = 140;
-const UNLOCK_FOCUS_ZOOM_DURATION_MS = 420;
+const UNLOCK_FOCUS_ZOOM_DURATION_MS = 300; // baseline; actual duration is dynamic
+const UNLOCK_ZOOM_RETURN_DURATION_MS = 500;
 const ELO_BASE_RATING = 800;
 const ELO_PER_UNLOCK = 45;
 const INITIAL_TREE = normalizeTree(INIT);
+
+// Precompute node visual styles once at module load — avoids 750+ toRGBA() calls per render
+const _buildBranchStyles = (bc) => ({
+  locked: {
+    fill: 'rgba(26,30,50,1.0)',
+    innerFill: 'rgba(18,22,40,1.0)',
+    core: 'rgba(10,12,24,1.0)',
+    outerRim: 'rgba(118,104,89,0.22)',
+    stroke: toRGBA(bc.main, 0.52),
+    ring: toRGBA(bc.ring, 0.34),
+    glowInner: toRGBA(bc.main, 0.18),
+    glowOuter: toRGBA(bc.main, 0.1),
+    ambient: toRGBA(bc.main, 0.06),
+    farAura: toRGBA(bc.main, 0.22),
+    farBody: toRGBA(bc.main, 0.34),
+    farCore: toRGBA(bc.ring, 0.34),
+    innerRing: 'rgba(142,126,108,0.3)',
+    innerRingSoft: 'rgba(98,87,74,0.24)',
+    specular: 'rgba(226,214,198,0.06)',
+    sw: 1.6,
+    opacity: 0.94,
+  },
+  ready: {
+    fill: 'rgba(26,30,50,1.0)',
+    innerFill: 'rgba(18,22,40,1.0)',
+    core: 'rgba(10,12,24,1.0)',
+    outerRim: 'rgba(118,104,89,0.22)',
+    stroke: toRGBA(bc.main, 0.76),
+    ring: toRGBA(bc.ring, 0.52),
+    glowInner: toRGBA(bc.main, 0.28),
+    glowOuter: toRGBA(bc.main, 0.16),
+    ambient: toRGBA(bc.main, 0.10),
+    farAura: toRGBA(bc.main, 0.32),
+    farBody: toRGBA(bc.main, 0.46),
+    farCore: toRGBA(bc.ring, 0.52),
+    innerRing: 'rgba(142,126,108,0.3)',
+    innerRingSoft: 'rgba(98,87,74,0.24)',
+    specular: 'rgba(226,214,198,0.06)',
+    sw: 2.2,
+    opacity: 0.98,
+  },
+  mastered: {
+    fill: 'rgba(10,18,36,1.0)',
+    innerFill: 'rgba(8,14,30,1.0)',
+    core: 'rgba(4,8,18,1.0)',
+    outerRim: toRGBA(bc.ring, 0.14),
+    stroke: toRGBA(bc.main, 0.94),
+    ring: toRGBA(bc.ring, 0.7),
+    glowInner: toRGBA(bc.ring, 0.28),
+    glowOuter: toRGBA(bc.main, 0.18),
+    ambient: toRGBA(bc.main, 0.08),
+    farAura: toRGBA(bc.main, 0.28),
+    farBody: toRGBA(bc.main, 0.58),
+    farCore: toRGBA(bc.ring, 0.85),
+    innerRing: toRGBA(bc.main, 0.2),
+    innerRingSoft: toRGBA(bc.ring, 0.15),
+    specular: 'rgba(240,246,255,0.12)',
+    sw: 2.35,
+    opacity: 0.98,
+  },
+});
+const NODE_VISUAL_STYLES = {
+  neutral: _buildBranchStyles(BRANCH_COLORS.neutral),
+  push: _buildBranchStyles(BRANCH_COLORS.push),
+  pull: _buildBranchStyles(BRANCH_COLORS.pull),
+  core: _buildBranchStyles(BRANCH_COLORS.core),
+};
+const NODE_START_STYLE = {
+  fill: 'rgba(10,16,30,1.0)',
+  innerFill: 'rgba(8,14,26,1.0)',
+  core: 'rgba(200,220,255,0.06)',
+  outerRim: 'rgba(200,220,240,0.18)',
+  stroke: 'rgba(220,230,255,0.88)',
+  ring: 'rgba(200,215,240,0.44)',
+  glowInner: 'rgba(180,210,255,0.24)',
+  glowOuter: 'rgba(160,200,255,0.14)',
+  ambient: 'rgba(140,180,240,0.08)',
+  farAura: 'rgba(200,215,240,0.22)',
+  farBody: 'rgba(200,215,240,0.48)',
+  farCore: 'rgba(220,230,255,0.7)',
+  innerRing: 'rgba(200,215,240,0.14)',
+  innerRingSoft: 'rgba(200,215,240,0.1)',
+  specular: 'rgba(240,246,255,0.12)',
+  sw: 2.8,
+  opacity: 0.98,
+};
+const _nb = BRANCH_COLORS.neutral;
+const NODE_CONN_A_STYLE = {
+  ...NODE_VISUAL_STYLES.neutral.ready,
+  fill: '#08111C',
+  innerFill: '#0D1B2C',
+  core: 'rgba(1,2,4,0.96)',
+  outerRim: 'rgba(191,219,254,0.34)',
+  stroke: toRGBA(_nb.main, 0.95),
+  ring: toRGBA(_nb.ring, 0.92),
+  glowInner: toRGBA(_nb.main, 0.46),
+  glowOuter: toRGBA(_nb.main, 0.24),
+  ambient: toRGBA(_nb.main, 0.08),
+  sw: 2.7,
+};
 
 export default function TreeScreen({
   onTreeChange,
@@ -69,6 +169,7 @@ export default function TreeScreen({
   skillVideos,
   onStartSkillAttempt,
   treePrefs,
+  onSignOut,
 }) {
   const initialTree = INITIAL_TREE;
   const insets = useSafeAreaInsets();
@@ -88,6 +189,7 @@ export default function TreeScreen({
   const rockBurstTimeoutRef = useRef(null);
   const [pendingUnlockNodeId, setPendingUnlockNodeId] = useState(null);
   const pendingUnlockInFlightRef = useRef(false);
+  const replayUnlockAnim = treePrefs?.replayUnlockAnim ?? false;
   const [displayEloRating, setDisplayEloRating] = useState(ELO_BASE_RATING);
   const [eloGainValue, setEloGainValue] = useState(0);
   const eloCounterV = useRef(new Animated.Value(ELO_BASE_RATING)).current;
@@ -273,10 +375,15 @@ export default function TreeScreen({
           saveXp(userId, nextProgress.xp, nextProgress.level),
         ]));
       },
-      completeSkill: record,
+      completeSkill: async (id, opts) => {
+        if (pendingUnlockInFlightRef.current) return false;
+        // Always use completePendingUnlock so the zoom-in + burst animation
+        // fires reliably whether the node was already synced from cloud or not.
+        return completePendingUnlock(id);
+      },
       enterEditMode: () => { setBld(true); setConnA(null); },
     };
-  }, [treeActionsRef, userId]);
+  }, [treeActionsRef, userId, completePendingUnlock]);
 
   const [bld, _setBld] = useState(false); const bR = useRef(false); const setBld = (v) => { bR.current = v; _setBld(v); };
   const [tool, _setTool] = useState('move'); const tR2 = useRef('move'); const setTool = (v) => { tR2.current = v; _setTool(v); };
@@ -316,6 +423,7 @@ export default function TreeScreen({
   const canvasSizeRef = useRef({ width: 0, height: 0 });
   const isInteractingRef = useRef(false);
   const interactionSessionCountRef = useRef(0);
+  const spatialIndexRef = useRef(null);
   // Map bounds as shared values so worklets can clamp on UI thread (no snap-back)
   const boundsMinX = useSharedValue(-2000);
   const boundsMaxX = useSharedValue(2000);
@@ -588,10 +696,15 @@ export default function TreeScreen({
       return null;
     }
 
-    const nextSc = Math.min(
-      Math.max(scN.current * scaleBoost, scN.current + 0.06, minScale),
-      Math.min(MAX_SC, 1.32),
-    );
+    // Always ensure we zoom in close enough to see the animation clearly.
+    // If the user is far away (sc < 0.7), snap straight to a comfortable near scale.
+    const isFarAway = scN.current < 0.7;
+    const nextSc = isFarAway
+      ? Math.min(HOME_VIEW_SCALE + 0.08, MAX_SC)
+      : Math.min(
+          Math.max(scN.current * scaleBoost, scN.current + 0.06, minScale),
+          Math.min(MAX_SC, 1.32),
+        );
 
     return {
       tx: (canvasSize.width / 2) - (node.x * nextSc),
@@ -683,7 +796,10 @@ export default function TreeScreen({
   const hitNodeAtLocalWithViewport = (localX, localY, viewport) => {
     const p = toSVGFromLocalWithViewport(localX, localY, viewport);
     const hitRadius = getNodeHitRadius(viewport.sc);
-    const candidates = shouldRenderFullTree ? tree.nodes : querySpatialNodes(spatialIndex, {
+    // Use tR.current so this works correctly from stale PanResponder closures
+    const currentNodes = tR.current.nodes;
+    const useFullTree = currentNodes.length <= 48 && tR.current.edges.length <= 96;
+    const candidates = useFullTree ? currentNodes : querySpatialNodes(spatialIndexRef.current, {
       left: p.x - hitRadius,
       top: p.y - hitRadius,
       right: p.x + hitRadius,
@@ -706,7 +822,13 @@ export default function TreeScreen({
     }
 
     const fallbackRadius = hitRadius + 16;
-    for (const candidate of tree.nodes) {
+    const fallbackCandidates = useFullTree ? currentNodes : querySpatialNodes(spatialIndexRef.current, {
+      left: p.x - fallbackRadius,
+      top: p.y - fallbackRadius,
+      right: p.x + fallbackRadius,
+      bottom: p.y + fallbackRadius,
+    });
+    for (const candidate of fallbackCandidates) {
       const distance = Math.hypot(candidate.x - p.x, candidate.y - p.y);
       if (distance <= fallbackRadius && distance < bestDistance) {
         bestNode = candidate;
@@ -1298,10 +1420,12 @@ export default function TreeScreen({
     const prereqIds = nextTree.edges
       .filter((edge) => edge.to === nodeId)
       .map((edge) => edge.from);
-    const sourceId = prereqIds.find((candidateId) => {
+    const qualifiedSourceIds = prereqIds.filter((candidateId) => {
       const candidateNode = nextTree.nodes.find((node) => node.id === candidateId);
       return candidateNode?.unlocked || candidateNode?.isStart;
-    }) || prereqIds[0] || null;
+    });
+    const sourceId = qualifiedSourceIds[0] || prereqIds[0] || null;
+    const sourceIds = qualifiedSourceIds.length > 0 ? qualifiedSourceIds : (sourceId ? [sourceId] : []);
     const startedAt = Date.now();
     const id = `${nodeId}_${startedAt}`;
 
@@ -1313,6 +1437,7 @@ export default function TreeScreen({
       id,
       nodeId,
       sourceId,
+      sourceIds,
       branch: resolveBranch(targetNode),
       startedAt,
       duration,
@@ -1330,6 +1455,7 @@ export default function TreeScreen({
     deferUntilClose = false,
     unlockFxDuration = UNLOCK_FX_DURATION_MS,
     unlockFxIntensity = 'hero',
+    skipEmitFx = false,
   } = {}) => {
     const currentNode = tR.current.nodes.find((node) => node.id === id);
     if (!currentNode || currentNode.isStart) {
@@ -1344,10 +1470,31 @@ export default function TreeScreen({
 
     if (currentNode.unlocked) {
       setPendingUnlockNodeId((current) => (current === id ? null : current));
+      // Replay unlock animation if toggle enabled (e.g., after updating attempt video)
+      if (replayUnlockAnim) {
+        setSel((prev) => (prev?.id === id ? null : prev));
+        emitUnlockFx(tR.current, id, {
+          duration: unlockFxDuration,
+          intensity: unlockFxIntensity,
+        });
+      }
       return true;
     }
 
     const t = { ...tR.current, nodes: tR.current.nodes.map((n) => (n.id === id ? { ...n, unlocked: true } : n)) };
+
+    // Auto-close skill card for this node before animation starts
+    setSel((prev) => (prev?.id === id ? null : prev));
+
+    // Fire animation BEFORE committing tree state — prevents the pre-flash
+    // where the node briefly renders as "mastered" before the animation begins
+    if (!skipEmitFx) {
+      emitUnlockFx(t, id, {
+        duration: unlockFxDuration,
+        intensity: unlockFxIntensity,
+      });
+    }
+
     const didCommit = await commitCloudProgress(t, (nextProgress) => Promise.all([
       unlockNode(userId, id),
       saveXp(userId, nextProgress.xp, nextProgress.level),
@@ -1355,10 +1502,9 @@ export default function TreeScreen({
 
     if (didCommit) {
       setPendingUnlockNodeId((current) => (current === id ? null : current));
-      emitUnlockFx(t, id, {
-        duration: unlockFxDuration,
-        intensity: unlockFxIntensity,
-      });
+    } else {
+      // Commit failed — roll back the animation
+      setUnlockFx(null);
     }
 
     return didCommit;
@@ -1376,27 +1522,81 @@ export default function TreeScreen({
       setPendingUnlockNodeId(null);
       setSel(null);
 
+      // Save viewport so we can return to it after the animation
+      const savedViewport = { tx: txN.current, ty: tyN.current, sc: scN.current };
+      let didZoomIn = false;
+
+      let focusDuration = UNLOCK_FOCUS_ZOOM_DURATION_MS;
+
       if (targetNode) {
         const focusViewport = getNodeFocusViewport(targetNode);
         if (focusViewport) {
+          // Scale animation duration to how far the camera needs to travel.
+          // Large pan + scale changes (far-away nodes) need more time to look smooth.
+          const txDelta = Math.abs(focusViewport.tx - txN.current);
+          const tyDelta = Math.abs(focusViewport.ty - tyN.current);
+          const scDelta = Math.abs(focusViewport.sc - scN.current);
+          const travelFactor = Math.max(
+            txDelta / Math.max(canvasSize.width, 1),
+            tyDelta / Math.max(canvasSize.height, 1),
+            scDelta,
+          );
+          focusDuration = Math.round(Math.min(Math.max(UNLOCK_FOCUS_ZOOM_DURATION_MS, travelFactor * 980), 820));
+
           animateViewportTo(
             focusViewport.tx,
             focusViewport.ty,
             focusViewport.sc,
-            UNLOCK_FOCUS_ZOOM_DURATION_MS,
+            focusDuration,
           );
+          didZoomIn = true;
         }
       }
 
-      await new Promise((resolve) => setTimeout(resolve, UNLOCK_FOCUS_DELAY_MS));
-      await record(nodeId, {
-        unlockFxDuration: UNLOCK_FX_DURATION_MS,
-        unlockFxIntensity: 'hero',
+      // Wait for zoom to finish
+      await new Promise((resolve) => setTimeout(resolve, focusDuration + 60));
+
+      // Commit unlock only if the node isn't already unlocked (cloud sync may have beaten us)
+      const isAlreadyUnlocked = tR.current.nodes.find((n) => n.id === nodeId)?.unlocked;
+      if (!isAlreadyUnlocked) {
+        await record(nodeId, { skipEmitFx: true });
+      }
+
+      // Short pause: let ELO pulse build to its peak (~280ms), then fire FX in tandem
+      await new Promise((resolve) => setTimeout(resolve, 320));
+
+      // Fire unlock FX — ELO pulse is at peak so both animations crescendo together
+      emitUnlockFx(tR.current, nodeId, {
+        duration: UNLOCK_FX_DURATION_MS,
+        intensity: 'hero',
       });
+
+      // Wait for unlock FX to finish
+      await new Promise((resolve) => setTimeout(resolve, UNLOCK_FX_DURATION_MS + 80));
+
+      // Zoom back — scale return duration to travel distance too
+      if (didZoomIn) {
+        const returnTxDelta = Math.abs(savedViewport.tx - txN.current);
+        const returnTyDelta = Math.abs(savedViewport.ty - tyN.current);
+        const returnScDelta = Math.abs(savedViewport.sc - scN.current);
+        const returnFactor = Math.max(
+          returnTxDelta / Math.max(canvasSize.width, 1),
+          returnTyDelta / Math.max(canvasSize.height, 1),
+          returnScDelta,
+        );
+        const returnDuration = Math.round(Math.min(Math.max(UNLOCK_ZOOM_RETURN_DURATION_MS, returnFactor * 820), 900));
+        animateViewportTo(
+          savedViewport.tx,
+          savedViewport.ty,
+          savedViewport.sc,
+          returnDuration,
+        );
+        await new Promise((resolve) => setTimeout(resolve, returnDuration + 80));
+      }
     } finally {
       pendingUnlockInFlightRef.current = false;
     }
-  }, [getNodeFocusViewport, record]);
+  }, [canvasSize.height, canvasSize.width, getNodeFocusViewport, record]);
 
   const exportTree = async () => {
     try {
@@ -1506,6 +1706,7 @@ export default function TreeScreen({
     () => buildTreeSpatialIndex(tree.nodes, tree.edges, nodeMap),
     [tree.edges, tree.nodes, nodeMap],
   );
+  spatialIndexRef.current = spatialIndex;
   const incomingByNode = useMemo(() => {
     const incoming = new Map();
     for (const e of tree.edges) {
@@ -1536,6 +1737,7 @@ export default function TreeScreen({
     return status;
   }, [tree.nodes, bld, incomingByNode, nodeMap]);
 
+
   const selectedPathState = useMemo(() => {
     if (bld || !sel?.id) {
       return { edgeDepths: null, edgeCount: 0 };
@@ -1544,9 +1746,10 @@ export default function TreeScreen({
     const edgeDepths = {};
     const queue = [{ nodeId: sel.id, depth: 0 }];
     const seenNodes = new Set([sel.id]);
+    let qi = 0;
 
-    while (queue.length) {
-      const current = queue.shift();
+    while (qi < queue.length) {
+      const current = queue[qi++];
       const prereqs = incomingByNode.get(current.nodeId) || [];
 
       for (let i = 0; i < prereqs.length; i += 1) {
@@ -1588,7 +1791,9 @@ export default function TreeScreen({
   const enableLiveViewportPreview = !shouldRenderFullTree;
 
   const visibleBounds = useMemo(() => {
-    if (!canvasSize.width || !canvasSize.height) return null;
+    // Small trees render all nodes unconditionally; don't recompute bounds on pan
+    // (only used for spatial culling of nodes/edges/stars, all of which short-circuit for full-tree mode)
+    if (shouldRenderFullTree || !canvasSize.width || !canvasSize.height) return null;
     const interactionPad = Math.max(72 / xform.sc, 48);
     return {
       left: (-xform.tx) / xform.sc - interactionPad,
@@ -1596,7 +1801,7 @@ export default function TreeScreen({
       right: (canvasSize.width - xform.tx) / xform.sc + interactionPad,
       bottom: (canvasSize.height - xform.ty) / xform.sc + interactionPad,
     };
-  }, [canvasSize.height, canvasSize.width, xform.sc, xform.tx, xform.ty]);
+  }, [canvasSize.height, canvasSize.width, shouldRenderFullTree, xform.sc, xform.tx, xform.ty]);
 
   const visibleNodes = useMemo(() => {
     if (shouldRenderFullTree || !visibleBounds) return tree.nodes;
@@ -1671,7 +1876,8 @@ export default function TreeScreen({
       isNear,
       interactionTier,
       simplifyScene: isFar,
-      showLabels: !isFar,
+      showLabels: true, // always visible — font scales with LOD
+      labelFontSize: isFar ? 9 : isMid ? 11 : 15,
       simplifyLabels,
       showOuterRing: true,
       showEdgeGlow: !isFar || visibleEdges.length <= 48,
@@ -1680,121 +1886,17 @@ export default function TreeScreen({
   }, [interactionTier, lodTier, shouldRenderFullTree, visibleEdges.length, visibleNodes.length]);
 
   const nodeStyles = useMemo(() => {
-    const nb = BRANCH_COLORS.neutral;
     const map = {};
-    const makeVisual = (branch, bc, status) => {
-      const isLocked = status === 'locked';
-      if (isLocked) {
-        return {
-          fill: 'rgba(20,18,16,0.86)',
-          innerFill: 'rgba(9,8,7,0.96)',
-          core: 'rgba(1,1,1,0.94)',
-          outerRim: 'rgba(118,104,89,0.22)',
-          stroke: toRGBA(bc.main, 0.52),
-          ring: toRGBA(bc.ring, 0.34),
-          glowInner: toRGBA(bc.main, 0.18),
-          glowOuter: toRGBA(bc.main, 0.1),
-          ambient: toRGBA(bc.main, 0.06),
-          farAura: toRGBA(bc.main, 0.22),
-          farBody: toRGBA(bc.main, 0.34),
-          farCore: toRGBA(bc.ring, 0.34),
-          innerRing: 'rgba(142,126,108,0.3)',
-          innerRingSoft: 'rgba(98,87,74,0.24)',
-          specular: 'rgba(226,214,198,0.06)',
-          sw: 1.6,
-          opacity: 0.94,
-        };
-      }
-
-      const resolved = bc;
-      const isMastered = status === 'mastered';
-      const isReady = status === 'ready';
-
-      if (isReady) {
-        return {
-          fill: 'rgba(20,18,16,0.86)',
-          innerFill: 'rgba(9,8,7,0.96)',
-          core: 'rgba(1,1,1,0.94)',
-          outerRim: 'rgba(118,104,89,0.22)',
-          stroke: toRGBA(resolved.main, 0.58),
-          ring: toRGBA(resolved.ring, 0.36),
-          glowInner: toRGBA(resolved.main, 0.22),
-          glowOuter: toRGBA(resolved.main, 0.12),
-          ambient: toRGBA(resolved.main, 0.08),
-          farAura: toRGBA(resolved.main, 0.24),
-          farBody: toRGBA(resolved.main, 0.36),
-          farCore: toRGBA(resolved.ring, 0.36),
-          innerRing: 'rgba(142,126,108,0.3)',
-          innerRingSoft: 'rgba(98,87,74,0.24)',
-          specular: 'rgba(226,214,198,0.06)',
-          sw: 1.6,
-          opacity: 0.96,
-        };
-      }
-
-      return {
-        fill: 'rgba(8,14,24,0.96)',
-        innerFill: 'rgba(7,12,20,0.98)',
-        core: 'rgba(1,2,4,0.96)',
-        outerRim: toRGBA(resolved.ring, 0.14),
-        stroke: toRGBA(resolved.main, 0.94),
-        ring: toRGBA(resolved.ring, 0.7),
-        glowInner: toRGBA(resolved.ring, 0.28),
-        glowOuter: toRGBA(resolved.main, 0.18),
-        ambient: toRGBA(resolved.main, 0.08),
-        farAura: toRGBA(resolved.main, 0.28),
-        farBody: toRGBA(resolved.main, 0.58),
-        farCore: toRGBA(resolved.ring, 0.85),
-        innerRing: toRGBA(resolved.main, 0.2),
-        innerRingSoft: toRGBA(resolved.ring, 0.15),
-        specular: 'rgba(240,246,255,0.12)',
-        sw: 2.35,
-        opacity: 0.98,
-      };
-    };
-
-
     for (const n of visibleNodes) {
-      const branch = resolveBranch(n);
-      const bc = BRANCH_COLORS[branch] || nb;
       const status = nodeStatusMap[n.id] || 'locked';
-
       if (bld && connA === n.id) {
-        map[n.id] = {
-          ...makeVisual('neutral', nb, 'ready'),
-          fill: '#08111C',
-          innerFill: '#0D1B2C',
-          core: 'rgba(1,2,4,0.96)',
-          outerRim: 'rgba(191,219,254,0.34)',
-          stroke: toRGBA(nb.main, 0.95),
-          ring: toRGBA(nb.ring, 0.92),
-          glowInner: toRGBA(nb.main, 0.46),
-          glowOuter: toRGBA(nb.main, 0.24),
-          ambient: toRGBA(nb.main, 0.08),
-          sw: 2.7,
-        };
+        map[n.id] = NODE_CONN_A_STYLE;
       } else if (status === 'start') {
-        map[n.id] = {
-          fill: 'rgba(6,10,18,0.97)',
-          innerFill: 'rgba(8,14,24,0.97)',
-          core: 'rgba(200,220,255,0.06)',
-          outerRim: 'rgba(200,220,240,0.18)',
-          stroke: 'rgba(220,230,255,0.88)',
-          ring: 'rgba(200,215,240,0.44)',
-          glowInner: 'rgba(180,210,255,0.24)',
-          glowOuter: 'rgba(160,200,255,0.14)',
-          ambient: 'rgba(140,180,240,0.08)',
-          farAura: 'rgba(200,215,240,0.22)',
-          farBody: 'rgba(200,215,240,0.48)',
-          farCore: 'rgba(220,230,255,0.7)',
-          innerRing: 'rgba(200,215,240,0.14)',
-          innerRingSoft: 'rgba(200,215,240,0.1)',
-          specular: 'rgba(240,246,255,0.12)',
-          sw: 2.8,
-          opacity: 0.98,
-        };
+        map[n.id] = NODE_START_STYLE;
       } else {
-        map[n.id] = makeVisual(branch, bc, status);
+        const branch = resolveBranch(n);
+        map[n.id] = (NODE_VISUAL_STYLES[branch] || NODE_VISUAL_STYLES.neutral)[status]
+          || NODE_VISUAL_STYLES.neutral.locked;
       }
     }
     return map;
@@ -1878,29 +1980,14 @@ export default function TreeScreen({
     outputRange: [0.92, 1.04, 1],
   });
 
-  useEffect(() => {
-    if (!eloInitializedRef.current) {
-      eloInitializedRef.current = true;
-      lastEloRatingRef.current = eloRating;
-      eloCounterV.setValue(eloRating);
-      setDisplayEloRating(eloRating);
-      return;
-    }
-
-    const previousRating = lastEloRatingRef.current;
-    lastEloRatingRef.current = eloRating;
-
-    if (eloRating === previousRating) {
-      return;
-    }
-
+  const playEloAnimation = (previousRating, toRating) => {
     eloCounterV.stopAnimation();
     eloPulseV.stopAnimation();
     eloGainOpacityV.stopAnimation();
     eloGainLiftV.stopAnimation();
 
-    if (eloRating > previousRating) {
-      const gain = eloRating - previousRating;
+    if (toRating > previousRating) {
+      const gain = toRating - previousRating;
       setEloGainValue(gain);
       eloPulseV.setValue(0);
       eloGainOpacityV.setValue(0);
@@ -1908,31 +1995,31 @@ export default function TreeScreen({
 
       Animated.parallel([
         Animated.timing(eloCounterV, {
-          toValue: eloRating,
-          duration: 860,
+          toValue: toRating,
+          duration: 620,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: false,
         }),
         Animated.sequence([
           Animated.timing(eloPulseV, {
             toValue: 1,
-            duration: 220,
-            easing: Easing.out(Easing.quad),
+            duration: 190,
+            easing: Easing.out(Easing.back(1.6)),
             useNativeDriver: true,
           }),
           Animated.timing(eloPulseV, {
             toValue: 0,
-            duration: 520,
+            duration: 480,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
         ]),
         Animated.sequence([
-          Animated.delay(90),
+          Animated.delay(60),
           Animated.parallel([
             Animated.timing(eloGainOpacityV, {
               toValue: 1,
-              duration: 180,
+              duration: 160,
               easing: Easing.out(Easing.quad),
               useNativeDriver: true,
             }),
@@ -1955,13 +2042,28 @@ export default function TreeScreen({
           setEloGainValue(0);
         }
       });
-
       return;
     }
 
     setEloGainValue(0);
-    eloCounterV.setValue(eloRating);
-    setDisplayEloRating(eloRating);
+    eloCounterV.setValue(toRating);
+    setDisplayEloRating(toRating);
+  };
+
+  useEffect(() => {
+    if (!eloInitializedRef.current) {
+      eloInitializedRef.current = true;
+      lastEloRatingRef.current = eloRating;
+      eloCounterV.setValue(eloRating);
+      setDisplayEloRating(eloRating);
+      return;
+    }
+
+    const previousRating = lastEloRatingRef.current;
+    if (eloRating === previousRating) return;
+
+    lastEloRatingRef.current = eloRating;
+    playEloAnimation(previousRating, eloRating);
   }, [eloCounterV, eloGainLiftV, eloGainOpacityV, eloPulseV, eloRating]);
 
   return (
@@ -1970,9 +2072,16 @@ export default function TreeScreen({
       {!bld && (
         <View style={[styles.bar, { paddingTop: insets.top + 10 }]}>
           <View style={styles.barContent}>
-            <TouchableOpacity style={[styles.barIconBtn, styles.profileBtn]} onPress={() => onNavigate?.('Profile')} activeOpacity={0.76}>
-              <Ionicons name="person-outline" size={22} color="#BFE2FF" />
-            </TouchableOpacity>
+            <View style={styles.barLeftCol}>
+              <TouchableOpacity style={[styles.barIconBtn, styles.profileBtn]} onPress={() => onNavigate?.('Profile')} activeOpacity={0.76}>
+                <Ionicons name="person-outline" size={22} color="#BFE2FF" />
+              </TouchableOpacity>
+              {!!onSignOut && (
+                <TouchableOpacity style={[styles.barIconBtn, styles.signOutBarBtn]} onPress={onSignOut} activeOpacity={0.76}>
+                  <Ionicons name="log-out-outline" size={17} color="#FCA5A5" />
+                </TouchableOpacity>
+              )}
+            </View>
             <View pointerEvents="none" style={styles.barCenterSlot}>
               <Animated.View style={[styles.eloWrap, { transform: [{ scale: eloPulseScale }] }]}>
                 <Animated.View style={[styles.eloBackdropGlow, { opacity: eloGlowOpacity }]} />
@@ -1991,6 +2100,12 @@ export default function TreeScreen({
                       <Text style={styles.eloMetaText}>LIVE</Text>
                     </View>
                   </View>
+                  <View style={styles.eloProgressRow}>
+                    <View style={styles.eloProgressTrack}>
+                      <View style={[styles.eloProgressFill, { width: `${treeStats.completionPct}%` }]} />
+                    </View>
+                    <Text style={styles.eloProgressLabel}>{treeStats.unlocked}/{treeStats.total}</Text>
+                  </View>
                   {!!eloGainValue && (
                     <Animated.View
                       style={[
@@ -2008,14 +2123,17 @@ export default function TreeScreen({
               </Animated.View>
             </View>
             <View style={styles.barActionCluster}>
-              <TouchableOpacity style={[styles.barIconBtn, styles.friendsBtn]} onPress={() => onNavigate?.('Friends')} activeOpacity={0.76}>
-                <Ionicons name="people-outline" size={22} color="#B9F8D0" />
+              <TouchableOpacity style={[styles.barIconBtn, styles.settingsBtn, styles.stackedBtn]} onPress={() => onNavigate?.('Settings')} activeOpacity={0.76}>
+                <Ionicons name="settings-outline" size={19} color="#FFE8A6" />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.barIconBtn, styles.friendsBtn, styles.stackedBtn]} onPress={() => onNavigate?.('Friends')} activeOpacity={0.76}>
+                <Ionicons name="people-outline" size={19} color="#B9F8D0" />
                 <View style={styles.friendsBadge}>
-                  <Ionicons name="sparkles" size={9} color="#07110D" />
+                  <Ionicons name="sparkles" size={8} color="#07110D" />
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.barIconBtn, styles.settingsBtn]} onPress={() => onNavigate?.('Settings')} activeOpacity={0.76}>
-                <Ionicons name="settings-outline" size={22} color="#FFE8A6" />
+              <TouchableOpacity style={[styles.barIconBtn, styles.chatBtn, styles.stackedBtn]} onPress={() => onNavigate?.('Chat')} activeOpacity={0.76}>
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color="#E9D5FF" />
               </TouchableOpacity>
             </View>
           </View>
@@ -2210,7 +2328,7 @@ export default function TreeScreen({
                   rockBurstProgressV={rockBurstProgressV}
                   selectedPathEdgeDepths={selectedPathState.edgeDepths}
                   selectedPathEdgeCount={selectedPathState.edgeCount}
-                  showParticles={treePrefs?.showParticles ?? true}
+                  showParticles={(treePrefs?.showParticles ?? true) && xform.sc > 0.55}
                   highQuality={treePrefs?.highQuality ?? true}
                 />
               </View>
@@ -2226,12 +2344,10 @@ export default function TreeScreen({
         <View style={styles.zoomDivider} />
         <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('out')} activeOpacity={0.7}>
           <Ionicons name="remove" size={20} color="rgba(255,255,255,0.78)" />
-          <Text style={styles.zoomBtnText}>−</Text>
         </TouchableOpacity>
         <View style={styles.zoomDivider} />
         <TouchableOpacity style={styles.zoomBtn} onPress={handleGoHome} activeOpacity={0.7}>
           <Ionicons name="locate-outline" size={18} color="rgba(255,255,255,0.78)" />
-          <Text style={styles.zoomBtnText}>⌖</Text>
         </TouchableOpacity>
       </View>
 
@@ -2298,6 +2414,7 @@ export default function TreeScreen({
           disableBackdropClose={pendingUnlockNodeId === sel.id}
           onClose={handleSkillCardClose}
           onAttempt={handleStartSkillAttempt}
+          onSelectPrereq={(prereqNode) => setSel({ ...prereqNode })}
         />
       )}
     </View>
@@ -2312,21 +2429,22 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 40,
     zIndex: 50,
-    backgroundColor: 'rgba(15,15,20,0.75)',
+    backgroundColor: 'rgba(8,10,18,0.88)',
     borderRadius: 24,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 6,
   },
   zoomBtn: {
     width: 46,
     height: 46,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  zoomBtnText: {
-    display: 'none',
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 20,
-    fontWeight: '500',
   },
   zoomDivider: {
     height: 1,
@@ -2340,29 +2458,34 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 40,
     paddingHorizontal: 20,
-    paddingBottom: 8,
+    paddingBottom: 4,
   },
   barContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    minHeight: 50,
+    minHeight: 52,
     gap: 12,
     position: 'relative',
   },
   barCenterSlot: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: 54,
+    right: 60,
     top: 0,
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   barActionCluster: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
+    gap: 5,
+  },
+  stackedBtn: {
+    width: 45,
+    height: 45,
+    borderRadius: 22,
   },
   barSide: {
     width: 44,
@@ -2386,6 +2509,19 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
   },
+  barLeftCol: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  signOutBarBtn: {
+    backgroundColor: 'rgba(84,20,26,0.86)',
+    borderColor: 'rgba(248,113,113,0.22)',
+    shadowColor: '#FCA5A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 4,
+  },
   friendsBtn: {
     position: 'relative',
     overflow: 'visible',
@@ -2395,6 +2531,15 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.16,
     shadowRadius: 12,
+    elevation: 4,
+  },
+  chatBtn: {
+    backgroundColor: 'rgba(40,8,80,0.88)',
+    borderColor: 'rgba(168,85,247,0.3)',
+    shadowColor: '#A855F7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
     elevation: 4,
   },
   settingsBtn: {
@@ -2510,6 +2655,32 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 1,
+  },
+  eloProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  eloProgressTrack: {
+    flex: 1,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+    minWidth: 40,
+    maxWidth: 60,
+  },
+  eloProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,211,107,0.52)',
+  },
+  eloProgressLabel: {
+    color: 'rgba(255,236,196,0.46)',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   eloGainFx: {
     position: 'absolute',
