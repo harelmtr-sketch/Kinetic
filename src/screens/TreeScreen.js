@@ -456,9 +456,8 @@ export default function TreeScreen({
     const hh = Math.max(6000, mxY - mnY + pad * 2) / 2;
     boundsMinX.value = cx - hw; boundsMaxX.value = cx + hw;
     boundsMinY.value = mnY - 2000;
-    // Tight bottom: start node is the bottommost, only 260 padding below it
     const startN = nodes.find((n) => n.isStart);
-    boundsMaxY.value = startN ? startN.y + 260 : cy + hh;
+    boundsMaxY.value = startN ? startN.y + 1400 : cy + hh;
   }, [tree]);
 
   const clampTx = (tx, sc) => {
@@ -1082,12 +1081,15 @@ export default function TreeScreen({
         runOnJS(beginInteraction)();
       })
       .onUpdate((evt) => {
+        'worklet';
         if (pinchActiveV.value) {
           return;
         }
         const sc = panStartSc.value;
-        const nextTx = panStartTx.value + evt.translationX;
-        const nextTy = panStartTy.value + evt.translationY;
+        const rawTx = panStartTx.value + evt.translationX;
+        const rawTy = panStartTy.value + evt.translationY;
+        const nextTx = clampTx(rawTx, sc);
+        const nextTy = clampTy(rawTy, sc);
         txV.value = nextTx;
         tyV.value = nextTy;
         scV.value = sc;
